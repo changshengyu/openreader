@@ -52,7 +52,7 @@ func (s *Server) listLocalStore(c *gin.Context) {
 		return
 	}
 	runStoreReadTestHook("local-list")
-	resource, err := service.Stat(relativePath)
+	reader, err := service.AdmitRead(c.Request.Context(), relativePath)
 	if errors.Is(err, webdavfs.ErrNotFound) && relativePath != "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "local store path not found"})
 		return
@@ -61,6 +61,8 @@ func (s *Server) listLocalStore(c *gin.Context) {
 		writeLocalStoreFilesystemError(c, err, "failed to read local store")
 		return
 	}
+	defer reader.Close()
+	resource := reader.Resource
 	if !resource.Info.IsDir() {
 		if !resource.Info.Mode().IsRegular() {
 			writeLocalStoreFilesystemError(c, webdavfs.ErrUnsafePath, "failed to read local store")
@@ -69,72 +71,15 @@ func (s *Server) listLocalStore(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read local store"})
 		return
 	}
-	targetDir, _, err := service.Resolve(relativePath)
+	recursive := c.Query("recursive") == "1" || strings.EqualFold(c.Query("recursive"), "true")
+	resources, err := reader.ListLocal(recursive)
 	if err != nil {
 		writeLocalStoreFilesystemError(c, err, "failed to read local store")
 		return
 	}
-	recursive := c.Query("recursive") == "1" || strings.EqualFold(c.Query("recursive"), "true")
-
 	items := make([]localStoreItem, 0)
-	if recursive {
-		err := filepath.WalkDir(targetDir, func(path string, entry os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if path == targetDir {
-				return nil
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return nil
-			}
-			if strings.HasPrefix(entry.Name(), ".") {
-				if entry.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return nil
-			}
-			if !entry.IsDir() && !info.Mode().IsRegular() {
-				return nil
-			}
-			rel, err := filepath.Rel(targetDir, path)
-			if err != nil {
-				return nil
-			}
-			items = append(items, makeLocalStoreItem(entry.Name(), cleanRelativePath(filepath.Join(relativePath, rel)), info, entry.IsDir()))
-			return nil
-		})
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read local store"})
-			return
-		}
-	} else {
-		entries, err := os.ReadDir(targetDir)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read local store"})
-			return
-		}
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".") {
-				continue
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				continue
-			}
-			if !entry.IsDir() && !info.Mode().IsRegular() {
-				continue
-			}
-			itemPath := cleanRelativePath(filepath.Join(relativePath, entry.Name()))
-			items = append(items, makeLocalStoreItem(entry.Name(), itemPath, info, entry.IsDir()))
-		}
+	for _, resource := range resources[1:] {
+		items = append(items, makeLocalStoreItem(resource.Info.Name(), resource.RelativePath, resource.Info, resource.Info.IsDir()))
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].IsDir != items[j].IsDir {
@@ -143,6 +88,10 @@ func (s *Server) listLocalStore(c *gin.Context) {
 		return strings.ToLower(items[i].Path) < strings.ToLower(items[j].Path)
 	})
 
+	if err := reader.Validate(); err != nil {
+		writeLocalStoreFilesystemError(c, err, "failed to read local store")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"path":      relativePath,
 		"recursive": recursive,
@@ -260,7 +209,7 @@ func (s *Server) downloadFromLocalStore(c *gin.Context) {
 		return
 	}
 	runStoreReadTestHook("local-download")
-	file, info, err := service.Open(relativePath)
+	file, info, err := service.OpenContext(c.Request.Context(), relativePath)
 	if errors.Is(err, webdavfs.ErrNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "local store item not found"})
 		return
@@ -277,7 +226,7 @@ func (s *Server) downloadFromLocalStore(c *gin.Context) {
 	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": info.Name()}); disposition != "" {
 		c.Header("Content-Disposition", disposition)
 	}
-	http.ServeContent(c.Writer, c.Request, info.Name(), info.ModTime(), file)
+	serveOpenedStoreFile(c, file, info)
 }
 
 func (s *Server) createLocalStoreDirectory(c *gin.Context) {

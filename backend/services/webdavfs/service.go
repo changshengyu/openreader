@@ -31,8 +31,8 @@ const maxImportPathBytes = 4096
 // Package tests are not parallel while the hook is installed.
 var beforeRemoveTestHook func(root, relative string)
 
-// A nonparallel test seam after read admission, before the original absolute
-// operation. It does not change production behavior or implement read safety.
+// A nonparallel test seam after identity admission, before validation/read.
+// Nil in production; fixtures cannot replace the fd-relative implementation.
 var afterReadAdmissionTestHook func(operation, root, relative string)
 
 type Service struct {
@@ -125,101 +125,15 @@ func (s *Service) Resolve(rawPath string) (string, string, error) {
 }
 
 func (s *Service) Stat(rawPath string) (Resource, error) {
-	target, relative, err := s.Resolve(rawPath)
-	if err != nil {
-		return Resource{}, err
-	}
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return Resource{}, ErrNotFound
-	}
-	if err != nil {
-		return Resource{}, err
-	}
-	if afterReadAdmissionTestHook != nil {
-		afterReadAdmissionTestHook("stat", s.boundary, relative)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
-		return Resource{}, ErrUnsafePath
-	}
-	return Resource{RelativePath: relative, Info: info}, nil
+	return s.StatContext(context.Background(), rawPath)
 }
 
 func (s *Service) List(rawPath string, depth int) ([]Resource, error) {
-	target, relative, err := s.Resolve(rawPath)
-	if err != nil {
-		return nil, err
-	}
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
-		return nil, ErrUnsafePath
-	}
-	if afterReadAdmissionTestHook != nil {
-		afterReadAdmissionTestHook("list", s.boundary, relative)
-	}
-	resources := []Resource{{RelativePath: relative, Info: info}}
-	if depth <= 0 || !info.IsDir() {
-		return resources, nil
-	}
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range entries {
-		entryPath := filepath.Join(target, entry.Name())
-		entryInfo, err := os.Lstat(entryPath)
-		if err != nil {
-			return nil, err
-		}
-		if entryInfo.Mode()&os.ModeSymlink != 0 || (!entryInfo.IsDir() && !entryInfo.Mode().IsRegular()) {
-			return nil, ErrUnsafePath
-		}
-		entryRelative := filepath.ToSlash(filepath.Join(filepath.FromSlash(relative), entry.Name()))
-		resources = append(resources, Resource{RelativePath: entryRelative, Info: entryInfo})
-	}
-	return resources, nil
+	return s.ListContext(context.Background(), rawPath, depth)
 }
 
 func (s *Service) Open(rawPath string) (*os.File, os.FileInfo, error) {
-	target, relative, err := s.Resolve(rawPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, nil, ErrUnsafePath
-	}
-	if info.IsDir() {
-		return nil, info, ErrIsDirectory
-	}
-	if !info.Mode().IsRegular() {
-		return nil, nil, ErrUnsafePath
-	}
-	if afterReadAdmissionTestHook != nil {
-		afterReadAdmissionTestHook("open", s.boundary, relative)
-	}
-	file, err := os.Open(target)
-	if err != nil {
-		return nil, nil, err
-	}
-	openedInfo, err := file.Stat()
-	if err != nil || !os.SameFile(info, openedInfo) {
-		_ = file.Close()
-		return nil, nil, ErrUnsafePath
-	}
-	return file, openedInfo, nil
+	return s.OpenContext(context.Background(), rawPath)
 }
 
 func (s *Service) Put(ctx context.Context, rawPath string, source io.Reader, maxBytes int64) error {

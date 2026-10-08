@@ -1,12 +1,12 @@
 # WebDAV / LocalStore 读取与列表生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / red-tests-confirmed / implementation-pending**。
+状态：**implemented / regression-validated / Docker-publication-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 当前审查基线：`OpenReader@08de4decfb91248901ca73adee5f102563181d68`。
 审查日期：2026-10-08。
 
-盘点阶段仅更新合同与矩阵，独立提交 `3ecf48a` 后才加入下述红测。本项尚未实施，
+盘点阶段仅更新合同与矩阵，独立提交 `3ecf48a` 后才加入下述红测，`80bb48c` 后才实施。
 不能称为已复现的生产漏洞，也不能从 PUT/COPY/MOVE/MKCOL 的门禁推导本项已完成。
 
 ## 1. 范围与固定上游证据
@@ -67,6 +67,18 @@ LocalStore/WebDAV import 的绝对目录展开与其他独立读取动作继续�
    或文件字节（保留当前固定错误shape，不泄漏实体名字）。
 7. 正常metadata读取不因文件000变成内容读取；List/GET所需目录或文件权限不可擅自chmod。
    当前一般I/O错误映射保持；对target/root/ancestor身份变更采用现有unsafe映射，而非500详情。
+
+metadata实现约束补充：Darwin实际非root探针证明O_EVTONLY仍拒绝000文件，不能以chmod或
+读取正文代替stat。允许从本请求已持有的directory fd，经server生成`/dev/fd/<numeric fd>`构造
+`os.Root`并绑定native SameFile，再只对单组件执行Root.Lstat；该路径不是用户输入，也不是
+访问实体的absolute fallback。Mac与Alpine非root探针/正式Linux回归必须验证此标准fd入口可用；
+不可用时fail closed，不转回用户absolute路径。fd原持有者与Root均须在操作结束关闭。
+
+共享读取句柄兼容补充：返回的`os.File.Name()`仍须为原configured boundary与已规范化relative
+生成的完整路径标签。Reader本地归档/章节缓存身份复验、EPUB资源及现有错误封装依赖该标签；
+标签不是重新打开文件的授权。fd仍只能来自原父目录Openat，不能以恢复Name为由恢复绝对Open。
+全量回归已发现只返回basename导致Reader `book-identity` 409和EPUB资源路径控制组失败；
+先补完整Name与返回后rename控制红测，再恢复此标签，不改现有caller身份校验。
 
 ## 4. 可见 API 与列表差异
 
@@ -135,7 +147,41 @@ portable/backup和最终amd64/arm64 OCI门独立核验后才可Docker-published�
 
 独立控制组通过：原文件000 metadata且不chmod、已返回regular handle在rename/新final之后仍
 读取原字节，以及管理员/普通用户三种下载路由Range206精确bytes、conditional304和无效Range416。
-新增接缝测试不并行，不修改生产状态。当前全量Go预期仍有本项红灯，不能称候选通过或Docker发布。
+新增接缝测试不并行，不修改生产状态。该独立红测阶段全量Go预期失败，不称候选或Docker发布。
 
 本阶段红测提交保存在独立codex分支，避免main应用push取消正在发布的08de4de。实施、深层扫描
 取消/子项替换、完整正常控制组、共享caller回归、真实HTTP及最终卷/双架构门仍须逐项完成。
+
+## 8. 实施与本地候选证据（2026-10-08）
+
+rootedfs.ReadHandle绑定configured boundary、users/user及全部祖先，native fd-root Lstat和
+NOFOLLOW/NONBLOCK Openat绑定metadata/bytes；全部句柄关闭，返回的regular handle独立生存。
+列表按原directory fd分批ReadDir，单组件native metadata，逐层/批/子项检查context与身份；
+LocalStore不再绝对WalkDir/ReadDir/DirEntry.Info。public GET只接收一次，ServeContent读取/Seek/
+writer观察request context；Range/conditional、旧完整File.Name标签和内部background wrappers保留。
+稳定link/special仍在原位，DAV整体拒绝与LocalStore隐藏差异保留。无schema/配置/布局/备份迁移。
+
+- 原30项红灯转绿；深层递归cancel/real-directory/symlink替换、子项替换不被best-effort吞掉，
+  无部分成功列表；returned-file完整Name＋真实rename仍读原fd、取消的Read/Seek不触及source。
+- 首轮全量发现basename标签回退导致Reader `book-identity`409/EPUB控制失败；先补合同与红测
+  （确实失败），再仅恢复生成的完整标签。没有削弱Reader身份校验或重新绝对Open。
+- 最终Go全量/vet通过（API83.650s），rootedfs/webdavfs全包race与相邻WebDAV/LocalStore/
+  ChapterCache/LocalBookArchive/Backup/UploadResource API race203.667s通过；frontend762/762/build、
+  Compose及diff检查通过。Go全量包含TXT/GB18030、EPUB、CBZ、本地缓存/导入/恢复等共享caller。
+- Linuxamd64/arm64两个服务测试包交叉编译通过；当前arm64二进制在无网络/只读/非root501:20
+  临时tmpfs容器全包通过，包含000 native FileInfo、lateFIFO、identity/cancel/permissions。
+  使用旧8dc61c3仅作Alpine执行环境，测试二进制来自当前候选，不冒称旧镜像证明新代码。
+- 新自带服务/卷的`store-read-list-lifecycle-contract.mjs`真实HTTP通过：管理员历史根与两个私有
+  用户、双前缀Basic/Bearer、Depth0/1/infinity、目录GET207/405、中文/原始DAV空白、206精确bytes/
+  304/416、000metadata、不chmod、recursive/隐藏/排序、404不创建、DAVunsafe/LocalStore隐藏。
+  原始DAV保留尾空白，LocalStoreREST沿用whole-path外侧trim；没有为测试改变规范化。
+  同服务实际Basic/curl协议和LocalStore目录/upload/download相邻smoke也通过。
+- 真实Go+SQLite+既有无头Chromium1228三视口1440x900/390x844/360x800：双客户端CAS、WS、
+  cold Reader正文/进度、WebDAV mirror与Basic进度上传在线/冷定位/reset/no-echo全通过。
+  最新默认Chromium1234未安装；系统Chrome诊断首次cold-progress超时不当作通过，使用已有
+  1228独立临时实例完成全部断言。没有访问用户生产登录态。
+
+HTTP gate已加入可信Actions；候选commit/push、该候选fresh/historical/portable/backup/platform及
+exact/latest OCI独立核验仍待进行，未发布前不标Docker-published。最后已核验published为08de4de，
+生产最后health为db1ea21、用户原书已恢复；没有部署或生产数据变更。整体重构、import绝对目录展开、
+列表cardinality及npm advisory独立审查继续未完成。

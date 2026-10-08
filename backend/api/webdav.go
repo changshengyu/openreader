@@ -99,34 +99,45 @@ func (s *Server) webdavGetOrList(c *gin.Context) {
 	if !ok {
 		return
 	}
-	resource, err := service.Stat(relPath)
+	reader, err := service.AdmitRead(c.Request.Context(), relPath)
 	if err != nil {
 		writeWebDAVServiceError(c, err)
 		return
 	}
-	if resource.Info.IsDir() {
+	defer reader.Close()
+	if reader.Resource.Info.IsDir() {
 		if isUpstreamWebDAVRequest(c) {
+			if err := reader.Validate(); err != nil {
+				writeWebDAVServiceError(c, err)
+				return
+			}
 			c.Status(http.StatusMethodNotAllowed)
 			return
 		}
-		s.webdavList(c, relPath)
+		runStoreReadTestHook("dav-list")
+		resources, err := reader.List(1)
+		if err != nil {
+			writeWebDAVServiceError(c, err)
+			return
+		}
+		if err := reader.Validate(); err != nil {
+			writeWebDAVServiceError(c, err)
+			return
+		}
+		writeWebDAVDirectoryList(c, resources)
 		return
 	}
-	s.webdavGet(c)
-}
-
-func (s *Server) webdavList(c *gin.Context, relPath string) {
-	service, ok := s.webDAVFileService(c)
-	if !ok {
-		return
-	}
-	runStoreReadTestHook("dav-list")
-	resources, err := service.List(relPath, 1)
+	runStoreReadTestHook("dav-get")
+	file, info, err := reader.Open()
 	if err != nil {
 		writeWebDAVServiceError(c, err)
 		return
 	}
+	defer file.Close()
+	serveOpenedStoreFile(c, file, info)
+}
 
+func writeWebDAVDirectoryList(c *gin.Context, resources []webdavfs.Resource) {
 	type fileEntry struct {
 		Name         string `xml:"displayname"`
 		IsDir        bool   `xml:"iscollection"`
@@ -155,22 +166,6 @@ func (s *Server) webdavList(c *gin.Context, relPath string) {
 	}
 
 	c.XML(http.StatusMultiStatus, response)
-}
-
-func (s *Server) webdavGet(c *gin.Context) {
-	relPath := strings.TrimPrefix(c.Param("path"), "/")
-	service, ok := s.webDAVFileService(c)
-	if !ok {
-		return
-	}
-	runStoreReadTestHook("dav-get")
-	file, info, err := service.Open(relPath)
-	if err != nil {
-		writeWebDAVServiceError(c, err)
-		return
-	}
-	defer file.Close()
-	http.ServeContent(c.Writer, c.Request, info.Name(), info.ModTime(), file)
 }
 
 func (s *Server) webdavPut(c *gin.Context) {
@@ -343,7 +338,7 @@ func (s *Server) webdavPropfind(c *gin.Context) {
 	if strings.TrimSpace(c.GetHeader("Depth")) == "0" {
 		depth = 0
 	}
-	resources, err := service.List(strings.TrimPrefix(c.Param("path"), "/"), depth)
+	resources, err := service.ListContext(c.Request.Context(), strings.TrimPrefix(c.Param("path"), "/"), depth)
 	if err != nil {
 		writeWebDAVServiceError(c, err)
 		return
@@ -372,6 +367,9 @@ func (s *Server) webdavPropfind(c *gin.Context) {
 				Prop:   property,
 			},
 		})
+	}
+	if c.Request.Context().Err() != nil {
+		return
 	}
 	c.Header("Content-Type", "application/xml; charset=utf-8")
 	c.Status(http.StatusMultiStatus)

@@ -1546,17 +1546,20 @@ Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复
 可信卷/备份/双架构发布门已独立核验；exact08de4de/latest index为
 sha256:7ab7cb27c3f1a114e0987f6f4c7b1100a3ebda2f228b73cc3e1ee144b046a08c，生产未升级。
 
-# 2026-10-08 WebDAV / LocalStore read-list（合同/红测，未实施）
+# 2026-10-08 WebDAV / LocalStore read-list（已实施，候选发布门待验）
 
 - [x] 固定基准及当前Stat/List/Open和LocalStore绝对扫描源码已映射；记录源码窗口，不称已复现。
 - [x] 30项实际admission/open/list替换与授权后cancel红测；fixture fired，旧List泄漏诱饵名，原字节未变。
-- [ ] fd-relative boundary/users/user/parent/final身份绑定及request context实施。
-- [ ] regular NOFOLLOW/NONBLOCK、FIFO有界拒绝、000 metadata/权限不改与句柄清理验证。
-- [ ] DAV整体unsafe与LocalStore隐藏策略、Range/conditional、两用户及历史根真实HTTP回归。
-- [ ] 共享cache/archive/import/restore相邻回归及可信卷/备份/双架构门。
+- [x] fd-relative boundary/users/user/parent/final身份绑定及request context实施。
+- [x] regular NOFOLLOW/NONBLOCK、FIFO有界拒绝、000 native metadata/权限不改与句柄清理验证。
+- [x] DAV整体unsafe与LocalStore隐藏策略、Range/conditional、两用户及管理员旧布局根真实HTTP回归。
+- [x] 共享cache/archive/import/restore全量/race与真实Reader三视口相邻回归。
+- [ ] 该候选可信新旧卷/portable/backup/双架构发布门与exact OCI。
 
 见 `compat/webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
 nil-in-production接缝未改变原行为；FIFO旧阻塞已用测试peer有界释放并join，000/Range/conditional/
-returned-handle控制组独立通过。实施后才能勾选无外部bytes/names和新读流程门。
+returned-handle控制组独立通过。新读流程namespace/deep-cancel/子项替换门通过，无诱饵bytes/names
+进入成功响应；不承诺原inode内容不可变或全FS原子快照。生成完整File.Name保留内部身份复验标签，
+从原parent Openat获取fd，不恢复absolute Open。最终非rootLinux与真实HTTP均使用隔离临时数据。
 无新远程fetch、配置/数据迁移或密码日志；不改当前生产db1ea21，不重开原书已恢复事件。
 08de4de目录创建已由可信运行37740704252单独验证并发布，不能从它推导read/list通过。

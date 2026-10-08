@@ -12,6 +12,9 @@ on:
       - backend/**
       - frontend/**
       - scripts/docker-volume-backup-smoke.sh
+      - scripts/smoke/store-read-list-lifecycle-contract.mjs
+      - scripts/smoke/webdav-protocol-contract.sh
+      - scripts/smoke/local-store-directory-lifecycle-contract.mjs
   workflow_dispatch:
 
 permissions:
@@ -77,6 +80,9 @@ jobs:
 
       - name: Validate Compose configuration
         run: docker compose config --quiet
+
+      - name: Validate isolated storage read-list HTTP contracts
+        run: node scripts/smoke/store-read-list-lifecycle-contract.mjs
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
