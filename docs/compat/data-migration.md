@@ -1450,8 +1450,8 @@ MOVE 后续合同同样不改 SQLite/根目录/备份格式；必须保留现有
 shared Move 使用的文件路径和失败补偿。采用同 inode rename、不改写 source 权限；补偿遇到
 newcomer 不覆盖，留存可恢复 quarantine。历史硬链接、nested symlink 只原位移动而不跟随。
 现已按合同/红测实施、通过旧权限/硬链接/FIFO/links 与 Linux 双 tmpfs EXDEV 保留字节测试；
-LocalStore 原 JSON 与 cache publish/restore、历史 NULL Reader 回归保持。MOVE 本候选的可信
-fresh/historical/portable/backup 门仍待发布 workflow，见
+LocalStore 原 JSON 与 cache publish/restore、历史 NULL Reader 回归保持。MOVE `5338f26` 的可信
+Actions `37192132525` 已通过 fresh/historical/portable/backup 门并完成双架构发布，见
 [`webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 
 后续进度接收仅更新既有 ReadingProgress，不新增 schema、配置或备份成员；外部毫秒时间不作为

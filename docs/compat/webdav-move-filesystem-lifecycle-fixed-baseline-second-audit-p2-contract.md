@@ -1,6 +1,6 @@
 # WebDAV MOVE 文件系统生命周期固定基准第二轮合同（P2）
 
-状态：**implemented / regression-validated / Docker-publication-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
 ## 权威行为与调用范围
@@ -125,3 +125,16 @@ Go full/vet、rootedfs/webdavfs 全包 race、COPY/MOVE/LocalStore/ChapterCache 
 Docker 本实施候选尚待可信 workflow fresh/historical/portable/backup/published-platform 门与
 exact OCI digest。COPY `463b487` run `37189091695` 已成功发布；MOVE 红测 run `37190626551`
 失败符合预期，不是发布候选。生产 health 仍是 `db1ea21`，未远程升级；整体固定基准审计未完成。
+
+## 可信发布核验（2026-10-08）
+
+实现 `5338f261002bd8f234414c8f8e14ac89068ebab5` 的 Actions
+[`37192132525`](https://github.com/changshengyu/openreader/actions/runs/37192132525) 已终态成功：
+backend/frontend/build/Compose、native image、fresh/portable/backup、historical volume 与最终
+published-platform 全部门通过。上方候选待门禁记录是发布前历史状态，不再作为当前 pending。
+不可变标签 `ghcr.io/changshengyu/openreader:5338f26` 和 `latest` 实测同一双架构 OCI index：
+`sha256:28a0b797a289f8cf2cd54b0054471fe3b0ce3a197c2c4bc41a1bd7c9f2430a94`。
+amd64 manifest 为 `sha256:57c0a5c16b76098320a078fcbf8a1249dbcd2aef8348a3e203e37941a7795520`，
+arm64 manifest 为 `sha256:184f6d86f2b50f55a1c4fa5ffed2103fd996b743172128759c2d568af738786f`。
+生产 health 再次确认 `db1ea216f9849bc44a90b5b760241df1c6d069b0`；不代表用户另一台 Mac
+已升级 MOVE 候选或完成本切片真机签收。整体固定基准审计未完成。

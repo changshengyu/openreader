@@ -1514,9 +1514,9 @@ WebSocket 限 caller，URL/name-author 歧义跳过；正文识别只捕获 16 K
 不追随根外路径。失败补偿 no-replace，不覆盖 newcomer；owned-only 清理保留未知实体。历史
 硬链接只接受已确认自有 rename 的 ctime 变化，后续外部修改仍拒绝。双前缀 Basic/Bearer 与普通
 用户隔离、无进度 JSON COPY 副作用均有测试。错误空 body、提交后固定 pending 诊断头，不暴露
-路径、令牌或 credentials；无新增远程 fetch。MOVE 同类风险仍未关闭。
+路径、令牌或 credentials；无新增远程 fetch。MOVE 同类风险在后续专项中独立关闭。
 
-# 2026-10-04 WebDAV MOVE 生命周期（已实施/回归，发布待门禁）
+# 2026-10-04 WebDAV MOVE 生命周期（已实施/回归/可信发布）
 
 - [x] 绑定两侧 trusted root/user ancestors/source/target，禁止工作阶段追随替换实体。
 - [x] 授权后的 caller cancellation 阻止提交；八项确定性旧实现红测已经复现错误 201/移动。
@@ -1528,4 +1528,5 @@ WebSocket 限 caller，URL/name-author 歧义跳过；正文识别只捕获 16 K
 
 合同 `compat/webdav-move-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`；以上已有本项
 Go/race/真实请求及非 root Linux 实测，不从相邻 COPY 推导。恢复受阻保留 quarantine、提交后未知
-实体 pending 头已验证；未暴露主机路径/令牌，无新外部 fetch/应用配置/迁移。可信发布门待终态。
+实体 pending 头已验证；未暴露主机路径/令牌，无新外部 fetch/应用配置/迁移。实现 `5338f26`
+可信 Actions `37192132525` 全部门成功，双架构 exact OCI 已核验；生产 `db1ea21` 未升级。

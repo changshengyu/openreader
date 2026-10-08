@@ -1446,7 +1446,8 @@ MOVE 后续 request/filesystem 合同见
 LocalStore rename 的同种已提交情形保留 200 原 JSON 并加诊断头，不改变缓存补偿 caller 的恢复
 语义。合同 `ff1fbfa`、红测 `9b6a5f6` 后已实施，取消/target 变更、普通用户私有根、有效进度 JSON
 零 PUT 副作用与三路实际提交后 pending 响应已测试。最新真实 Basic/curl 与 LocalStore HTTP
-正常改名 200/path、下载 bytes/旧名 404 通过；Docker 候选仍待可信发布终态，不记作生产升级。
+正常改名 200/path、下载 bytes/旧名 404 通过；实现 `5338f26` 的 Actions `37192132525` 已终态
+成功并完成双架构发布，digest 见聚焦合同；不记作生产升级。
 
 接收侧进度同步已按合同/红测/实现落地，新增两路 raw 上传到 caller-owned ReadingProgress 的接收
 副作用；已完成三视口在线/冷启动与无回声验证，可信 Actions `37186333157` 又完成卷门与 `8dc61c3`
