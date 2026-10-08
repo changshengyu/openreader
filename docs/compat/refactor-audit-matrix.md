@@ -66,11 +66,14 @@ missing list404无子目录写入。18红灯转绿，实际identity/取消fixtur
 不把旧实现未注入的identity race说成已复现。
 
 下一项 read/list lifecycle 已从固定上游与 `08de4de` 源码盘点，状态
-**inventory-complete / tests-pending / implementation-pending**，见
+**inventory-complete / red-tests-confirmed / implementation-pending**，见
 [`webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-read-list-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 两前缀 GET/PROPFIND 与 LocalStore list/download 在路径检查后仍绝对读取，未绑定整个 caller
 boundary/ancestor identity，也未把 root初始化后的 request cancellation带入读取与扫描。
-目前只是源码证据，尚未确定性复现。保留正常 XML/JSON、Depth、recursive/hidden 策略差异、
+合同 `3ecf48a` 提交推送后，30项红测确认Stat接收替换namespace、List诱饵名、late同inode
+symlink被接受、FIFO阻塞及授权后取消仍返回成功数据；fixture均实际触发，原文件/诱饵保留。
+000 metadata、returned-handle、管理员/普通用户Range/conditional独立控制组通过；未实施修复。
+保留正常 XML/JSON、Depth、recursive/hidden 策略差异、
 下载 Range/conditional 和历史私有根；不把 import展开、共享内部caller或目录创建发布算作本项完成。
 目录创建实现 `08de4de` 已推送，可信运行 `37740704252` 正在进行；不推送下一应用切片来取消它。
 

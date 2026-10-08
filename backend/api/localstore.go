@@ -28,6 +28,16 @@ type localStoreItem struct {
 	Importable   bool      `json:"importable"`
 }
 
+// Nonparallel tests cancel after authorized lazy-root initialization. This is
+// an observation seam only; it does not implement request-aware file reading.
+var beforeStoreReadTestHook func(action string)
+
+func runStoreReadTestHook(action string) {
+	if beforeStoreReadTestHook != nil {
+		beforeStoreReadTestHook(action)
+	}
+}
+
 func (s *Server) listLocalStore(c *gin.Context) {
 	if !s.requireLocalStoreAccess(c) {
 		return
@@ -41,6 +51,7 @@ func (s *Server) listLocalStore(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runStoreReadTestHook("local-list")
 	resource, err := service.Stat(relativePath)
 	if errors.Is(err, webdavfs.ErrNotFound) && relativePath != "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "local store path not found"})
@@ -248,6 +259,7 @@ func (s *Server) downloadFromLocalStore(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot download local store root"})
 		return
 	}
+	runStoreReadTestHook("local-download")
 	file, info, err := service.Open(relativePath)
 	if errors.Is(err, webdavfs.ErrNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "local store item not found"})

@@ -31,6 +31,10 @@ const maxImportPathBytes = 4096
 // Package tests are not parallel while the hook is installed.
 var beforeRemoveTestHook func(root, relative string)
 
+// A nonparallel test seam after read admission, before the original absolute
+// operation. It does not change production behavior or implement read safety.
+var afterReadAdmissionTestHook func(operation, root, relative string)
+
 type Service struct {
 	boundary string
 	root     string
@@ -132,6 +136,9 @@ func (s *Service) Stat(rawPath string) (Resource, error) {
 	if err != nil {
 		return Resource{}, err
 	}
+	if afterReadAdmissionTestHook != nil {
+		afterReadAdmissionTestHook("stat", s.boundary, relative)
+	}
 	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
 		return Resource{}, ErrUnsafePath
 	}
@@ -152,6 +159,9 @@ func (s *Service) List(rawPath string, depth int) ([]Resource, error) {
 	}
 	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
 		return nil, ErrUnsafePath
+	}
+	if afterReadAdmissionTestHook != nil {
+		afterReadAdmissionTestHook("list", s.boundary, relative)
 	}
 	resources := []Resource{{RelativePath: relative, Info: info}}
 	if depth <= 0 || !info.IsDir() {
@@ -177,7 +187,7 @@ func (s *Service) List(rawPath string, depth int) ([]Resource, error) {
 }
 
 func (s *Service) Open(rawPath string) (*os.File, os.FileInfo, error) {
-	target, _, err := s.Resolve(rawPath)
+	target, relative, err := s.Resolve(rawPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -196,6 +206,9 @@ func (s *Service) Open(rawPath string) (*os.File, os.FileInfo, error) {
 	}
 	if !info.Mode().IsRegular() {
 		return nil, nil, ErrUnsafePath
+	}
+	if afterReadAdmissionTestHook != nil {
+		afterReadAdmissionTestHook("open", s.boundary, relative)
 	}
 	file, err := os.Open(target)
 	if err != nil {

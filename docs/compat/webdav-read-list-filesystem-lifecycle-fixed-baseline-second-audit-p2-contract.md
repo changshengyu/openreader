@@ -1,12 +1,12 @@
 # WebDAV / LocalStore 读取与列表生命周期固定基准第二轮合同（P2）
 
-状态：**inventory-complete / tests-pending / implementation-pending**。
+状态：**inventory-complete / red-tests-confirmed / implementation-pending**。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 当前审查基线：`OpenReader@08de4decfb91248901ca73adee5f102563181d68`。
 审查日期：2026-10-08。
 
-本阶段仅更新合同与矩阵。以下绝对路径检查/读取的时间窗口来自源码；尚无本项确定性红测，
+盘点阶段仅更新合同与矩阵，独立提交 `3ecf48a` 后才加入下述红测。本项尚未实施，
 不能称为已复现的生产漏洞，也不能从 PUT/COPY/MOVE/MKCOL 的门禁推导本项已完成。
 
 ## 1. 范围与固定上游证据
@@ -117,3 +117,24 @@ portable/backup和最终amd64/arm64 OCI门独立核验后才可Docker-published�
 
 当前目录创建08de4de的发布运行37740704252仍在进行，本合同不改变应用文件，不取消/重启该运行。
 最后确认镜像5338f26，生产db1ea21、原书用户验收已恢复；这些事实不证明本项read/list完成。
+
+## 7. 独立红测记录（2026-10-08）
+
+合同 `3ecf48a` 已提交并推送后，只插入nil-in-production的after-admission/before-read测试接缝，
+未改变原Stat/List/Open、目录扫描或ServeContent逻辑。红测共30个确定性失败：
+
+- 20项Stat/List × boundary/users/user/parent/target × real-directory/symlink实际替换全部fired。
+  Stat错误接收已变更namespace；10项List返回`foreign-secret.txt`诱饵名。原节点和诱饵字节未变。
+- 1项最终regular在admission后被同inode symlink替换，原Open错误返回句柄及原字节。
+  SameFile不能证明仍未跟随symlink；保留原字节不等于正确接受unsafe namespace。
+- 1项最终regular变FIFO，原Open超过500ms仍阻塞；测试用临时NONBLOCK peer释放旧reader并
+  join worker，随后旧逻辑返回unsafe。这是阻塞红灯，不是声称FIFO成功读出数据。
+- 8项真实Gin授权后/root初始化后取消：两前缀文件GET、两前缀PROPFIND、网页DAV目录GET、
+  LocalStore normal/recursive list/download仍返回200原正文或207/200成功列表。
+
+独立控制组通过：原文件000 metadata且不chmod、已返回regular handle在rename/新final之后仍
+读取原字节，以及管理员/普通用户三种下载路由Range206精确bytes、conditional304和无效Range416。
+新增接缝测试不并行，不修改生产状态。当前全量Go预期仍有本项红灯，不能称候选通过或Docker发布。
+
+本阶段红测提交保存在独立codex分支，避免main应用push取消正在发布的08de4de。实施、深层扫描
+取消/子项替换、完整正常控制组、共享caller回归、真实HTTP及最终卷/双架构门仍须逐项完成。

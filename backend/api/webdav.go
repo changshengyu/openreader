@@ -120,6 +120,7 @@ func (s *Server) webdavList(c *gin.Context, relPath string) {
 	if !ok {
 		return
 	}
+	runStoreReadTestHook("dav-list")
 	resources, err := service.List(relPath, 1)
 	if err != nil {
 		writeWebDAVServiceError(c, err)
@@ -162,6 +163,7 @@ func (s *Server) webdavGet(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runStoreReadTestHook("dav-get")
 	file, info, err := service.Open(relPath)
 	if err != nil {
 		writeWebDAVServiceError(c, err)
@@ -336,6 +338,7 @@ func (s *Server) webdavPropfind(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runStoreReadTestHook("dav-propfind")
 	depth := 1
 	if strings.TrimSpace(c.GetHeader("Depth")) == "0" {
 		depth = 0
