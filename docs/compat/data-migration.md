@@ -2,6 +2,17 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## 2026-10-10 local-import durable commit inventory (no migration)
+
+See [`local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Initial archive allocation, raw/body/resources/source/TOC, per-item Book/Chapter/category transaction,
+owned failure compensation and durable token/event handoff form the next complete boundary. Existing
+library/data/safe-user/friendly suffixes, public755/644, relative archive fields, numeric URLs, format/
+resource markers, placeholder progress/bookmarks and portable consumers remain unchanged. This is only
+inventory: no new tests/application/schema/scan/chmod/cleanup of user data, no claim that signed stageb2
+or already-imported archive125fd93 covers initial allocation/rollback. Unknown newcomer entities must
+be retained; SQL rollback cannot justify absolute RemoveAll or a full filesystem atomicity claim.
+
 ## 2026-10-08 read/list lifecycle inventory (no migration)
 
 The implemented and Docker-published

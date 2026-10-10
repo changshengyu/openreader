@@ -1,5 +1,18 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-10 当前切片：本地书导入持久提交（仅合同）
+
+固定 upstream saveBook 的成功包含 Book/group/本地资源保存；next boundary 完整枚举新 archive
+allocation、raw/body/EPUB-CBZ resources、source/TOC、Book/Chapter/selected category transaction、
+failure compensation、durable-only consume/response/event，四 confirm 路由 raw/token/new/placeholder。
+状态 **inventory-complete / red-tests-pending / implementation-pending**，见
+[`local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+ignored post-commit category errors、contextless durable work和 absolute archive RemoveAll 属源码
+must-fix，尚非 actual red/生产复现。不能只补 handler 错误检查，也不能以 db.WithContext 或末尾
+ctx guard 签收完整原实体 I/O。stage b2b32f7/已导入 archive125fd93/PUT-batch-category 既有完成保持。
+合同独立提交推送后再实际红测；无应用/测试改变、迁移或生产写入。Git基线9cb6a03，已发布应用
+b2b32f7/index ed57cc69…；生产最近独立只读db1ea21，原书已恢复事件关闭，整体重构仍未完成。
+
 ## 2026-10-04 当前切片：WebDAV PUT 生命周期与进度接收
 
 从当前服务和固定上游重新取证，PUT 在 body 读取后仍按绝对路径 chmod/replace/cleanup，且没有复验

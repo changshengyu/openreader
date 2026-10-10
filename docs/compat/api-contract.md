@@ -2,6 +2,18 @@
 
 Status: working contract. Keep this file updated when endpoint semantics change.
 
+## 2026-10-10 local-import durable commit (inventory only)
+
+The four direct/TXT-alias/LocalStore/WebDAV confirm routes are inventoried in
+[`local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Normal auth/body/limits/201 direct and 200 storage item schemas remain unchanged. The entire item must
+include archive/resources, Book/Chapter and requested memberships before success/consume/event; current
+post-commit ignored category errors and pathname archive rollback are source-level must-fix, not yet reds.
+Target internal durability errors are fixed `failed to import book` (direct500/storage200-item); actual
+archive/SQL cancellation terminates with500 `local book import canceled`, distinct from stage cancellation.
+Previously committed batch items retain success/notification. No499, whole-batch rollback, migration,
+exactly-once or production-upgrade claim. Contract-only checkpoint precedes tests and implementation.
+
 ## 2026-10-08 read/list lifecycle (implemented and Docker-published)
 
 The next fixed-baseline contract is

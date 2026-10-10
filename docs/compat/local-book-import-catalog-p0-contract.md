@@ -2,6 +2,13 @@
 
 Baseline: `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`.
 
+2026-10-10 superseding durability audit: the historical completion and tests below remain evidence for
+their upload/catalogue slice, not complete category/initial-archive ownership. Current handlers ignore
+post-import category errors; initial allocation/rollback and actual durable-work ctx need independent
+contract→actual red→implementation. See
+[`local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+The broad final-durability matrix row below is historical, not a new sign-off for those untested boundaries.
+
 Audit date: 2026-07-18. This contract supersedes the earlier broad claim that the
 local-import flow was fully aligned merely because a staged upload could be
 reused. The TXT matcher itself remains aligned for the previously extracted

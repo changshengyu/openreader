@@ -2,6 +2,22 @@
 
 Use this checklist for security-sensitive changes and release reviews.
 
+## P2 local-import durable commit (2026-10-10 inventory, not signed off)
+
+- [ ] Bind initial LibraryDir/data/user/new-book allocation and actual raw/body/metadata/resource work to
+      one original opened session, exclusive creation and request ctx; do not re-admit replacements.
+- [ ] Own every rollback entity; preserve unknown newcomers, external bait and historical archives.
+- [ ] Commit Book/Chapter/requested memberships together with owner validation, guarded placeholder
+      columns and authoritative projection; no ignored category errors or fallback resurrection.
+- [ ] Consume/notify only after the entire item commits; preserve retry stage on failure and earlier
+      batch successes on later cancellation, with fixed path/SQLite-free durability errors.
+- [ ] Add actual fired old-app reds before implementation, then full/race/native/HTTP/browser and
+      exact-SHA fresh/historical/portable/backup/trusted-publication gates; no migration/production writes.
+
+Target: [`compat/local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Current source windows are inventory only. Signed stageb2 and already-imported archive125fd93 controls
+do not prove new archive initialization or SQL/category durability; full parserCPU/exactly-once remains open.
+
 ## P2 trusted proxy and rate-limit identity (2026-08-25 implementation)
 
 - [x] Direct deployments trust only the TCP peer address; caller-controlled `X-Forwarded-For` and `X-Real-IP`
