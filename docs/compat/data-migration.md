@@ -42,6 +42,16 @@ the next staged-cache lifecycle audit is independent and does not authorize a mi
 
 ## User-facing migration contract (2026-08-11)
 
+Next stage-filesystem inventory (2026-10-10) does not authorize a migration. See
+[`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+Retain `cache/import-previews/<numeric-user>/<48hex>.book/.json/.parsed.json`, token-prefixed temporary
+names, metadata fields/UTC,24h TTL/hourly cleanup,700 new directories/600 new files and old permissions.
+Keep old two-file tokens, source-independent retry, matched prepared no-reparse, ordinary fallback and
+failure-retained/success-consumed behavior. Finite1MiB metadata rejects oversized untrusted cache without
+deleting unknown bytes. Root/bundle sessions and owned cleanup must retain newcomer/link/special entities,
+active tokens and durable books; no SQL/config/root/archive/backup/browser-key changes or exactly-once claim.
+This is documentation only, not a passed implementation or production-state proof.
+
 The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation
 of existing behavior and do not authorize a new schema or filesystem migration:
 

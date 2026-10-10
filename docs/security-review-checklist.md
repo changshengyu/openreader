@@ -1582,3 +1582,16 @@ parser/SQL整个生命周期。追加8深层/读取中红灯后实施same-scope�
 无新fetch、密码日志、host-path诊断或用户数据改动；候选5cfc53d可信Actions37754329331已终态
 success，新旧卷/portable/backup/platform全部通过，exact/latest registry index独立核验为
 sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd。生产db1ea21未升级。
+
+# 2026-10-10 import stage lifecycle（合同盘点，未实施）
+
+- [x] 固定上游与七个现有route/shared stage/prepared/consume/startup-TTL调用链已映射；没有应用修改。
+- [ ] 原cache/user/bundle session、regular no-follow/nonblock、1MiB metadata与原预算/ctx。
+- [ ] prepared原target publication、同tokenactive lease与TTL协调、未知实体不覆盖/owned回收。
+- [ ] durable成功只消费原bundle、cleanup原scan/entity identity及background逐项取消。
+- [ ] stable/late link/FIFO、目录与same-name replacement实际红灯、全量/真实HTTP/卷/发布核验。
+
+合同 `compat/local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
+本项只记录5cfc53d源码窗口，不称生产复现；既有stage/saveParsed的storage PathError映射需统一安全
+字符串，错误不得带host path/token/temp。保留旧用户数据/权限/format/重试和durable事件，不新增
+fetch/credentials日志或schema。完整parser/SQL原子取消与跨进程exactly-once仍unknown。

@@ -44,6 +44,15 @@ This does not authorize new UI, hidden filtering, missing404 instead of skip, SQ
 
 ## Global rules
 
+Next audit (2026-10-10), **inventory-complete / tests-and-implementation-pending**:
+[`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
+All seven direct/LocalStore/WebDAV POST routes retain authentication, fields and normal200/201/item errors;
+opaque invalid-token400/direct and200/per-item storage, initial stage400/direct and200/per-item storage,
+prepared-save500/direct and200/per-item storage fixed safe errors are preserved. Stage-work cancellation
+newly terminates with500 `{error:"local import stage canceled"}`, no499; prior durable books remain and are
+notified. Native identity failures must not be converted into ordinary prepared cache miss or leak PathError.
+Durable-after-consume failure retains success and unknown residue. No implementation or red claim yet.
+
 - Public API root: `/api`.
 - Auth: `Authorization: Bearer <jwt>` for protected `/api` endpoints.
 - WebDAV roots: `/webdav` and upstream-compatible `/reader3/webdav`.
