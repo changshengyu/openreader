@@ -408,17 +408,17 @@ func (s *Server) importFromLocalStore(c *gin.Context) {
 
 	for _, target := range plan.targets {
 		if target.override.ImportToken != "" {
-			importRequest, err := s.stagedStorageImportRequest(userID, userName, target.override.ImportToken, target.override, primaryCategoryID)
+			book, err := s.importStagedStorageBook(c.Request.Context(), userID, userName, target.override.ImportToken, target.override, primaryCategoryID, importer)
 			if err != nil {
+				if writeLocalImportStageCancellation(c, err, "") {
+					if len(importedBooks) > 0 {
+						_ = s.hub.Broadcast(userID, nil, gin.H{"type": "bookshelf_update", "payload": importedBooks})
+					}
+					return
+				}
 				imported = append(imported, gin.H{"path": target.relativePath, "error": err.Error()})
 				continue
 			}
-			book, err := s.importStagedLocalBook(userID, target.override.ImportToken, importer, importRequest)
-			if err != nil {
-				imported = append(imported, gin.H{"path": target.relativePath, "error": err.Error()})
-				continue
-			}
-			s.removeStagedLocalImport(userID, target.override.ImportToken)
 			if len(categoryIDs) > 0 {
 				_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 			}
@@ -487,8 +487,11 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 	results := make([]gin.H, 0)
 	for _, target := range plan.targets {
 		if target.override.ImportToken != "" {
-			preview, importToken, err := s.reparseStagedStorageImport(userID, target.override.ImportToken, target.override)
+			preview, importToken, err := s.reparseStagedStorageImport(c.Request.Context(), userID, target.override.ImportToken, target.override)
 			if err != nil {
+				if writeLocalImportStageCancellation(c, err, "") {
+					return
+				}
 				results = append(results, gin.H{"path": target.relativePath, "error": err.Error(), "importToken": importToken})
 				continue
 			}
@@ -509,6 +512,7 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 			continue
 		}
 		preview, importToken, err := s.previewStagedStorageImportData(
+			c.Request.Context(),
 			userID,
 			filepath.Base(filepath.FromSlash(file.relativePath)),
 			file.extension,
@@ -516,6 +520,9 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 			target.override,
 		)
 		if err != nil {
+			if writeLocalImportStageCancellation(c, err, "") {
+				return
+			}
 			results = append(results, gin.H{"path": file.relativePath, "error": err.Error(), "importToken": importToken})
 			continue
 		}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/models"
+	"openreader/backend/services/importstage"
 	"openreader/backend/services/localbook"
 )
 
@@ -20,6 +22,11 @@ func (s *Server) listTXTTocRules(c *gin.Context) {
 func (s *Server) previewTXTImport(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	payload, err := s.parseLocalImportMultipart(c, true)
+	defer func() {
+		if payload != nil && payload.stage != nil {
+			payload.stage.Close()
+		}
+	}()
 	if payload != nil && payload.form != nil {
 		defer func() {
 			_ = payload.form.RemoveAll()
@@ -29,7 +36,7 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		writeLocalImportRequestError(c, err)
 		return
 	}
-	fileName, ext, data, importToken, err := s.readLocalImportPayload(payload, userID, true)
+	fileName, ext, data, importToken, err := s.readLocalImportPayload(c.Request.Context(), payload, userID, true)
 	if err != nil {
 		writeLocalImportError(c, err)
 		return
@@ -47,7 +54,10 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "importToken": importToken})
 		return
 	}
-	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
+	if err := payload.stage.SavePrepared(prepared); err != nil {
+		if writeLocalImportStageCancellation(c, err, importToken) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stage parsed import", "importToken": importToken})
 		return
 	}
@@ -59,6 +69,11 @@ func (s *Server) importTXT(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 
 	payload, err := s.parseLocalImportMultipart(c, false)
+	defer func() {
+		if payload != nil && payload.stage != nil {
+			payload.stage.Close()
+		}
+	}()
 	if payload != nil && payload.form != nil {
 		defer func() {
 			_ = payload.form.RemoveAll()
@@ -68,7 +83,7 @@ func (s *Server) importTXT(c *gin.Context) {
 		writeLocalImportRequestError(c, err)
 		return
 	}
-	fileName, ext, data, importToken, err := s.readLocalImportPayload(payload, userID, false)
+	fileName, ext, data, importToken, err := s.readLocalImportPayload(c.Request.Context(), payload, userID, false)
 	if err != nil {
 		writeLocalImportError(c, err)
 		return
@@ -110,11 +125,18 @@ func (s *Server) importTXT(c *gin.Context) {
 	}
 	var book models.Book
 	if importToken != "" {
-		book, err = s.importStagedLocalBook(userID, importToken, importer, request)
+		book, err = payload.stage.ImportBook(importer, request)
 	} else {
 		book, err = importer.Import(request)
 	}
 	if err != nil {
+		if writeLocalImportStageCancellation(c, err, importToken) {
+			return
+		}
+		if errors.Is(err, errInvalidLocalImportToken) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		if errors.Is(err, localbook.ErrUnsupportedFormat) ||
 			errors.Is(err, localbook.ErrParseFailed) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -127,18 +149,36 @@ func (s *Server) importTXT(c *gin.Context) {
 		_ = s.setBookCategories(s.db, userID, book.ID, categoryIDs)
 	}
 	if importToken != "" {
-		s.removeStagedLocalImport(userID, importToken)
+		_ = payload.stage.Consume()
 	}
 
 	c.JSON(http.StatusCreated, s.broadcastBookShelfUpdate(userID, book))
 }
 
 func writeLocalImportError(c *gin.Context, err error) {
+	if writeLocalImportStageCancellation(c, err, "") {
+		return
+	}
 	status := http.StatusBadRequest
 	if errors.Is(err, errLocalImportTooLarge) {
 		status = http.StatusRequestEntityTooLarge
 	}
 	c.JSON(status, gin.H{"error": err.Error()})
+}
+
+func isLocalImportStageCancellation(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+func writeLocalImportStageCancellation(c *gin.Context, err error, token string) bool {
+	if !isLocalImportStageCancellation(err) {
+		return false
+	}
+	response := gin.H{"error": "local import stage canceled"}
+	if validLocalImportToken(token) {
+		response["importToken"] = token
+	}
+	c.JSON(http.StatusInternalServerError, response)
+	return true
 }
 
 type localBookImportItem struct {
@@ -170,16 +210,22 @@ func (request localBookImportRequest) requestedPaths() []string {
 }
 
 func (s *Server) previewStagedStorageImportData(
+	ctx context.Context,
 	userID uint,
 	fileName string,
 	extension string,
 	data []byte,
 	override localBookImportItem,
 ) (localbook.PreviewResult, string, error) {
-	importToken, err := s.stageLocalImport(userID, fileName, extension, data)
+	stage, err := s.localImportStages().Create(ctx, userID, fileName, extension, data)
 	if err != nil {
+		if isLocalImportStageCancellation(err) {
+			return localbook.PreviewResult{}, "", err
+		}
 		return localbook.PreviewResult{}, "", errors.New("failed to stage import")
 	}
+	defer stage.Close()
+	importToken := stage.Token
 	request := localbook.ImportRequest{
 		FileName:  fileName,
 		Extension: extension,
@@ -192,8 +238,11 @@ func (s *Server) previewStagedStorageImportData(
 	if err != nil {
 		return localbook.PreviewResult{}, importToken, err
 	}
-	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
-		return localbook.PreviewResult{}, importToken, err
+	if err := stage.SavePrepared(prepared); err != nil {
+		if isLocalImportStageCancellation(err) {
+			return localbook.PreviewResult{}, importToken, err
+		}
+		return localbook.PreviewResult{}, importToken, importstage.ErrPreparedWrite
 	}
 	preview.ImportToken = importToken
 	return preview, importToken, nil
@@ -202,11 +251,13 @@ func (s *Server) previewStagedStorageImportData(
 // reparseStagedStorageImport keeps the immutable preview snapshot authoritative
 // when a user changes the TOC rule. In particular, it must not fall back to a
 // mutable LocalStore/WebDAV path after the preview has already succeeded.
-func (s *Server) reparseStagedStorageImport(userID uint, importToken string, override localBookImportItem) (localbook.PreviewResult, string, error) {
-	metadata, data, err := s.loadStagedLocalImport(userID, importToken)
+func (s *Server) reparseStagedStorageImport(ctx context.Context, userID uint, importToken string, override localBookImportItem) (localbook.PreviewResult, string, error) {
+	stage, err := s.localImportStages().Open(ctx, userID, importToken)
 	if err != nil {
 		return localbook.PreviewResult{}, "", err
 	}
+	defer stage.Close()
+	metadata, data := stage.Metadata, stage.Data
 	request := localbook.ImportRequest{
 		FileName:  metadata.FileName,
 		Extension: metadata.Extension,
@@ -219,41 +270,36 @@ func (s *Server) reparseStagedStorageImport(userID uint, importToken string, ove
 	if err != nil {
 		return localbook.PreviewResult{}, importToken, err
 	}
-	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
-		return localbook.PreviewResult{}, importToken, err
+	if err := stage.SavePrepared(prepared); err != nil {
+		if isLocalImportStageCancellation(err) {
+			return localbook.PreviewResult{}, importToken, err
+		}
+		return localbook.PreviewResult{}, importToken, importstage.ErrPreparedWrite
 	}
 	preview.ImportToken = importToken
 	return preview, importToken, nil
 }
 
-func (s *Server) stagedStorageImportRequest(userID uint, userName string, importToken string, override localBookImportItem, categoryID *uint) (localbook.ImportRequest, error) {
-	metadata, data, err := s.loadStagedLocalImport(userID, importToken)
+func (s *Server) importStagedStorageBook(ctx context.Context, userID uint, userName string, importToken string, override localBookImportItem, categoryID *uint, importer localbook.Importer) (models.Book, error) {
+	stage, err := s.localImportStages().Open(ctx, userID, importToken)
 	if err != nil {
-		return localbook.ImportRequest{}, err
+		return models.Book{}, err
 	}
-	return localbook.ImportRequest{
+	defer stage.Close()
+	request := localbook.ImportRequest{
 		UserID:     userID,
 		UserName:   userName,
-		FileName:   metadata.FileName,
-		Extension:  metadata.Extension,
-		Data:       data,
+		FileName:   stage.Metadata.FileName,
+		Extension:  stage.Metadata.Extension,
+		Data:       stage.Data,
 		Title:      override.Title,
 		Author:     override.Author,
 		CategoryID: categoryID,
 		TOCRule:    override.TOCRule,
-	}, nil
-}
-
-func (s *Server) importStagedLocalBook(userID uint, importToken string, importer localbook.Importer, request localbook.ImportRequest) (models.Book, error) {
-	if prepared, ok := s.loadStagedPreparedImport(userID, importToken, request); ok {
-		return importer.ImportPrepared(request, prepared)
 	}
-	_, prepared, err := importer.Prepare(request)
-	if err != nil {
-		return models.Book{}, err
+	book, err := stage.ImportBook(importer, request)
+	if err == nil {
+		_ = stage.Consume()
 	}
-	if err := s.saveStagedPreparedImport(userID, importToken, prepared); err != nil {
-		return models.Book{}, err
-	}
-	return importer.ImportPrepared(request, prepared)
+	return book, err
 }

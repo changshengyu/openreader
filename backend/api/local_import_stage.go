@@ -1,123 +1,78 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
-	"time"
 
+	"openreader/backend/services/importstage"
 	"openreader/backend/services/localbook"
 )
 
-const localImportStageLifetime = 24 * time.Hour
-const localImportStageCleanupInterval = time.Hour
-
-const defaultMaxLocalImportBytes int64 = 128 * 1024 * 1024
-
-// Nil in production. Deterministic lifecycle fixtures run at real work boundaries,
-// without changing legacy admission, error handling or filesystem operations.
-var localImportStageLifecycleTestHook func(phase, dir, token, path string)
-
-func localImportStageLifecycleTestPhase(phase, dir, token, path string) {
-	if localImportStageLifecycleTestHook != nil {
-		localImportStageLifecycleTestHook(phase, dir, token, path)
-	}
-}
-
-type localImportStageObservedRead struct {
-	io.Reader
-	phase, dir, token, path string
-}
-
-func (r localImportStageObservedRead) Read(p []byte) (int, error) {
-	n, err := r.Reader.Read(p)
-	localImportStageLifecycleTestPhase(r.phase, r.dir, r.token, r.path)
-	return n, err
-}
-
-var (
-	errInvalidLocalImportToken = errors.New("invalid or expired local import token")
-	errLocalImportTooLarge     = errors.New("local book exceeds maximum import size")
+const (
+	localImportStageLifetime              = importstage.Lifetime
+	localImportStageCleanupInterval       = importstage.CleanupInterval
+	defaultMaxLocalImportBytes      int64 = 128 * 1024 * 1024
 )
 
-type localImportStageMetadata struct {
-	FileName  string    `json:"fileName"`
-	Extension string    `json:"extension"`
-	CreatedAt time.Time `json:"createdAt"`
+var localImportStageLifecycleTestHook func(phase, directory, token, path string)
+
+func localImportStageLifecycleTestPhase(phase, directory, token, path string) {
+	if localImportStageLifecycleTestHook != nil {
+		localImportStageLifecycleTestHook(phase, directory, token, path)
+	}
 }
 
-func (s *Server) stageLocalImport(userID uint, fileName string, extension string, data []byte) (string, error) {
-	if int64(len(data)) > s.maxLocalImportBytes() {
-		return "", errLocalImportTooLarge
-	}
-	tokenBytes := make([]byte, 24)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return "", err
-	}
-	token := hex.EncodeToString(tokenBytes)
-	dir := s.localImportStageDir(userID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	localImportStageLifecycleTestPhase("create-admitted", dir, token, "")
-	cleanupLocalImportStageDir(dir, time.Now())
+var errInvalidLocalImportToken = importstage.ErrInvalidToken
+var errLocalImportTooLarge = importstage.ErrTooLarge
 
-	metadata := localImportStageMetadata{
-		FileName:  filepath.Base(fileName),
-		Extension: strings.ToLower(strings.TrimSpace(extension)),
-		CreatedAt: time.Now().UTC(),
-	}
-	encoded, err := json.Marshal(metadata)
+type localImportStageMetadata = importstage.Metadata
+
+func (s *Server) localImportStages() *importstage.Service {
+	return importstage.New(s.cfg.CacheDir, importstage.Limits{
+		Source: s.maxLocalImportBytes(), Prepared: s.maxLocalPreparedImportBytes(),
+		ValidPrepared: s.validStagedPreparedImport,
+	}, localImportStageLifecycleTestPhase)
+}
+
+// Legacy internal/test adapters. HTTP flows retain one session through handoff.
+func (s *Server) stageLocalImport(userID uint, name, extension string, data []byte) (string, error) {
+	stage, err := s.localImportStages().Create(context.Background(), userID, name, extension, data)
 	if err != nil {
 		return "", err
 	}
-	dataPath, metadataPath := localImportStagePaths(dir, token)
-	if err := os.WriteFile(dataPath, data, 0o600); err != nil {
-		return "", err
-	}
-	localImportStageLifecycleTestPhase("create-data-written", dir, token, dataPath)
-	if err := os.WriteFile(metadataPath, encoded, 0o600); err != nil {
-		_ = os.Remove(dataPath)
-		return "", err
-	}
-	return token, nil
+	defer stage.Close()
+	return stage.Token, nil
 }
-
 func (s *Server) loadStagedLocalImport(userID uint, token string) (localImportStageMetadata, []byte, error) {
-	if !validLocalImportToken(token) {
-		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
-	}
-	dir := s.localImportStageDir(userID)
-	dataPath, metadataPath := localImportStagePaths(dir, token)
-	encoded, err := os.ReadFile(metadataPath)
+	stage, err := s.localImportStages().Open(context.Background(), userID, token)
 	if err != nil {
-		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
+		return localImportStageMetadata{}, nil, err
 	}
-	var metadata localImportStageMetadata
-	if err := json.Unmarshal(encoded, &metadata); err != nil ||
-		metadata.CreatedAt.IsZero() ||
-		time.Since(metadata.CreatedAt) > localImportStageLifetime {
-		s.removeStagedLocalImport(userID, token)
-		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
-	}
-	localImportStageLifecycleTestPhase("load-metadata", dir, token, dataPath)
-	data, err := s.readBoundedLocalImportFile(dataPath)
+	defer stage.Close()
+	return stage.Metadata, stage.Data, nil
+}
+func (s *Server) saveStagedPreparedImport(userID uint, token string, prepared localbook.PreparedImport) error {
+	stage, err := s.localImportStages().Open(context.Background(), userID, token)
 	if err != nil {
-		s.removeStagedLocalImport(userID, token)
-		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
+		return err
 	}
-	localImportStageLifecycleTestPhase("raw-loaded", dir, token, dataPath)
-	return metadata, data, nil
+	defer stage.Close()
+	return stage.SavePrepared(prepared)
+}
+func (s *Server) loadStagedPreparedImport(userID uint, token string, request localbook.ImportRequest) (localbook.PreparedImport, bool) {
+	stage, err := s.localImportStages().Open(context.Background(), userID, token)
+	if err != nil {
+		return localbook.PreparedImport{}, false
+	}
+	defer stage.Close()
+	prepared, matched, err := stage.Prepared(request)
+	return prepared, matched && err == nil
 }
 
 func (s *Server) maxLocalImportBytes() int64 {
@@ -126,22 +81,16 @@ func (s *Server) maxLocalImportBytes() int64 {
 	}
 	return defaultMaxLocalImportBytes
 }
-
 func (s *Server) readBoundedLocalImport(reader io.Reader) ([]byte, error) {
-	limit := s.maxLocalImportBytes()
-	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(data)) > limit {
-		return nil, errLocalImportTooLarge
-	}
-	return data, nil
+	return importstage.ReadBounded(context.Background(), reader, s.maxLocalImportBytes(), nil, nil)
 }
-
 func (s *Server) copyBoundedLocalImport(destination io.Writer, source io.Reader) error {
 	limit := s.maxLocalImportBytes()
-	written, err := io.Copy(destination, io.LimitReader(source, limit+1))
+	probe := limit
+	if probe < math.MaxInt64 {
+		probe++
+	}
+	written, err := io.Copy(destination, io.LimitReader(source, probe))
 	if err != nil {
 		return err
 	}
@@ -151,124 +100,39 @@ func (s *Server) copyBoundedLocalImport(destination io.Writer, source io.Reader)
 	return nil
 }
 
+// Only budget controls use this adapter; live stage files use native sessions.
 func (s *Server) readBoundedLocalImportFile(path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	return s.readBoundedLocalImport(localImportStageObservedRead{Reader: file, phase: "load-raw-read",
-		dir: filepath.Dir(path), token: strings.TrimSuffix(filepath.Base(path), ".book"), path: path})
+	return s.readBoundedLocalImport(file)
 }
-
-func (s *Server) removeStagedLocalImport(userID uint, token string) {
-	if !validLocalImportToken(token) {
-		return
-	}
-	dataPath, metadataPath := localImportStagePaths(s.localImportStageDir(userID), token)
-	localImportStageLifecycleTestPhase("consume-admitted", s.localImportStageDir(userID), token, dataPath)
-	_ = os.Remove(dataPath)
-	_ = os.Remove(metadataPath)
-	_ = os.Remove(localImportPreparedStagePath(s.localImportStageDir(userID), token))
-}
-
 func (s *Server) localImportStageDir(userID uint) string {
 	return filepath.Join(s.cfg.CacheDir, "import-previews", strconv.FormatUint(uint64(userID), 10))
 }
-
-func localImportStagePaths(dir string, token string) (string, string) {
+func localImportStagePaths(dir, token string) (string, string) {
 	return filepath.Join(dir, token+".book"), filepath.Join(dir, token+".json")
 }
-
-func localImportPreparedStagePath(dir string, token string) string {
+func localImportPreparedStagePath(dir, token string) string {
 	return filepath.Join(dir, token+".parsed.json")
 }
-
-func (s *Server) saveStagedPreparedImport(userID uint, token string, prepared localbook.PreparedImport) error {
-	if !validLocalImportToken(token) {
-		return errInvalidLocalImportToken
-	}
-	if !s.validStagedPreparedImport(prepared) {
-		return errLocalImportTooLarge
-	}
-	var encoded bytes.Buffer
-	encoder := json.NewEncoder(&encoded)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(prepared); err != nil {
-		return err
-	}
-	if int64(encoded.Len()) > s.maxLocalPreparedImportBytes() {
-		return errLocalImportTooLarge
-	}
-	dir := s.localImportStageDir(userID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(dir, token+".parsed-*")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(encoded.Bytes()); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	localImportStageLifecycleTestPhase("prepared-ready", dir, token, temporaryPath)
-	return os.Rename(temporaryPath, localImportPreparedStagePath(dir, token))
-}
-
-func (s *Server) loadStagedPreparedImport(userID uint, token string, request localbook.ImportRequest) (localbook.PreparedImport, bool) {
-	if !validLocalImportToken(token) {
-		return localbook.PreparedImport{}, false
-	}
-	path := localImportPreparedStagePath(s.localImportStageDir(userID), token)
-	file, err := os.Open(path)
-	if err != nil {
-		return localbook.PreparedImport{}, false
-	}
-	defer file.Close()
-	limit := s.maxLocalPreparedImportBytes()
-	encoded, err := io.ReadAll(io.LimitReader(localImportStageObservedRead{Reader: file, phase: "prepared-read",
-		dir: filepath.Dir(path), token: token, path: path}, limit+1))
-	if err != nil || int64(len(encoded)) > limit {
-		_ = os.Remove(path)
-		return localbook.PreparedImport{}, false
-	}
-	var prepared localbook.PreparedImport
-	if json.Unmarshal(encoded, &prepared) != nil || !s.validStagedPreparedImport(prepared) {
-		_ = os.Remove(path)
-		return localbook.PreparedImport{}, false
-	}
-	if !prepared.Matches(request) {
-		return localbook.PreparedImport{}, false
-	}
-	return prepared, true
-}
-
 func (s *Server) maxLocalPreparedImportBytes() int64 {
 	parsedLimit := s.cfg.MaxParsedTextBytes
 	if parsedLimit <= 0 {
 		parsedLimit = 256 * 1024 * 1024
 	}
 	inputLimit := s.maxLocalImportBytes()
-	// Parser output consists primarily of extracted text plus bounded metadata
-	// originating from the already bounded source archive. Keep JSON overhead
-	// finite while allowing valid near-limit UTF-8 books.
+	if inputLimit > math.MaxInt64-8*1024*1024 {
+		return math.MaxInt64
+	}
 	overhead := inputLimit + 8*1024*1024
-	if overhead < inputLimit || parsedLimit > (math.MaxInt64-overhead)/2 {
+	if parsedLimit > (math.MaxInt64-overhead)/2 {
 		return math.MaxInt64
 	}
 	return parsedLimit*2 + overhead
 }
-
 func (s *Server) validStagedPreparedImport(prepared localbook.PreparedImport) bool {
 	if prepared.Version != localbook.PreparedImportVersion || len(prepared.SourceSHA256) != sha256.Size*2 {
 		return false
@@ -276,8 +140,7 @@ func (s *Server) validStagedPreparedImport(prepared localbook.PreparedImport) bo
 	if _, err := hex.DecodeString(prepared.SourceSHA256); err != nil {
 		return false
 	}
-	chapterLimit := s.cfg.ParsedChapterLimit()
-	if len(prepared.Book.Chapters) > chapterLimit {
+	if len(prepared.Book.Chapters) > s.cfg.ParsedChapterLimit() {
 		return false
 	}
 	remaining := s.cfg.MaxParsedTextBytes
@@ -298,144 +161,16 @@ func (s *Server) validStagedPreparedImport(prepared localbook.PreparedImport) bo
 		return false
 	}
 	for _, chapter := range prepared.Book.Chapters {
-		if !consume(
-			chapter.Title,
-			chapter.Content,
-			chapter.ResourcePath,
-			chapter.ResourceFragment,
-			chapter.ResourceEndFragment,
-		) {
+		if !consume(chapter.Title, chapter.Content, chapter.ResourcePath, chapter.ResourceFragment, chapter.ResourceEndFragment) {
 			return false
 		}
 	}
 	return true
 }
-
-func validLocalImportToken(token string) bool {
-	if len(token) != 48 || token != strings.ToLower(token) {
-		return false
-	}
-	decoded, err := hex.DecodeString(token)
-	return err == nil && len(decoded) == 24
-}
-
+func validLocalImportToken(token string) bool { return importstage.ValidToken(token) }
 func StartLocalImportStageCleanup(ctx context.Context, cacheDir string) {
-	CleanupExpiredLocalImportStages(cacheDir)
-	ticker := time.NewTicker(localImportStageCleanupInterval)
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				CleanupExpiredLocalImportStages(cacheDir)
-			}
-		}
-	}()
+	importstage.New(cacheDir, importstage.Limits{}, localImportStageLifecycleTestPhase).StartCleanup(ctx)
 }
-
 func CleanupExpiredLocalImportStages(cacheDir string) {
-	root := filepath.Join(cacheDir, "import-previews")
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
-	now := time.Now()
-	for _, entry := range entries {
-		if !entry.IsDir() || !validLocalImportStageDirectoryName(entry.Name()) {
-			continue
-		}
-		cleanupLocalImportStageDir(filepath.Join(root, entry.Name()), now)
-	}
-}
-
-func validLocalImportStageDirectoryName(value string) bool {
-	_, err := strconv.ParseUint(value, 10, 64)
-	return err == nil && value != ""
-}
-
-func cleanupLocalImportStageDir(dir string, now time.Time) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := now.Add(-localImportStageLifetime)
-	metadataTokens := make(map[string]bool)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		token := strings.TrimSuffix(entry.Name(), ".json")
-		if !validLocalImportToken(token) {
-			continue
-		}
-		metadataPath := filepath.Join(dir, entry.Name())
-		encoded, err := os.ReadFile(metadataPath)
-		var metadata localImportStageMetadata
-		if err != nil || json.Unmarshal(encoded, &metadata) != nil || metadata.CreatedAt.IsZero() || metadata.CreatedAt.Before(cutoff) {
-			removeStagedLocalImportFromDir(dir, token)
-			continue
-		}
-		dataPath, _ := localImportStagePaths(dir, token)
-		if info, err := os.Stat(dataPath); err != nil || info.IsDir() {
-			removeStagedLocalImportFromDir(dir, token)
-			continue
-		}
-		metadataTokens[token] = true
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".book") {
-			continue
-		}
-		token := strings.TrimSuffix(entry.Name(), ".book")
-		if !validLocalImportToken(token) || metadataTokens[token] {
-			continue
-		}
-		info, err := entry.Info()
-		if err == nil && !info.ModTime().After(cutoff) {
-			removeStagedLocalImportFromDir(dir, token)
-		}
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasSuffix(name, ".parsed.json") {
-			token := strings.TrimSuffix(name, ".parsed.json")
-			if validLocalImportToken(token) && metadataTokens[token] {
-				continue
-			}
-			info, err := entry.Info()
-			if err == nil && !info.ModTime().After(cutoff) {
-				localImportStageLifecycleTestPhase("cleanup-unlink", dir, name, filepath.Join(dir, name))
-				_ = os.Remove(filepath.Join(dir, name))
-			}
-			continue
-		}
-		// Atomic snapshot writes use a token-prefixed temporary file. A crash
-		// may leave one behind; only aged files inside the stage directory are
-		// eligible for cleanup.
-		if strings.Contains(name, ".parsed-") {
-			info, err := entry.Info()
-			if err == nil && !info.ModTime().After(cutoff) {
-				localImportStageLifecycleTestPhase("cleanup-unlink", dir, name, filepath.Join(dir, name))
-				_ = os.Remove(filepath.Join(dir, name))
-			}
-		}
-	}
-}
-
-func removeStagedLocalImportFromDir(dir string, token string) {
-	if !validLocalImportToken(token) {
-		return
-	}
-	dataPath, metadataPath := localImportStagePaths(dir, token)
-	localImportStageLifecycleTestPhase("cleanup-remove", dir, token, metadataPath)
-	_ = os.Remove(dataPath)
-	_ = os.Remove(metadataPath)
-	_ = os.Remove(localImportPreparedStagePath(dir, token))
+	importstage.New(cacheDir, importstage.Limits{}, localImportStageLifecycleTestPhase).Cleanup(context.Background())
 }

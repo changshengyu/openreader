@@ -42,7 +42,7 @@ the next staged-cache lifecycle audit is independent and does not authorize a mi
 
 ## User-facing migration contract (2026-08-11)
 
-Next stage-filesystem inventory (2026-10-10) does not authorize a migration. See
+Stage-filesystem implementation (2026-10-10) does not introduce a migration. See
 [`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 Retain `cache/import-previews/<numeric-user>/<48hex>.book/.json/.parsed.json`, token-prefixed temporary
 names, metadata fields/UTC,24h TTL/hourly cleanup,700 new directories/600 new files and old permissions.
@@ -50,7 +50,11 @@ Keep old two-file tokens, source-independent retry, matched prepared no-reparse,
 failure-retained/success-consumed behavior. Finite1MiB metadata rejects oversized untrusted cache without
 deleting unknown bytes. Root/bundle sessions and owned cleanup must retain newcomer/link/special entities,
 active tokens and durable books; no SQL/config/root/archive/backup/browser-key changes or exactly-once claim.
-This is documentation only, not a passed implementation or production-state proof.
+The shared native/session implementation turns120 old-app reds green. Legacy/permission/TTL/active-token/
+FD/durable controls and final isolated three-user real HTTP plus confirmed-Reader browser pass;
+intermediate bundle full API race passes but final source full race and candidate-specific Docker
+historical/fresh/portable/backup/publication remain pending. Production db1ea21 is independently healthy,
+not upgraded; local service/native tests in an older Linux runtime are not a candidate-volume proof.
 
 The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation
 of existing behavior and do not authorize a new schema or filesystem migration:

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"math"
 	"mime/multipart"
@@ -11,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"openreader/backend/services/importstage"
 )
 
 const (
@@ -30,6 +32,7 @@ var (
 )
 
 type parsedLocalImportMultipart struct {
+	stage       *importstage.Session
 	form        *multipart.Form
 	file        *multipart.FileHeader
 	importToken string
@@ -233,13 +236,14 @@ func parseDirectLocalImportCategoryValue(rawValue string) (*uint, error) {
 	return &result, nil
 }
 
-func (s *Server) readLocalImportPayload(payload *parsedLocalImportMultipart, userID uint, createStage bool) (string, string, []byte, string, error) {
+func (s *Server) readLocalImportPayload(ctx context.Context, payload *parsedLocalImportMultipart, userID uint, createStage bool) (string, string, []byte, string, error) {
 	if payload.importToken != "" {
-		metadata, data, err := s.loadStagedLocalImport(userID, payload.importToken)
+		stage, err := s.localImportStages().Open(ctx, userID, payload.importToken)
 		if err != nil {
 			return "", "", nil, "", err
 		}
-		return metadata.FileName, metadata.Extension, data, payload.importToken, nil
+		payload.stage = stage
+		return stage.Metadata.FileName, stage.Metadata.Extension, stage.Data, payload.importToken, nil
 	}
 
 	fileHeader := payload.file
@@ -255,9 +259,9 @@ func (s *Server) readLocalImportPayload(payload *parsedLocalImportMultipart, use
 		return "", "", nil, "", errors.New("failed to open file")
 	}
 	defer file.Close()
-	data, err := s.readBoundedLocalImport(file)
+	data, err := importstage.ReadBounded(ctx, file, s.maxLocalImportBytes(), nil, nil)
 	if err != nil {
-		if errors.Is(err, errLocalImportTooLarge) {
+		if errors.Is(err, errLocalImportTooLarge) || isLocalImportStageCancellation(err) {
 			return "", "", nil, "", err
 		}
 		return "", "", nil, "", errors.New("failed to read file")
@@ -265,11 +269,15 @@ func (s *Server) readLocalImportPayload(payload *parsedLocalImportMultipart, use
 	if !createStage {
 		return fileHeader.Filename, ext, data, "", nil
 	}
-	importToken, err := s.stageLocalImport(userID, fileHeader.Filename, ext, data)
+	stage, err := s.localImportStages().Create(ctx, userID, fileHeader.Filename, ext, data)
 	if err != nil {
+		if isLocalImportStageCancellation(err) {
+			return "", "", nil, "", err
+		}
 		return "", "", nil, "", errors.New("failed to stage import")
 	}
-	return fileHeader.Filename, ext, data, importToken, nil
+	payload.stage = stage
+	return fileHeader.Filename, ext, data, stage.Token, nil
 }
 
 func writeLocalImportRequestError(c *gin.Context, err error) {

@@ -1,10 +1,11 @@
 # 本地图书暂存 token 文件系统全生命周期第二轮固定基准合同（P2）
 
-状态：**red-reproduced / must-fix / implementation-pending**。
+状态：**implemented / local-regression-validated / final-full-race-and-release-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 源码审查基线：`OpenReader@5cfc53d4993e0b7c020d5bb8d2747af6e07ab73c`，2026-10-10。
 
-本盘点只修改合同，不修改应用。原书已恢复事件保持关闭；这里只记录当前源码窗口，尚无本项
+以下盘点保留初始合同阶段说明；第8–10节记录后续测试与实施，当前状态以上为准。
+初始盘点只修改合同，不修改应用。原书已恢复事件保持关闭；当时只记录源码窗口，尚无本项
 确定性红灯或生产复现。mounted-source plan→bounded bytes 已独立实现、验证、发布，不能从它推导
 stage、prepared publication、消费或 TTL 安全。合同必须独立提交推送，随后实际红测，再实施。
 
@@ -186,3 +187,48 @@ API2.386s，追加 **30项实际失败**（28 leaf +partial rollback/lease各1�
 
 日志 `/private/tmp/openreader-import-stage-deep-red.log`。30与初轮90互补，不把其它调用/FD/000/
 late-link/active-TTL的未测范围算完成；应用修复仍需全合同服务/薄API和对应进一步控制与门禁。
+
+## 10. 服务实现与本地验证（2026-10-10，尚未发布）
+
+独立合同4104499、red d300cff与追加red3572f02均已远端核验后才实施。新
+`services/importstage` 拥有每项原cache/user/bundle session、可取消同token lease、bounded actual
+read/write、prepared缓存命中/普通fallback、durable前验收、原文件消费及ctx startup/hourly TTL。
+`rootedfs.PrivateScope` 从原native目录句柄初始化/读写/发布/回收，新增700/600不修改相邻公开
+755/644写入合同。七路由只传request ctx并映射既有错误；raw直接confirm不强制stage。
+
+120初始/追加反例全绿；补23项控制（service9、native8、API durable6）：实际三种写中取消及
+owned补偿、合法opened rename仍读原bytes且不consume newcomer、late同inode link、active TTL
+lease、000/既有权限保持、120次成功/失败/Close/scan后FD与idle lease回收、actual partial mkdir
+取消/unknown成员、原prepared保持、批次先前成功通知和durable后取消仍成功。另实际观察
+metadata-write中替换raw的反例先exit1（`metadata-handoff-red.log`），再补整bundle最后复验和仅原
+metadata/raw补偿转绿；它是实现复审反例，不能混算初始旧应用120红灯。
+再补7路由的prepared发布wire控制，其中4项中间实现实际红灯（`publication-wire-red.log`）：
+direct confirm/alias错误400，两个storage confirm错误item message；已将工作期parsed发布失败与
+opaque token读取拒绝分开，保持direct500及storage200项固定错误。其余3项旧已绿不混算红灯。
+
+本地全Go曾通过API91.824s；最终write-classification版本full/API103.532s、vet通过。
+最终120+30控制精确race/API70.957s、service3.054s/root2.215s通过；共享服务全race也通过。全API race
+默认10m总预算超时（605.881s，堆栈为其它replace-rule测试注册时bcrypt运算，未报数据竞争）。
+首个中间25m run因源码完善主动中止；后续bundle版25m full/API886.942s终态通过，但在最后
+wire错误分类/native观察控制前编译，不能冒充最终源码完整race。最终版本还需完整25m run；
+不把任一超时/中止/pending写成绿，不降低bcrypt生产成本或修改其它模块以获得绿灯。
+
+frontend762/762、Vite build、Compose通过。隔离Go+SQLite真实HTTP三账号（管理员旧根、两个
+普通用户）验证两个storage入口、源移除后同token重parse/confirm、精确Reader正文与foreign
+隔离；WebDAV真实HTTP额外验证token-only不接收换成link的mounted根。真实Chromium1228
+1440×900/390×844/360×800上传取消/单本目录刷新/批量/逐本确认通过；默认1234路径缺失的
+第一次失败不算绿。最终source-built二进制及扩展smoke已复跑，三个视口都将改numeric目录规则后
+同token确认的Book直接打开Reader，实际第一段正文可见、无章节失败/横溢出，无章节响应mock。
+
+非root Linux arm64上使用新编译的service/native测试二进制，断网/只读/私有tmp，在既有8dc61c3
+runtime中全部通过（不是新候选Docker或发布证明）。CGO-disabled完整app交叉编译因既有SQLite
+ErrBusy/ErrLocked类型缺失失败，不能声称完整跨架构编译；完整应用必须由Go1.24/CGO可信发布
+流程验证。隔离开发Docker Go1.24/CGO/native arm64构建成功（PUSH=0，local tag标注dirty，
+旧中间bundle且非GHCR；不冒充最终candidate），最终同SHA Docker/fresh/historical/portable/
+backup及可信双架构/OCI仍待办。
+
+所有日志 `/private/tmp/openreader-import-stage-*`；没有生产写入/迁移/旧root清理。Git当前阶段
+准备形成feature checkpoint、未推main/发布；已发布app仍5cfc53d/index ba5456fe…，生产只读health独立再次核验
+完整db1ea216f9849bc44a90b5b760241df1c6d069b0/status ok。其生产阅读已恢复事件保持关闭。
+完整parser/SQL/category/archive原子取消、跨进程exactly-once、扫描cardinality/depth/FD上限、
+desktop click/wheel复审、dependency advisory与整审计均仍未完成。

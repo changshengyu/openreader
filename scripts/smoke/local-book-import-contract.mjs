@@ -276,8 +276,22 @@ async function runViewport(browser, viewport) {
     assert(Number(maxActivePreviews.get('sequential') || 0) === 1, `${viewport.width}: sequential preview uploads overlapped`)
 
     await assertNoHorizontalOverflow(page, `${viewport.width} direct import`)
+
+    // Follow the actual staged/reparsed Book into Reader; no chapter response
+    // mocks. This covers the exact numeric catalogue the user confirmed above.
+    const token = await page.evaluate(() => localStorage.getItem('openreader_token'))
+    const shelfResponse = await page.request.get(`${targetURL}/api/books`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    assert(shelfResponse.ok(), `${viewport.width}: confirmed shelf read failed`)
+    const confirmed = (await shelfResponse.json()).find(book => book.title === singleTitle)
+    assert(confirmed?.id, `${viewport.width}: confirmed numeric Book missing`)
+    await page.goto(`${targetURL}/books/${confirmed.id}/read?chapter=0`, { waitUntil: 'networkidle' })
+    await page.waitForFunction(() => document.body.innerText.includes('第一段正文。'))
+    assert(!await page.getByText('章节加载失败，请检查书源或网络后重试', { exact: true }).isVisible(), `${viewport.width}: staged Book Reader failed`)
+    await assertNoHorizontalOverflow(page, `${viewport.width} staged Reader`)
     assert(failures.length === 0, failures.join('\n'))
-    console.log(`${viewport.width}x${viewport.height}: cancellation + single + batch + sequential direct import ok`)
+    console.log(`${viewport.width}x${viewport.height}: cancellation + single + batch + sequential direct import + confirmed Reader ok`)
   } finally {
     releaseFirstRaceResolve?.()
     await context.close()

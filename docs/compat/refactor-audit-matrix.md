@@ -103,9 +103,9 @@ stable link/special目录策略；不把普通read/list或SQL/stage全生命周�
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-## 2026-10-10 下一切片：本地 import stage 文件系统生命周期（初轮实际红测）
+## 2026-10-10 本地 import stage 文件系统生命周期（实施及本地验证中）
 
-**red-reproduced / P2 must-fix / implementation-pending**，见
+**implemented / local-regression-validated / final-full-race-and-release-pending**，见
 [`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 stage create/load、prepared publication/read、成功consume、startup/hourly TTL清理分别走绝对路径，
 metadata无界、context未贯穿、cleanup按name且prepared cache miss吞掉身份变化。合同4104499先
@@ -113,8 +113,12 @@ metadata无界、context未贯穿、cleanup按name且prepared cache miss吞掉�
 无未触发fixture/未join；正常historical/TTL/GB18030/同token重试控制通过。目标覆盖三入口七route与cleanup完整stage session，不缩成单个symlink检查；保持
 24h/48hex/旧两三文件、失败token重试、match无重parse、普通cache miss、durable成功通知及旧错误。
 允许native/bounded/ctx/owned cleanup安全适配；不迁移用户数据，不签收完整parser/SQL事务或跨进程
-exactly-once。应用未修复，剩余bounded-read/lease/owned rollback等仍需追加；feature red不可当main
-发布候选。5cfc53d source-read已发布不替代本项。
+exactly-once。追加red3572f02之后，120反例全绿；shared importstage/PrivateScope覆盖同一session
+create/load/prepared/handoff/consume/TTL，23控制及metadata-write最终bundle反例补验通过。
+fullGo/vet/frontend762/build/三用户真实HTTP/三视口Chromium/非root Linux native控制通过；
+最后分类版full/API103.532s、exact race70.957s及confirmed Reader三视口通过；中间bundle full
+API race25m预算下886.942s终态通过，最终分类版full race尚需完整run，不能冒充当前全部绿。候选Docker/
+fresh/historical/portable/backup/OCI仍待办；5cfc53d旧发布不替代本项，生产health仍db1ea21。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于
 2026-07-13，用来替代“当前实现/既有测试通过即可视为重构完成”的判断方式。

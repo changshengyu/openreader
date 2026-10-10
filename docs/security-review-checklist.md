@@ -1583,16 +1583,19 @@ parser/SQL整个生命周期。追加8深层/读取中红灯后实施same-scope�
 success，新旧卷/portable/backup/platform全部通过，exact/latest registry index独立核验为
 sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd。生产db1ea21未升级。
 
-# 2026-10-10 import stage lifecycle（初轮红测，未实施）
+# 2026-10-10 import stage lifecycle（实施，本地验证中）
 
 - [x] 固定上游与七个现有route/shared stage/prepared/consume/startup-TTL调用链已映射；合同4104499先推。
 - [x] 初轮90项旧应用实际red/API5.805s：工作期替换/取消/误删、stable link、FIFO及预算；接缝实际触发，FIFO peer有界释放join；正常控组通过。无应用修复，feature only不发布。
-- [ ] 原cache/user/bundle session、regular no-follow/nonblock、1MiB metadata与原预算/ctx。
-- [ ] prepared原target publication、同tokenactive lease与TTL协调、未知实体不覆盖/owned回收。
-- [ ] durable成功只消费原bundle、cleanup原scan/entity identity及background逐项取消。
-- [ ] stable/late link/FIFO、目录与same-name replacement实际红灯、全量/真实HTTP/卷/发布核验。
+- [x] 追加30旧应用红灯先推送，再实施；原cache/user/bundle session、regular no-follow/nonblock、1MiB metadata与原预算/ctx；120红灯转绿。
+- [x] prepared原target publication、同tokenactive lease与TTL协调、未知实体不覆盖/owned回收；补actual write/final bundle反例。
+- [x] durable成功只消费原bundle、cleanup原scan/entity identity及background逐项取消；取消第二项保留前项及通知/提交后取消成功通过。
+- [x] stable/late link/FIFO、目录/same-name替换、000/700/600/nochmod、FD/idle lease/partial init未知成员和非root Linux native控制。
+- [x] fullGo/vet/frontend762/build、三用户真实HTTP/storage/Reader及三视口真实Chromium。
+- [x] 最终write分类版full/API103.532s+vet、exact race120+30控制/API70.957s、最终三用户HTTP及confirmed Reader三视口；prepared写入失败不误报读取token400。
+- [ ] 最终源码全API race25m run终态、同候选Docker新旧卷/portable/backup/双架构及OCI发布核验（中间bundle full886.942s与dirty本地Docker不替代）。
 
 合同 `compat/local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
-本项只记录5cfc53d源码窗口，不称生产复现；既有stage/saveParsed的storage PathError映射需统一安全
+本项不称生产复现；stage/saveParsed的storage PathError映射已统一安全
 字符串，错误不得带host path/token/temp。保留旧用户数据/权限/format/重试和durable事件，不新增
 fetch/credentials日志或schema。完整parser/SQL原子取消与跨进程exactly-once仍unknown。
