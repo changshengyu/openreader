@@ -1,6 +1,6 @@
 # LocalStore / WebDAV 导入源读取生命周期固定基准第二轮合同（P2）
 
-状态：**implemented / regression-validated / Docker-publication-pending**。
+状态：**implemented / regression-validated / Docker-published / awaiting-device-verification**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 当前审查基线：`OpenReader@11235c3ff111261dead932fab56fa36f98333fd5`，2026-10-08。
 
@@ -162,3 +162,22 @@ Basic进度接收在线/冷启动精确段落、reset/noecho。所有服务器/�
 vet-final,http-final,reader-browser-final,linux-rootedfs,linux-webdavfs}.log；候选Git推送、可信
 fresh/historical/portable/backup/platform及新OCI仍独立待核验。生产版本本轮确认db1ea21，
 整体审计不变，stage/TTL/完整parser/SQL及扫描cardinality/depth/FD上限仍未签收。
+
+## 9. 可信发布核验（2026-10-10）
+
+应用提交 `5cfc53d4993e0b7c020d5bb8d2747af6e07ab73c` 已非强制推送至 main；用户明确授权推送并
+由仓库 Actions 发布。运行 [37754329331](https://github.com/changshengyu/openreader/actions/runs/37754329331)
+终态 success，候选自身的 backend/vendor/frontend/build/Compose、真实隔离 HTTP、native image、
+fresh/historical volumes、portable v1/v2 assets、cross-user、restart、backup 和双架构门全部通过。
+完整日志 `/private/tmp/openreader-storage-import-source-actions-37754329331.log` 中 fresh/backup
+通过在6354行，historical old-volume通过在6365行；不是沿用11235c3的门禁。
+
+- 标签：`ghcr.io/changshengyu/openreader:5cfc53d`、核验时的 `ghcr.io/changshengyu/openreader:latest`。
+- OCI index：`sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd`。
+- linux/amd64：`sha256:0016708d92f81aa7172598cb6e5c865e673ddc4bdb397450e450eef32cd64973`。
+- linux/arm64：`sha256:4d0b49933444e2ead60c5feb952a0dd9b8b1a9d9ce9f31bba6d1bf7f9b7bb201`。
+
+两标签已独立 registry readback，与可信运行的 index/platform 输出一致。尚未本地回拉本候选后
+检查其容器 health；不把之前镜像的 health 当作该项证据。生产只读 health 独立确认仍为
+`db1ea216f9849bc44a90b5b760241df1c6d069b0`，未自动升级。原书恢复事件保持关闭；未完成项仍是
+stage/TTL/parser/SQL逐动作生命周期、扫描cardinality/depth/FD预算及整体设备签收。

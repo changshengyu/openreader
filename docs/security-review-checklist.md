@@ -1565,7 +1565,7 @@ returned-handle控制组独立通过。新读流程namespace/deep-cancel/子项�
 无新远程fetch、配置/数据迁移或密码日志；不改当前生产db1ea21，不重开原书已恢复事件。
 08de4de目录创建已由可信运行37740704252单独验证并发布，不能从它推导read/list通过。
 
-# 2026-10-08 storage-import source-read（已实施与本地验证，候选发布待核验）
+# 2026-10-08 storage-import source-read（已实施、验证与可信发布）
 
 固定源码及已部署API/token差异见
 `compat/storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
@@ -1579,4 +1579,6 @@ parser/SQL整个生命周期。追加8深层/读取中红灯后实施same-scope�
 200/201共享祖先引用和原生fd关闭、正常hidden/neighbor/token-only/GB18030/JSON/权限控制通过。
 最终full/race/vet、双普通用户/管理员旧根真实HTTP与Reader三视口、双架构编译及非rootLinux
 全服务通过；未知扫描cardinality/depth/FD上限和完整stage/TTL/parser/SQL仍独立未完成。
-无新fetch、密码日志、host-path诊断或用户数据改动；候选新旧卷/备份/发布仍待可信工作流。
+无新fetch、密码日志、host-path诊断或用户数据改动；候选5cfc53d可信Actions37754329331已终态
+success，新旧卷/portable/backup/platform全部通过，exact/latest registry index独立核验为
+sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd。生产db1ea21未升级。

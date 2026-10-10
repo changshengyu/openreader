@@ -85,7 +85,7 @@ sha256:c3aa7a6c1ecc897de83a145d58e86a48084219249dcdd1161ac9c42f663dafa3，生产
 目录创建实现 `08de4de` 已推送并发布，可信运行 `37740704252` 已终态success；生产仍db1ea21。
 
 下一项 storage-import source read 已按合同/红测实施，状态
-**implemented / regression-validated / Docker-publication-pending**，见
+**implemented / regression-validated / Docker-published / awaiting-device-verification**，见
 [`storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md`](storage-import-source-read-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 目录展开仍绝对WalkDir/entry.Info，plan→byte read是不同background admission，无requestctx；
 合同772fae2推送后36项红灯实际触发：20目录planner接收替换（18诱饵名/2空计划）、12授权后
@@ -95,7 +95,9 @@ handoff ctx与owned shared-fd Close让44项原红灯转绿，不称生产漏洞�
 有界join、合法opened rename、200/201资源释放、双用户/管理员真实HTTP、原token和Reader内容
 均通过。前项已提交后项取消的通知又先补两红灯再修正，仅通知已成功书，不宣称整批rollback。
 最终Go/full/race/vet、frontend762/build/Compose、Linux双架构编译/arm64非root全服务和实际
-Chromium三视口通过；候选可信卷/backup/platform及新OCI待核验，生产仍db1ea21。
+Chromium三视口通过；候选5cfc53d可信运行37754329331终态success，fresh/historical/portable/
+backup/platform全部通过；exact/latest OCI独立核验为
+sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd，生产仍db1ea21。
 保留token-only不访问mounted根、200项、missing/empty、hidden和
 stable link/special目录策略；不把普通read/list或SQL/stage全生命周期算作本项完成。
 

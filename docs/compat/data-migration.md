@@ -35,7 +35,10 @@ Token-only paths still never admit mounted roots. Hidden/missing/empty/200/dedup
 removal/reparse/confirm controls pass on real isolated Go+SQLite HTTP for historical admin layout and two
 ordinary users. No whole-batch rollback or complete stage/TTL/parser/SQL lifecycle claim; prior durable imports
 remain with a precise prior-success notification after later source cancellation. Full/race/frontend/Linux and
-Reader controls pass; final-candidate fresh/historical/portable/backup/platform gates remain pending.
+Reader controls pass; final-candidate5cfc53d fresh/historical/portable/backup/platform gates passed trusted
+Actions37754329331. Exact/latest OCI index independently matches
+sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd. Production remainsdb1ea21;
+the next staged-cache lifecycle audit is independent and does not authorize a migration.
 
 ## User-facing migration contract (2026-08-11)
 
