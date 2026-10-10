@@ -3,6 +3,8 @@ package importstage
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -305,5 +307,49 @@ func TestStageRepeatedSuccessFailureCloseReclaimsDescriptorsAndLeases(t *testing
 	leases.Unlock()
 	if count != 0 {
 		t.Fatalf("idle leases retained: %d", count)
+	}
+}
+
+func TestStageCreateCollisionCannotOwnPreexistingBundleFiles(t *testing.T) {
+	for _, suffix := range []string{".book", ".json", ".parsed.json"} {
+		t.Run(suffix, func(t *testing.T) {
+			service := testStageService(t, nil)
+			dir := filepath.Join(service.cache, "import-previews", "1")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			entropy := bytes.Repeat([]byte{0x42}, 24)
+			token := hex.EncodeToString(entropy)
+			path := filepath.Join(dir, token+suffix)
+			if err := os.WriteFile(path, []byte("preexisting-unknown"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			// Test-owned deterministic entropy proves a collision rather than
+			// relying on chance. Extra bytes cover owned native quarantine names.
+			originalReader := rand.Reader
+			rand.Reader = bytes.NewReader(bytes.Repeat([]byte{0x42}, 4096))
+			t.Cleanup(func() { rand.Reader = originalReader })
+			fired := false
+			service.hook = func(phase, _, observed, _ string) {
+				if phase == "create-admitted" {
+					fired = observed == token
+				}
+			}
+			x, err := service.Create(context.Background(), 1, "new.txt", ".txt", []byte("new"))
+			if x != nil {
+				x.Close()
+			}
+			if !fired {
+				t.Fatal("actual generated-token collision fixture did not fire")
+			}
+			if !errors.Is(err, ErrStageWrite) || x != nil {
+				t.Errorf("preexisting bundle accepted: stage=%v error=%v", x != nil, err)
+			}
+			assertStageBytes(t, path, []byte("preexisting-unknown"))
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 1 {
+				t.Errorf("collision created extra staged state: %v %v", entries, err)
+			}
+		})
 	}
 }

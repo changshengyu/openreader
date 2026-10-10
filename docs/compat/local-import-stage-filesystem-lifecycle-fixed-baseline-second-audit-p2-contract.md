@@ -1,6 +1,6 @@
 # 本地图书暂存 token 文件系统全生命周期第二轮固定基准合同（P2）
 
-状态：**implemented / local-regression-validated / final-full-race-and-release-pending**。
+状态：**implemented / collision-review-red / release-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 源码审查基线：`OpenReader@5cfc53d4993e0b7c020d5bb8d2747af6e07ab73c`，2026-10-10。
 
@@ -82,6 +82,8 @@ archive补偿的逐步ctx仍独立unknown，不能把最后一次ctx检查签成
    Read/Write前后、scan每项、所有publication/消费前检查；阻塞native文件系统不承诺可强行中断。
 6. 所有成功、错误、取消、partial初始化和red fixture结束路径关闭自有handles。partial stage回收
    仅原自有文件/空derived目录；同名unknown/newcomer/未知成员保留，不递归删除用户根。
+   新随机token必须在写入/TTL工作前确认三份bundle文件都原本缺失；接收了旧inode不等于创建并
+   拥有它。任何后缀碰撞都拒绝，不覆盖、消费或通过失败补偿删除旧文件，不复用旧parsed内容。
 7. prepared publication保持旧格式与atomic visibility；新temp600。只替换原接收的parsed target或
    确认缺失的name；原有效snapshot失败重parse后保持，真正cache miss按同session原raw fallback。
    corruption清理必须有原identity，lifecycle change不能降级到cache miss。
@@ -232,3 +234,20 @@ backup及可信双架构/OCI仍待办。
 完整db1ea216f9849bc44a90b5b760241df1c6d069b0/status ok。其生产阅读已恢复事件保持关闭。
 完整parser/SQL/category/archive原子取消、跨进程exactly-once、扫描cardinality/depth/FD上限、
 desktop click/wheel复审、dependency advisory与整审计均仍未完成。
+
+## 11. 候选验证及创建所有权复审（2026-10-10，仍未发布）
+
+feature checkpoint `0a40298cab145941bebdf0e7a3d7a7739796dd38` 已远端精确核验，main仍4104499。
+该确切提交完整API race终态通过（878.190s；service2.557s/root2.319s）。Go1.24/CGO本地arm64
+候选镜像及fresh/portable/backup/restart通过；historical首轮HTTP404保留失败日志，未定位原因，
+随后诊断与原始sh独立复跑全通过，不将未复现写为已定位修复。它不是GHCR新发布或生产证明。
+
+随后人工复审在上述第4节exclusive创建/owned补偿合同内发现新窗口：原随机token `.json`
+碰撞时，0a创建raw后metadata写入拒绝，但补偿将已接收的旧metadata误认作自有并删除；仅
+`.parsed.json`碰撞时仍接受新stage。先添加确定性entropy反例，再改应用，不能发布已知红灯。
+`TestStageCreateCollisionCannotOwnPreexistingBundleFiles` 三个后缀都断言真实生成token碰撞接缝
+已触发；`.book`本已安全拒绝是绿色控制，`.json`实际旧文件被删、`.parsed.json`实际接受及
+产生额外文件为两个红灯（service0.635s，exit1），没有编译失败或概率等待。仅测试自有目录，
+crypto/rand.Reader于每项cleanup恢复；不修改生产随机源。日志
+`/private/tmp/openreader-import-stage-token-collision-red.log`。这不是生产复现，也不混算旧应用120。
+修复之后须重跑候选源码回归/真实浏览器及同SHA镜像卷门，再推main与可信Actions发布。

@@ -105,7 +105,7 @@ stable link/special目录策略；不把普通read/list或SQL/stage全生命周�
 
 ## 2026-10-10 本地 import stage 文件系统生命周期（实施及本地验证中）
 
-**implemented / local-regression-validated / final-full-race-and-release-pending**，见
+**implemented / collision-review-red / release-pending**，见
 [`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 stage create/load、prepared publication/read、成功consume、startup/hourly TTL清理分别走绝对路径，
 metadata无界、context未贯穿、cleanup按name且prepared cache miss吞掉身份变化。合同4104499先
@@ -119,6 +119,10 @@ fullGo/vet/frontend762/build/三用户真实HTTP/三视口Chromium/非root Linux
 最后分类版full/API103.532s、exact race70.957s及confirmed Reader三视口通过；中间bundle full
 API race25m预算下886.942s终态通过，最终分类版full race尚需完整run，不能冒充当前全部绿。候选Docker/
 fresh/historical/portable/backup/OCI仍待办；5cfc53d旧发布不替代本项，生产health仍db1ea21。
+补记：0a40298确切完整race878.190s、本地Go1.24候选及新旧卷/portable/backup门已通过（首轮
+historical404未复现且原因unknown，保留失败记录）。发布前exclusive/owned复审又得两个实际
+随机token碰撞红灯：旧metadata被补偿误删、旧parsed被新stage接收；book碰撞绿色控制保持。
+当前停在独立红测checkpoint，应用guard与新SHA验证/可信发布未完成，不推已知红灯main。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于
 2026-07-13，用来替代“当前实现/既有测试通过即可视为重构完成”的判断方式。
