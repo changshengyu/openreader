@@ -168,3 +168,21 @@ browser/Linux/volume门在应用实现后执行，当前不能声称全量绿。
 bounded read/write中取消、parsed load中同名/祖先变化及cache-miss安全错误映射、partial-owned
 rollback、consume目录变化、TTL逐项ctx/active lease等待、000/late同inode link及FD所有权；
 必要时追加实际红测后再实现对应部分，不把90测试签成整个stage合同已完成。
+
+## 9. 跨阶段与实际工作期追加红测（2026-10-10，仍先于应用修复）
+
+在独立d300cff初轮red远端精确核验后，增加只观察实际Read返回的nil-in-production接缝与
+`local_import_stage_deep_lifecycle_contract_test.go`。`^TestLocalImportStageDeep` 在旧应用exit1/
+API2.386s，追加 **30项实际失败**（28 leaf +partial rollback/lease各1），无未触发/未join：
+
+- 11实际raw/parsed Read后取消仍返回成功/写Book；不是仅“开始前ctx已取消”。
+- 11 raw已加载后user/parsed替换，被后续独立namespace admission接受，preview覆盖foreign parsed
+  或confirm导入其内容。原metadata/raw相同不能授权另一个prepared实体。
+- partial `.book` 写入后同名unknown替换，再令metadata写入失败，legacy rollback误删unknown。
+- 4 durable后user目录替换，consume误删新目录中同名三文件，但成功Book/响应不伪回滚。
+- startup已取消和TTL分类后取消仍清理原expired bundle，各1；background取消不能只停止ticker。
+- 同token第一请求实际进入work并等待时，第二请求不等待就进入另一bundle；随后ctx取消仍200。
+  两个worker都2s内join，第一合法preview仍成功。等待要求是进程内lease，不是跨进程exactly-once。
+
+日志 `/private/tmp/openreader-import-stage-deep-red.log`。30与初轮90互补，不把其它调用/FD/000/
+late-link/active-TTL的未测范围算完成；应用修复仍需全合同服务/薄API和对应进一步控制与门禁。

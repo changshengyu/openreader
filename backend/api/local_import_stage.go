@@ -34,6 +34,17 @@ func localImportStageLifecycleTestPhase(phase, dir, token, path string) {
 	}
 }
 
+type localImportStageObservedRead struct {
+	io.Reader
+	phase, dir, token, path string
+}
+
+func (r localImportStageObservedRead) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	localImportStageLifecycleTestPhase(r.phase, r.dir, r.token, r.path)
+	return n, err
+}
+
 var (
 	errInvalidLocalImportToken = errors.New("invalid or expired local import token")
 	errLocalImportTooLarge     = errors.New("local book exceeds maximum import size")
@@ -74,6 +85,7 @@ func (s *Server) stageLocalImport(userID uint, fileName string, extension string
 	if err := os.WriteFile(dataPath, data, 0o600); err != nil {
 		return "", err
 	}
+	localImportStageLifecycleTestPhase("create-data-written", dir, token, dataPath)
 	if err := os.WriteFile(metadataPath, encoded, 0o600); err != nil {
 		_ = os.Remove(dataPath)
 		return "", err
@@ -104,6 +116,7 @@ func (s *Server) loadStagedLocalImport(userID uint, token string) (localImportSt
 		s.removeStagedLocalImport(userID, token)
 		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
 	}
+	localImportStageLifecycleTestPhase("raw-loaded", dir, token, dataPath)
 	return metadata, data, nil
 }
 
@@ -144,7 +157,8 @@ func (s *Server) readBoundedLocalImportFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return s.readBoundedLocalImport(file)
+	return s.readBoundedLocalImport(localImportStageObservedRead{Reader: file, phase: "load-raw-read",
+		dir: filepath.Dir(path), token: strings.TrimSuffix(filepath.Base(path), ".book"), path: path})
 }
 
 func (s *Server) removeStagedLocalImport(userID uint, token string) {
@@ -222,7 +236,8 @@ func (s *Server) loadStagedPreparedImport(userID uint, token string, request loc
 	}
 	defer file.Close()
 	limit := s.maxLocalPreparedImportBytes()
-	encoded, err := io.ReadAll(io.LimitReader(file, limit+1))
+	encoded, err := io.ReadAll(io.LimitReader(localImportStageObservedRead{Reader: file, phase: "prepared-read",
+		dir: filepath.Dir(path), token: token, path: path}, limit+1))
 	if err != nil || int64(len(encoded)) > limit {
 		_ = os.Remove(path)
 		return localbook.PreparedImport{}, false
