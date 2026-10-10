@@ -44,7 +44,7 @@ This does not authorize new UI, hidden filtering, missing404 instead of skip, SQ
 
 ## Global rules
 
-Stage audit (2026-10-10), **implemented / local-regression-validated / final-full-race-and-release-pending**:
+Stage audit (2026-10-10), **aligned / regression-validated / Docker-published / awaiting-device-verification**:
 [`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md).
 All seven direct/LocalStore/WebDAV POST routes retain authentication, fields and normal200/201/item errors;
 opaque invalid-token400/direct and200/per-item storage, initial stage400/direct and200/per-item storage,
@@ -62,6 +62,11 @@ random-token collision reds, independently committed/pushed as7b47c8d before the
 requires original absence of all three bundle files before cleanup/writes, using the existing safe stage
 error mapping. Collision controls, fullGo/vet, exact race, frontend762 and real HTTP pass. New exact-SHA
 full race and candidate release gates remain pending; confirmed Reader three-viewports also pass. See section11 for superseding evidence.
+Final evidence supersedes those historical pending statements: exactb2b32f7 fullrace/API870.086s and
+same-SHA candidate volume/backup gates pass; trusted Actions38040641233 terminalsuccess publishes
+b2b32f7/latest. Independent index is sha256:ed57cc69e10e2bfcc90f401fee578f13c2df513faee97123886416ebbf92f4dc,
+both real platform configs verify fullb2 revision. No API/data migration; production lastdb1ea21healthy,
+not upgraded. Full parser/SQL/category/archive ctx remains outside this stage slice. See section12.
 
 - Public API root: `/api`.
 - Auth: `Authorization: Bearer <jwt>` for protected `/api` endpoints.

@@ -60,6 +60,12 @@ historical404 retained as unknown. Review then confirmed token-collision compens
 metadata or accept old parsed data. Independent red7b47c8d preceded the original-absence guard, preserving
 all preexisting bundle files and existing wire errors. Collision/fullGo/vet/exact race/real HTTP/Linux controls
 pass; new exact-SHA candidate gates and trusted publication are still pending. No migration is introduced.
+Final stage publication supersedes that pending state: exactb2b32f7 fullrace and its original-sh
+fresh/historical/portable/backup/restart gates pass, trusted Actions38040641233 terminalsuccess.
+Independent exact/latest OCI index sha256:ed57cc69e10e2bfcc90f401fee578f13c2df513faee97123886416ebbf92f4dc
+and both actual Linux platform config revisions verifyb2. Production remains last-readonlydb1ea21healthy;
+this is not an upgrade or migration. Initial library allocation/rollback ownership, full SQL/category/parser
+ctx and complete audit remain unknown; signed already-imported archive behavior is not reopened.
 
 The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation
 of existing behavior and do not authorize a new schema or filesystem migration:

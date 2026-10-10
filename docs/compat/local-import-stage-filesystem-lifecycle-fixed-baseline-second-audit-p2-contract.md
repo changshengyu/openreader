@@ -1,10 +1,10 @@
 # 本地图书暂存 token 文件系统全生命周期第二轮固定基准合同（P2）
 
-状态：**implemented / collision-review-fixed / final-candidate-validation-pending**。
+状态：**aligned / regression-validated / Docker-published / awaiting-device-verification**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 源码审查基线：`OpenReader@5cfc53d4993e0b7c020d5bb8d2747af6e07ab73c`，2026-10-10。
 
-以下盘点保留初始合同阶段说明；第8–10节记录后续测试与实施，当前状态以上为准。
+以下盘点保留初始合同阶段说明；第8–11节记录测试与实施历史，第12节为最终发布证据，当前状态以上为准。
 初始盘点只修改合同，不修改应用。原书已恢复事件保持关闭；当时只记录源码窗口，尚无本项
 确定性红灯或生产复现。mounted-source plan→bounded bytes 已独立实现、验证、发布，不能从它推导
 stage、prepared publication、消费或 TTL 安全。合同必须独立提交推送，随后实际红测，再实施。
@@ -259,3 +259,33 @@ crypto/rand.Reader于每项cleanup恢复；不修改生产随机源。日志
 API100.565s、vet、exact race/API72.899s/service2.114s/root1.402s、frontend762/build/Compose、
 三账号真实HTTP、Chromium三个视口confirmed Reader及非root Linux arm64 service（含新碰撞反例）通过。新确切提交完整race、候选
 Go1.24/CGO Docker新旧卷/portable/backup以及可信双架构GHCR/OCI仍需验证，未发布。
+
+## 12. 确切候选发布与独立核验（2026-10-10）
+
+应用提交 `b2b32f7b40bb8cefc18d316aefb29865aede9872` 在上述全Go/vet、frontend762/build、
+精确race、非root Linux、三账号HTTP与真实Chromium三个视口之外，完整API/service/root race
+终态通过（API870.086s/service2.107s/root3.380s，25m预算；没有降低bcrypt成本）。该SHA的本地
+Go1.24/CGO arm64候选通过原始sh新卷及历史卷门：TXT/EPUB/UMD/CBZ、相对缓存、归档hash、
+owner隔离、logical/portable-v1/v2-assets备份恢复及重启。保留测试目录与早先0a历史404失败记录，
+该旧失败原因仍unknown，不能写为已定位修复；最终b2两门均一次通过。
+
+本地门全部终态成功后才将main4104499快进到确切b2（force=false）。可信
+[Actions run 38040641233](https://github.com/changshengyu/openreader/actions/runs/38040641233)
+完整headSHA一致且终态success，重新通过后端、前端、build/Compose、真实HTTP、native镜像、
+fresh/historical/portable/backup和发布平台门，正式发布：
+
+- `ghcr.io/changshengyu/openreader:b2b32f7`、`ghcr.io/changshengyu/openreader:latest`；
+- 两标签独立公开Registry API读取与bytes SHA256核验，同一OCI index
+  `sha256:ed57cc69e10e2bfcc90f401fee578f13c2df513faee97123886416ebbf92f4dc`；
+- amd64 manifest `sha256:ffa4c1bb0dc3b86d86f2cc9200519e0a39e863c526206079c709055a915e9a02`；
+- arm64 manifest `sha256:892857fd926f1aad1d241a2b3c686f5cebf3f7b3a649632fe8a0b642bb154789`。
+
+两平台实际config均验证linux/对应architecture与完整b2 OCI revision，不仅信任index平台名称或
+Actions日志。核验日志 `/private/tmp/openreader-import-stage-registry-b2b32f7.json`；访问令牌只留
+内存，无凭据日志。此证据不是GHCR回拉容器health或生产运行证明。
+
+生产只读health最后确认完整 `db1ea216f9849bc44a90b5b760241df1c6d069b0`、status ok，运行在
+另一台Mac；没有生产写入或升级。原书已恢复事件仍关闭，设备升级验收尚未完成。允许差异仅原
+多用户/随机token/TTL、bounded native/ctx、owned cleanup与durable成功保留；不改UI、schema、
+旧URL、data/cache/library或备份格式。完整parser/SQL/category/archive原子ctx、初始library归档
+所有权、跨进程exactly-once、扫描预算、desktop click/wheel、dependency advisory和整体审计仍未完成。

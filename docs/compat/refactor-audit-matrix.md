@@ -103,9 +103,9 @@ stable link/special目录策略；不把普通read/list或SQL/stage全生命周�
 
 基准：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-## 2026-10-10 本地 import stage 文件系统生命周期（实施及本地验证中）
+## 2026-10-10 本地 import stage 文件系统生命周期（已发布，待设备验收）
 
-**implemented / collision-review-fixed / final-candidate-validation-pending**，见
+**aligned / regression-validated / Docker-published / awaiting-device-verification**，见
 [`local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
 stage create/load、prepared publication/read、成功consume、startup/hourly TTL清理分别走绝对路径，
 metadata无界、context未贯穿、cleanup按name且prepared cache miss吞掉身份变化。合同4104499先
@@ -124,7 +124,12 @@ historical404未复现且原因unknown，保留失败记录）。发布前exclus
 随机token碰撞红灯：旧metadata被补偿误删、旧parsed被新stage接收；book碰撞绿色控制保持。
 独立red7b47c8d已远端核验后才加原三文件absence guard，两个反例转绿且book控制保持；fullGo
 API100.565s/vet、exact race72.899s、frontend762/build/Compose、三账号HTTP、非root Linux service
-及三视口confirmed Reader通过。新确切提交full race及候选镜像/卷/可信发布待办；不推已知红灯main，不冒充生产升级。
+及三视口confirmed Reader通过。最终b2完整race/API870.086s及同SHA本地新旧卷/portable/backup
+全部终态通过后，main才快进b2；可信Actions38040641233全门终态success，发布b2b32f7/latest。
+两标签独立Registry核验同一OCI index
+`sha256:ed57cc69e10e2bfcc90f401fee578f13c2df513faee97123886416ebbf92f4dc`，实际amd64/arm64
+config完整revision均b2b32f7。以上待办段为历史阶段，最终证据见合同第12节；生产最后只读仍
+db1ea21healthy，未升级，不重开已恢复原书事件。完整parser/SQL/category/初始归档/扫描预算仍unknown。
 
 上游工作副本：`/private/tmp/reader-dev-upstream-audit`。本矩阵创建于
 2026-07-13，用来替代“当前实现/既有测试通过即可视为重构完成”的判断方式。

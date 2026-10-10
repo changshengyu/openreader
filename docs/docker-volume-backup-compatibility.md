@@ -164,3 +164,26 @@ empty Docker config. Read-only GHCR Registry API inspection resolved the remote 
 `architecture=arm64` plus full revision `9f5a52b3ea4da8ca557653052c5190d8023dfa61`. This verifies the published
 remote artifact but is not evidence that any user production instance has upgraded; production runtime remains
 unknown.
+
+## 2026-10-10 Local import staged-bundle lifecycle release
+
+Exact application `b2b32f7b40bb8cefc18d316aefb29865aede9872` passed its local Go1.24/CGO arm64
+fresh and historical original-sh gates, including all four legacy formats, relative-cache/hash/owner
+isolation, logical/portable-v1/v2-assets backup restore and restart. Earlier0a historical firstHTTP404
+remains unreproduced/unknown with its failure log retained; finalb2 both gates passed without a retry.
+FullGo/vet, fullAPIrace870.086s, frontend762/build/Compose, three-user HTTP, nonrootLinux controls
+and actual confirmed-Reader Chromium1440x900/390x844/360x800 passed before main fast-forward.
+
+Trusted [Actions38040641233](https://github.com/changshengyu/openreader/actions/runs/38040641233)
+ran the exact fullSHA, passed all backend/frontend/HTTP/native/fresh/historical/backup/platform gates,
+and published `ghcr.io/changshengyu/openreader:b2b32f7` plus `latest`. Independent public Registry API
+verification checks exact bytes/digests and actual configs for both Linux platforms, with fullb2 revision:
+
+- OCI index: `sha256:ed57cc69e10e2bfcc90f401fee578f13c2df513faee97123886416ebbf92f4dc`;
+- amd64: `sha256:ffa4c1bb0dc3b86d86f2cc9200519e0a39e863c526206079c709055a915e9a02`;
+- arm64: `sha256:892857fd926f1aad1d241a2b3c686f5cebf3f7b3a649632fe8a0b642bb154789`.
+
+This is not a pulled-container health or production-upgrade claim. Last independent read-only production
+health remains `db1ea216f9849bc44a90b5b760241df1c6d069b0`, statusok, on another Mac. No mounted
+data/schema/API/backup-format migration or production write. Fullparser/SQL/category/initialarchive
+lifecycle, scan budgets and overall device/audit acceptance remain unfinished; see the focused stage contract.
