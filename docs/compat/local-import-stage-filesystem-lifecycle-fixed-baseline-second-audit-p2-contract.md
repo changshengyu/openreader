@@ -1,6 +1,6 @@
 # 本地图书暂存 token 文件系统全生命周期第二轮固定基准合同（P2）
 
-状态：**implemented / collision-review-red / release-pending**。
+状态：**implemented / collision-review-fixed / final-candidate-validation-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 源码审查基线：`OpenReader@5cfc53d4993e0b7c020d5bb8d2747af6e07ab73c`，2026-10-10。
 
@@ -251,3 +251,11 @@ feature checkpoint `0a40298cab145941bebdf0e7a3d7a7739796dd38` 已远端精确核
 crypto/rand.Reader于每项cleanup恢复；不修改生产随机源。日志
 `/private/tmp/openreader-import-stage-token-collision-red.log`。这不是生产复现，也不混算旧应用120。
 修复之后须重跑候选源码回归/真实浏览器及同SHA镜像卷门，再推main与可信Actions发布。
+
+独立red `7b47c8d62a0d0681bc00c5ae428f1b027f624b59` 已在feature远端精确核验，main4104499
+不变，随后才加创建guard：原session验收后、任何cleanup/写入前，三entry有任一个原inode即
+返回既有ErrStageWrite。没有重用旧bundle或改token格式；不引入自动碰撞重试/新API。
+三个后缀控制全部转绿（service0.467s），120初始反例及30补充控制继续绿；最后修复版fullGo
+API100.565s、vet、exact race/API72.899s/service2.114s/root1.402s、frontend762/build/Compose、
+三账号真实HTTP、Chromium三个视口confirmed Reader及非root Linux arm64 service（含新碰撞反例）通过。新确切提交完整race、候选
+Go1.24/CGO Docker新旧卷/portable/backup以及可信双架构GHCR/OCI仍需验证，未发布。

@@ -139,6 +139,14 @@ func (s *Service) Create(ctx context.Context, user uint, name, extension string,
 		}
 		return nil, ErrStageWrite
 	}
+	// Admission of an existing inode does not give a new Create ownership of
+	// it. Reject the entire random-token collision before writes or cleanup;
+	// compensation can then only encounter original absence or our own files.
+	for _, entry := range x.entries {
+		if entry.Info != nil {
+			return nil, ErrStageWrite
+		}
+	}
 	s.cleanupUser(ctx, x.root, strconv.FormatUint(uint64(user), 10), time.Now())
 	if err := x.Validate(); err != nil {
 		if ctx.Err() != nil {

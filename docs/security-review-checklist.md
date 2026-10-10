@@ -1594,6 +1594,9 @@ sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd。生产
 - [x] fullGo/vet/frontend762/build、三用户真实HTTP/storage/Reader及三视口真实Chromium。
 - [x] 最终write分类版full/API103.532s+vet、exact race120+30控制/API70.957s、最终三用户HTTP及confirmed Reader三视口；prepared写入失败不误报读取token400。
 - [ ] 最终源码全API race25m run终态、同候选Docker新旧卷/portable/backup/双架构及OCI发布核验（中间bundle full886.942s与dirty本地Docker不替代）。
+- [x] 0a确切full race878.190s及本地候选新旧卷通过；发布前所有权复审得到两个实际token碰撞红灯，独立red7b47c8d推feature后才加三entry原缺失guard，旧文件不被新Create补偿/接收。新修复fullGo/vet、exact race、frontend762、真实HTTP及非root Linux service绿。
+- [x] 碰撞修复版Chromium三个视口确认后真实Reader正文、取消/单本/批量/逐本全部通过，无mock/横溢出/章节失败。
+- [ ] 碰撞修复新确切提交full race与同SHA镜像卷门及可信双架构发布/OCI，不复用0a证据。
 
 合同 `compat/local-import-stage-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`。
 本项不称生产复现；stage/saveParsed的storage PathError映射已统一安全

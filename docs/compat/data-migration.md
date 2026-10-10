@@ -55,6 +55,11 @@ FD/durable controls and final isolated three-user real HTTP plus confirmed-Reade
 intermediate bundle full API race passes but final source full race and candidate-specific Docker
 historical/fresh/portable/backup/publication remain pending. Production db1ea21 is independently healthy,
 not upgraded; local service/native tests in an older Linux runtime are not a candidate-volume proof.
+Exact0a full race and local fresh/historical/portable/backup later passed, with an initial unreproduced
+historical404 retained as unknown. Review then confirmed token-collision compensation could delete old
+metadata or accept old parsed data. Independent red7b47c8d preceded the original-absence guard, preserving
+all preexisting bundle files and existing wire errors. Collision/fullGo/vet/exact race/real HTTP/Linux controls
+pass; new exact-SHA candidate gates and trusted publication are still pending. No migration is introduced.
 
 The English and Chinese READMEs now expose three distinct, supported migration paths. These are documentation
 of existing behavior and do not authorize a new schema or filesystem migration:

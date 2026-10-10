@@ -57,6 +57,11 @@ now pass, including seven-route publication status/error controls. Intermediate 
 passes (886.942s); final classification version full Go/vet, exact race and three-viewport confirmed
 Reader pass. Final full API race and candidate-specific Docker/volume/publication are pending. Local success is
 not production upgrade evidence; see the focused contract section10 for exact gate distinctions.
+Subsequent exact0a full race and local candidate volumes passed; final ownership review found two
+random-token collision reds, independently committed/pushed as7b47c8d before the guard. Creation now
+requires original absence of all three bundle files before cleanup/writes, using the existing safe stage
+error mapping. Collision controls, fullGo/vet, exact race, frontend762 and real HTTP pass. New exact-SHA
+full race and candidate release gates remain pending; confirmed Reader three-viewports also pass. See section11 for superseding evidence.
 
 - Public API root: `/api`.
 - Auth: `Authorization: Bearer <jwt>` for protected `/api` endpoints.
