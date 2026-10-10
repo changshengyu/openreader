@@ -24,6 +24,16 @@ const localImportStageCleanupInterval = time.Hour
 
 const defaultMaxLocalImportBytes int64 = 128 * 1024 * 1024
 
+// Nil in production. Deterministic lifecycle fixtures run at real work boundaries,
+// without changing legacy admission, error handling or filesystem operations.
+var localImportStageLifecycleTestHook func(phase, dir, token, path string)
+
+func localImportStageLifecycleTestPhase(phase, dir, token, path string) {
+	if localImportStageLifecycleTestHook != nil {
+		localImportStageLifecycleTestHook(phase, dir, token, path)
+	}
+}
+
 var (
 	errInvalidLocalImportToken = errors.New("invalid or expired local import token")
 	errLocalImportTooLarge     = errors.New("local book exceeds maximum import size")
@@ -48,6 +58,7 @@ func (s *Server) stageLocalImport(userID uint, fileName string, extension string
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	localImportStageLifecycleTestPhase("create-admitted", dir, token, "")
 	cleanupLocalImportStageDir(dir, time.Now())
 
 	metadata := localImportStageMetadata{
@@ -87,6 +98,7 @@ func (s *Server) loadStagedLocalImport(userID uint, token string) (localImportSt
 		s.removeStagedLocalImport(userID, token)
 		return localImportStageMetadata{}, nil, errInvalidLocalImportToken
 	}
+	localImportStageLifecycleTestPhase("load-metadata", dir, token, dataPath)
 	data, err := s.readBoundedLocalImportFile(dataPath)
 	if err != nil {
 		s.removeStagedLocalImport(userID, token)
@@ -140,6 +152,7 @@ func (s *Server) removeStagedLocalImport(userID uint, token string) {
 		return
 	}
 	dataPath, metadataPath := localImportStagePaths(s.localImportStageDir(userID), token)
+	localImportStageLifecycleTestPhase("consume-admitted", s.localImportStageDir(userID), token, dataPath)
 	_ = os.Remove(dataPath)
 	_ = os.Remove(metadataPath)
 	_ = os.Remove(localImportPreparedStagePath(s.localImportStageDir(userID), token))
@@ -194,6 +207,7 @@ func (s *Server) saveStagedPreparedImport(userID uint, token string, prepared lo
 	if err := temporary.Close(); err != nil {
 		return err
 	}
+	localImportStageLifecycleTestPhase("prepared-ready", dir, token, temporaryPath)
 	return os.Rename(temporaryPath, localImportPreparedStagePath(dir, token))
 }
 
@@ -382,6 +396,7 @@ func cleanupLocalImportStageDir(dir string, now time.Time) {
 			}
 			info, err := entry.Info()
 			if err == nil && !info.ModTime().After(cutoff) {
+				localImportStageLifecycleTestPhase("cleanup-unlink", dir, name, filepath.Join(dir, name))
 				_ = os.Remove(filepath.Join(dir, name))
 			}
 			continue
@@ -392,6 +407,7 @@ func cleanupLocalImportStageDir(dir string, now time.Time) {
 		if strings.Contains(name, ".parsed-") {
 			info, err := entry.Info()
 			if err == nil && !info.ModTime().After(cutoff) {
+				localImportStageLifecycleTestPhase("cleanup-unlink", dir, name, filepath.Join(dir, name))
 				_ = os.Remove(filepath.Join(dir, name))
 			}
 		}
@@ -403,6 +419,7 @@ func removeStagedLocalImportFromDir(dir string, token string) {
 		return
 	}
 	dataPath, metadataPath := localImportStagePaths(dir, token)
+	localImportStageLifecycleTestPhase("cleanup-remove", dir, token, metadataPath)
 	_ = os.Remove(dataPath)
 	_ = os.Remove(metadataPath)
 	_ = os.Remove(localImportPreparedStagePath(dir, token))

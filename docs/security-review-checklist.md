@@ -1583,9 +1583,10 @@ parser/SQL整个生命周期。追加8深层/读取中红灯后实施same-scope�
 success，新旧卷/portable/backup/platform全部通过，exact/latest registry index独立核验为
 sha256:ba5456fe6aeac3ba3145b7bb9b58c75e00fa07de500e5536246fc08f081bf4cd。生产db1ea21未升级。
 
-# 2026-10-10 import stage lifecycle（合同盘点，未实施）
+# 2026-10-10 import stage lifecycle（初轮红测，未实施）
 
-- [x] 固定上游与七个现有route/shared stage/prepared/consume/startup-TTL调用链已映射；没有应用修改。
+- [x] 固定上游与七个现有route/shared stage/prepared/consume/startup-TTL调用链已映射；合同4104499先推。
+- [x] 初轮90项旧应用实际red/API5.805s：工作期替换/取消/误删、stable link、FIFO及预算；接缝实际触发，FIFO peer有界释放join；正常控组通过。无应用修复，feature only不发布。
 - [ ] 原cache/user/bundle session、regular no-follow/nonblock、1MiB metadata与原预算/ctx。
 - [ ] prepared原target publication、同tokenactive lease与TTL协调、未知实体不覆盖/owned回收。
 - [ ] durable成功只消费原bundle、cleanup原scan/entity identity及background逐项取消。

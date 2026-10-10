@@ -1,6 +1,6 @@
 # 本地图书暂存 token 文件系统全生命周期第二轮固定基准合同（P2）
 
-状态：**inventory-complete / must-fix / tests-and-implementation-pending**。
+状态：**red-reproduced / must-fix / implementation-pending**。
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 源码审查基线：`OpenReader@5cfc53d4993e0b7c020d5bb8d2747af6e07ab73c`，2026-10-10。
 
@@ -49,7 +49,7 @@ stage、prepared publication、消费或 TTL 安全。合同必须独立提交�
 | POST `/api/imports/books/preview` | 200单preview，含原importToken；新file只上传一次。 | invalid/expired/foreign token400 `invalid or expired local import token`；初始stage普通失败400 `failed to stage import`；parser400+token；prepared save500 `failed to stage parsed import`+token。 |
 | POST `/api/imports/books`、`/api/imports/txt` | 201 Book，确认成功后消费原token并通知。raw file直接确认无需强制stage/cache写入。 | 既有request400/401、input413、parser400、durability500 fixed `failed to import book`。 |
 | POST `/api/local-store/import-preview`、`/api/webdav/import-preview` | 200 `{items}`；path/token/book或安全error；token-only不接收mounted根。 | 普通stage/parser/token错误仍200 per-item；初始stage安全 `failed to stage import`，prepared filesystem错误统一 `failed to stage parsed import`，不输出PathError。 |
-| POST `/api/local-store/import`、`/api/webdav/import` | 200 `{items}`，逐项durable成功；先前成功项与事件保持。 | invalid token安全per-item；prepared filesystem错误同上；保持普通parser错误、格式和权限优先级。 |
+| POST `/api/local-store/import`、`/api/webdav/import` | 200 `{imported}`，逐项durable成功；先前成功项与事件保持。 | invalid token安全per-item；prepared filesystem错误同上；保持普通parser错误、格式和权限优先级。 |
 
 新安全拒绝规则：token读取的unsafe/stable link/FIFO/changed bundle表现为opaque invalid token；
 新stage/parsed写入unsafe映射既有固定stage错误，不泄漏root/token/temp/credentials，不引入499。
@@ -132,6 +132,39 @@ Git、Docker、production及设备验收，不以旧757/762绿灯代替本轮。
 ## 7. 尚未签收及允许差异
 
 允许差异是多用户随机stage/TTL、bounded native安全与ctx、未知实体保留及durable成功不伪回滚。
-尚未签收：本项红测/实现/资源并发/runtime/发布；完整parser/SQL/category/archive生命周期；目录
+尚未签收：本项剩余覆盖/实现/资源并发/runtime/发布；完整parser/SQL/category/archive生命周期；目录
 扫描cardinality/depth/FD预算；桌面click/wheel复审、dependency advisory及整体审计。生产独立health
 仍db1ea21；已发布mounted-source app5cfc53d，不代表生产升级或新stage问题已解决。
+
+## 8. 独立初轮真实红测（2026-10-10，应用未修复）
+
+合同4104499已独立提交并远端main精确核验后，才在新工作树添加
+`backend/api/local_import_stage_lifecycle_contract_test.go` 与nil-in-production阶段接缝；所有原绝对
+I/O、bool cache miss、ctx缺口及删除逻辑仍未修改。此前source app5cfc53d仍是发布版。
+
+`go test ./api -run '^TestLocalImportStageLifecycle' -count=1` 在旧应用精确exit1/API5.805s，
+共 **90项实际失败**（89个leaf subtest +1个MaxInt64测试），无编译失败、未触发fixture或未join：
+
+- 18新preview在cache/derived/user目录或link替换后仍写foreign namespace并接受token。
+- 17授权后取消，覆盖七route的load-metadata/parsed-ready及三preview create；仍成功stage或Book/
+  Chapter/category/event，违反已固定500与无当前失败项副作用。
+- 21 metadata→bytes阶段cache/user/同名book替换仍进入preview/library；原held bytes保留。
+- 18 stable book/user/prepared link被接受；prepared link非普通cache miss，原foreign target保留合同失败。
+- 2 prepared target/temp未知newcomer被覆盖/发布；user目录替换这项在旧实现已安全报错，是正常
+  控制组，不计红灯，不以它推导其它阶段安全。
+- 4 durable后consume删除后来出现的三份同名newcomer；Book正常成功不伪回滚。
+- 5 TTL分类后bundle/user/orphan book/parsed/temp替换，被name cleanup误删fresh newcomer。
+- metadata1MiB+1无界接收；MaxInt64 read/copy budget+1溢出后错误地交付空bytes。
+- 3 metadata/book/prepared FIFO在150ms窗阻塞且peer释放后仍被接收；使用自有nonblocking writer
+  显式释放并2s内join，原FIFO与held files保留；没有遗留阻塞goroutine。
+
+最终日志 `/private/tmp/openreader-import-stage-initial-red-final.log`。独立控组：exact1MiB有效
+metadata及prepared-user replacement正常拒绝API0.329s；既有历史stage/TTL/两用户/预算/GB18030/
+源移除后同token重试和成功消费API0.838s均exit0，另controls.log/API0.861s。轮换前控制0.868s、
+新树继承控制0.751s均通过。仅测试自有root，没有用户/生产修改。
+
+初轮红测不是实现或发布候选；只能推feature branch，不将故意红灯main发布。完整Go/frontend/
+browser/Linux/volume门在应用实现后执行，当前不能声称全量绿。剩余before-code覆盖包括实际
+bounded read/write中取消、parsed load中同名/祖先变化及cache-miss安全错误映射、partial-owned
+rollback、consume目录变化、TTL逐项ctx/active lease等待、000/late同inode link及FD所有权；
+必要时追加实际红测后再实现对应部分，不把90测试签成整个stage合同已完成。
