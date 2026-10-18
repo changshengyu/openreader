@@ -1,9 +1,35 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { ref } from 'vue'
 import { useReaderShelf } from '../src/composables/useReaderShelf.js'
 import { sortByShelfOrder } from '../src/utils/bookOrder.js'
 import { readerRouteQueryFromBook } from '../src/utils/readerRoute.js'
+
+const readerShelfSource = readFileSync(new URL('../src/composables/useReaderShelf.js', import.meta.url), 'utf8')
+
+// Contract: docs/compat/reader-shelf-switch-stale-catalog-fixed-baseline-second-audit-p1-contract.md R2 (switch route
+// percent), 8.2(1) book 6. useReaderShelf.js cannot be imported under node --test (extensionless imports).
+test('a reader shelf switch never derives the route percent from the previous book catalog', () => {
+  // Book 6: the shelf row has no chapterCount and old/WebDAV progress has only a book-level percent.
+  const item = { id: 6, progress: { chapterIndex: 4, offset: 0, percent: 0.75 } }
+  assert.deepEqual(readerRouteQueryFromBook(item, item.progress), { resume: '1', chapter: 4 })
+  // Borrowing a 6-chapter previous catalog fabricates 0.75 * 6 - 4 = 0.5 for a book whose own length is unknown.
+  assert.deepEqual(readerRouteQueryFromBook(item, item.progress, 6), { resume: '1', chapter: 4, percent: 0.5 })
+
+  const select = readerShelfSource.match(/async function select\(item\) \{[\s\S]*?\n {2}\}/)?.[0] || ''
+  assert.ok(select, 'useReaderShelf must define select(item)')
+  assert.doesNotMatch(
+    select,
+    /currentChapterCount|fallbackCount/,
+    'select must not fall back to the current (previous) book chapter count',
+  )
+  assert.match(
+    select,
+    /readerRouteQueryFromBook\(item, progress(?:, item\?\.chapterCount)?\)/,
+    'select builds the switch route only from the selected book row and its newest progress',
+  )
+})
 
 test('offset-only saved progress never adds a fabricated zero percentage', () => {
   for (const chapterPercent of [0, null, undefined, '']) {
