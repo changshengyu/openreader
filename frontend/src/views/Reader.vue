@@ -653,7 +653,6 @@ const {
   bookshelf,
   reader,
   currentBookId: bookId,
-  currentChapterCount: () => chapters.value.length,
   router,
   saveProgress: () => saveCurrentProgress({ force: true }),
   onWarning: message => ElMessage.warning(message),
@@ -1873,6 +1872,7 @@ const {
 
 const {
   clearLoadingTimer: clearChapterLoadingTimer,
+  invalidate: invalidateChapterLoad,
   load: loadChapter,
 } = useReaderChapterLoader({
   chapters,
@@ -2132,6 +2132,11 @@ const readerRouteSync = useReaderRouteSync({
   onBookLoadStart: () => {
     readerBookDeleted.value = false
     resumeProgressSaving()
+    // The previous book's content and in-flight chapter load are not the new book's: show the existing loading
+    // state until the new catalog and target chapter arrive.
+    invalidateChapterLoad()
+    chapterLoaded.value = false
+    chapterLoading.value = true
     chapterLoadError.value = ''
     readerCatalogLoadFailed.value = false
   },

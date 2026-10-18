@@ -269,6 +269,7 @@ async function mountReader(definition) {
       ),
     })
     const localProgress = useReaderLocalProgress({
+      getMode: () => "page",
       reader,
       bookshelf,
       bookId,

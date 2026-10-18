@@ -82,6 +82,9 @@ export function useReaderBookLoad(options) {
   async function load() {
     options.cancelProgressSave()
     const targetBookId = unref(options.bookId)
+    // A catalog belongs to the book it was loaded for. Drop the previous book's rows before the first await so the
+    // TOC, preloads, chapter clamping, progress and N% never size or label this book with them.
+    options.chapters.value = []
     if (unref(options.isTemporaryReader)) {
       const response = await options.loadTemporaryReader(targetBookId)
       if (unref(options.bookId) !== targetBookId) return

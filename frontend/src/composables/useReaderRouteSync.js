@@ -3,10 +3,6 @@ import { parseReaderRoutePercent } from '../utils/readerRoute.js'
 
 export function useReaderRouteSync(options) {
   let suppressedPositionKey = ''
-  // Set while the route change that opened another book is being flushed. The same change also changes the
-  // position query, but the book load positions itself from the route once the new catalog arrives; loading a
-  // chapter here would use the previous book's catalog (running title contract R5).
-  let openingBook = false
 
   function positionKey(values) {
     const position = Array.isArray(values)
@@ -20,12 +16,6 @@ export function useReaderRouteSync(options) {
   }
 
   watch(options.bookId, async () => {
-    openingBook = true
-    suppressedPositionKey = ''
-    // Both watchers of one route change run in the same scheduler flush; this resets after it.
-    Promise.resolve().then(() => {
-      openingBook = false
-    })
     options.onBookLoadStart?.()
     try {
       await options.loadBook()
@@ -34,9 +24,11 @@ export function useReaderRouteSync(options) {
     }
   })
 
-  watch(options.positionQuery, async ([chapter, offset, percent]) => {
-    if (openingBook) {
-      openingBook = false
+  // A route change that also switches the book belongs to the book load: it applies the new catalog first and then
+  // locates the chapter and route line itself. The previous catalog must not pick or load a chapter for the new book.
+  watch([options.bookId, options.positionQuery], async ([bookId, [chapter, offset, percent]], [previousBookId]) => {
+    if (bookId !== previousBookId) {
+      suppressedPositionKey = ''
       return
     }
     if (suppressedPositionKey) {
@@ -64,7 +56,8 @@ export function useReaderRouteSync(options) {
     await options.jumpToRouteLine()
   })
 
-  watch(options.searchQuery, async () => {
+  watch([options.bookId, options.searchQuery], async ([bookId], [previousBookId]) => {
+    if (bookId !== previousBookId) return
     await options.jumpToRouteLine()
   })
 
