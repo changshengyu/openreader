@@ -439,6 +439,12 @@ async function runShelfSwitches(browser, viewport, mode) {
       await page.waitForTimeout(600)
     })
 
+    // R3: every progress write names a chapter row of the book it is written for, including the forced save that
+    // leaves a book whose own first chapter failed (book 5 -> book 6).
+    const crossBookPuts = state.events.filter(({ type, bookId, body }) => type === 'put' && (
+      !catalogs[bookId]?.[body.chapterIndex] || body.chapterId !== bookId * 100 + body.chapterIndex
+    ))
+    if (crossBookPuts.length) failures.push(`${label}: progress written with another book's chapter: ${describe(crossBookPuts)}`)
     const notFound = state.events.filter(event => event.type === 'content' && event.status === 404)
     if (notFound.length) failures.push(`${label}: 404 chapter requests ${describe(notFound)}`)
     const unexpectedConsole = consoleErrors.filter(text => !(
