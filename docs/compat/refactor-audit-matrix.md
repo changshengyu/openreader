@@ -1,5 +1,14 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-22 当前切片：发布流程浏览器启动门（P1，O3）
+
+见[`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。
+发布流程只跑前端单元测试和构建，不在浏览器里加载产物；vite 8.1.6 的空白页产物会照常发布（O3）。G1（无浏览器门）、
+G2（checker按整个body而非`#app`判空白）、G3（空白失败不报页面错误与视口）判must-fix：新增门脚本从native候选镜像起全新
+容器，锁定Playwright 1.61.1 headless shell三视口加载，放在native构建之后、arm64构建之前；checker收紧到`#app`并附带页面
+错误；workflow增加浏览器安装、门精度/接线测试和门步骤，`paths`纳入门文件。G4只测amd64、G5只测入口为acceptable-change。
+状态contract-only。
+
 ## 2026-10-22 当前切片：发布门新增依赖公告维护（P1，阻塞 P0 发布）
 
 见[`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)。
