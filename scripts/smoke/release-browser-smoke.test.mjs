@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import test, { after, before } from 'node:test'
+import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 // Wiring of the release browser gate, plus the precision of the checker it runs
@@ -67,10 +67,11 @@ const server = createServer((request, response) => {
   response.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'}).end('<!doctype html><html><head><meta charset="utf-8">' +
     `<link rel="icon" href="data:,"><title>owned</title></head><body>${pages[request.url]}</body></html>`)
 })
-before(() => new Promise(resolve => server.listen(0, '127.0.0.1', resolve)))
+const listening = new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
 after(() => {server.closeAllConnections(); return new Promise(resolve => server.close(resolve))})
 
-function runChecker(path) {
+async function runChecker(path) {
+  await listening
   const env = {...process.env, TARGET_URL: `http://127.0.0.1:${server.address().port}${path}`}
   for (const name of ['CDP_URL', 'CHROME_PATH', 'SMOKE_READER_URL']) delete env[name]
   return new Promise(resolve => execFile(process.execPath, [checker], {env, timeout: 120_000},
