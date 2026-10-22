@@ -24,6 +24,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
 	"openreader/backend/services/backup"
+	"openreader/backend/services/instancesecret"
 	"openreader/backend/services/scheduler"
 	readersync "openreader/backend/sync"
 )
@@ -50,6 +51,12 @@ func run() error {
 
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
+	}
+	// Before anything is migrated: a published or blank secret must never
+	// sign, and an unreadable instance secret stops the start untouched.
+	cfg, err := instancesecret.Apply(cfg)
+	if err != nil {
+		return fmt.Errorf("prepare signing secret: %w", err)
 	}
 	if err := os.MkdirAll(cfg.CacheDir, 0o755); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)

@@ -20,6 +20,7 @@ import (
 	"openreader/backend/services/chapterimage"
 	"openreader/backend/services/coverimage"
 	"openreader/backend/services/epubreader"
+	"openreader/backend/services/instancesecret"
 	"openreader/backend/services/readingprogress"
 	"openreader/backend/services/remotereader"
 	rssservice "openreader/backend/services/rss"
@@ -59,7 +60,16 @@ type Server struct {
 	assetLocks       map[uint]*userAssetGate
 }
 
+// RegisterRoutes builds the server's services from cfg. main applies the
+// instance secret before it opens the database; a caller that passes a blank
+// or published cfg.JWTSecret gets the same instance secret here, so no server
+// signs with a published value, and it panics if that secret cannot be read
+// or created.
 func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hub *readersync.Hub, sched *scheduler.Scheduler, backupSvc *backup.Service) *Server {
+	cfg, err := instancesecret.Apply(cfg)
+	if err != nil {
+		panic(err)
+	}
 	server := &Server{
 		cfg:              cfg,
 		db:               database,
@@ -78,7 +88,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		sourceFailures:   sourcefailure.New(database),
 		sourceCandidates: sourcecandidates.New(database),
 		remoteReaders:    remotereader.NewStore(remotereader.DefaultLimits(), nil),
-		sessions:         authsession.New(database, cfg.JWTSecret),
+		sessions:         authsession.New(database, cfg.JWTSecret, cfg.JWTPreviousSecrets...),
 		assetStore:       assetservice.NewStore(cfg.DataDir),
 		assetLocks:       make(map[uint]*userAssetGate),
 	}
