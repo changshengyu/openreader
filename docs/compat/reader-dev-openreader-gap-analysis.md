@@ -1,5 +1,20 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-22 P1 认证与资源链接 实例签名密钥（S2）
+
+P0 合同第 8 节定下方向的后续切片。`OPENREADER_JWT_SECRET` 未设置（标准 Compose 的形态）、空白或为两个公开默认值之一时，
+会话 token 和五类资源 capability（EPUB/CBZ/音频/章节图片 HMAC，封面 AES-GCM）都用仓库里公开的值签名；会话靠随机
+`jti` 摘要认证不受影响，capability 却只靠签名认证（封面中风险：匿名图片代理；其余低风险）。现有卷门都显式设置密钥，
+这条标准部署路径从未被真实启动过。固定上游没有服务端签名密钥（随机 token 查 `token_map`，封面代理与 `/epub/*` 不带
+签名），这是 OpenReader 自有设计的安全修复。判定：公开值签名会话（F1）与 capability（F2）为 **`must-fix`（P1）**，缺少
+未设置密钥的真实启动门（F3）为 **`must-fix`（发布门）**。目标：首次启动生成 256 bit 实例密钥，原子创建、0600 保存在
+`data/instance-secret`（不进 WebDAV、`/uploads`、本地书仓与任何备份，随整份 `data/` 迁移），之后用它签名一切；自定义
+密钥行为不变且不碰该文件。公开值签名的新格式会话由 `user_sessions` 摘要认证，过渡期继续接受、不设截止时间；旧格式
+token 在实例密钥模式下一律拒绝；capability 没有过渡。代价：切换前的资源链接（12–48 小时）失效一次；回滚到 `92c98a9`
+及更早的镜像时切换后签发的会话失效。门：api 层红测、未设置密钥的真实启动/卷门（fresh、historical、restart、rollback、
+re-upgrade，旧镜像按 digest 固定），历史卷门新增未设置密钥模式。状态 **contract-only**。完整合同见
+[`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](instance-signing-secret-fixed-baseline-second-audit-p1-contract.md)。
+
 ## 2026-10-22 P1 依赖维护 发布门新增公告
 
 认证会话 P0 修复的本地发布门里，两个失败关闭的 advisory 门在当前树上失败（上次成功发布为 10-18 的 `238e3f3`）：Go 门报
