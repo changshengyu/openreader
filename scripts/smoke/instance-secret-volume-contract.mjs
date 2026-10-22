@@ -519,6 +519,10 @@ try {
     const legacy = signJWT({ userId: owner.id, iat: Date.UTC(2020, 0, 1) / 1000 }, value)
     await requireSessionRejected(server, legacy, `legacy token signed with ${value}`)
   }
+  // exposure (before the cover book below: portable backups refuse a local
+  // shelf entry that has no archive)
+  await requireNotExposed(server, candidateSession, instanceSecret)
+
   const coverBook = await call(server, '/api/books', {
     method: 'POST', token: candidateSession, json: { title: '实例密钥封面', coverUrl: 'https://cover.invalid/instance-secret.png' },
   })
@@ -529,9 +533,6 @@ try {
   const coverToken = decodeURIComponent(coverLink.slice('/api/cover/'.length))
   for (const value of published) assert.ok(!coverOpens(coverToken, value), `candidate cover link opens with ${value}`)
   assert.ok(coverOpens(coverToken, instanceSecret), 'candidate cover link is not sealed with the instance secret')
-
-  // exposure
-  await requireNotExposed(server, candidateSession, instanceSecret)
   await server.stop()
   await requireLogsWithout(server, instanceSecret, 'upgrade')
 
@@ -599,6 +600,8 @@ try {
   assert.match(failure.output, /instance-secret/, 'malformed data/instance-secret: the error does not name the file')
   assert.ok(!failure.output.includes('not-an-instance-secret'), 'malformed data/instance-secret: the error prints its content')
   assert.equal(await readFile(malformedPath, 'utf8'), 'not-an-instance-secret\n', 'malformed data/instance-secret was changed')
+  await assert.rejects(lstat(join(malformedVolume.data, 'openreader.db')), { code: 'ENOENT' },
+    'malformed data/instance-secret: the database was opened before the start was refused')
 
   console.log(`instance secret volume contract passed (${docker ? 'docker' : 'binary'}: historical, upgrade, exposure, restart, rollback, re-upgrade, fresh, previous-default, custom, malformed)`)
 } finally {
