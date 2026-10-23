@@ -8,7 +8,9 @@
 构建之后，用锁定的 Playwright 1.61.1 headless shell（revision 1228）从该镜像起一个全新容器，三视口加载入口，页面错误、
 `console.error`、`/api/` 5xx 或 `#app` 为空即失败，发生在约 16 分钟的 arm64 构建和发布之前。复用既有 checker，只把空白
 判断从整个 body 收紧到 `#app`，并在失败时附上页面错误和视口。arm64 镜像拷贝同一个构建平台阶段的产物、只检查未登录入口，
-两项记为 acceptable-change。上游行为不涉及。完整合同见
+两项记为 acceptable-change。上游行为不涉及。门测试先红后绿（6/10 → 10/10）；经已发布的 `92c98a9` 镜像，门脚本对
+删除 `strictExecutionOrder: true` 的构建失败并报出 `pageerror: e is not a function`，对镜像自带产物和当前树构建通过。状态
+**implementation-complete / regression-validated**，待可信 Actions 运行。完整合同见
 [`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。
 
 ## 2026-10-22 P1 依赖维护 发布门新增公告

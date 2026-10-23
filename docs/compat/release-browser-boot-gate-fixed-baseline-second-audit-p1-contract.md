@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `b1e84f3`（应用代码与已发布的 `92c98a9` 相同）。
 
 审查日期：2026-10-22
-状态：**contract-only**
+状态：**implementation-complete / regression-validated**（证据见第 8 节；尚未经可信 Actions 运行）
 
 来源：[`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)
 第 8 节的观察 O3。该合同已签收的结论（vite 8.1.6、`strictExecutionOrder: true` 等）不重开。
@@ -148,3 +148,72 @@ rolldown 1.1+ 把运行时辅助函数放进一个共享应用 chunk，该 chunk
 - 不在 arm64 候选镜像上运行浏览器。
 - 不升级 Playwright，不改其它 smoke 脚本或卷门。
 - 不处理 S2 等其它开放项。
+
+## 8. 实施与验证证据（2026-10-23）
+
+### 8.1 提交
+
+| 提交 | 内容 |
+| --- | --- |
+| `b41b33f` | 本合同第 1–7 节，gap-analysis、matrix 与 O3 来源合同的指针 |
+| `2453d01` | 门脚本 `release-browser-smoke.sh` 与 `release-browser-smoke.test.mjs`（接线、锁文件固定、门脚本形态、checker 精度） |
+| `501eb58` | checker：按 `#app` 判空白，失败信息带视口与页面错误，通过行带视口尺寸 |
+| `06800f0` | 测试用的 loopback 服务改为模块加载时监听（不用没有先例的顶层 `before`），断言不变 |
+| `a83264f` | workflow：浏览器安装、门测试、门步骤与 `paths`；`docs/regression-smoke.md` |
+
+### 8.2 红与转绿（R1、R2）
+
+`node --test scripts/smoke/release-browser-smoke.test.mjs`，本机 Node 26.4.0，Playwright 1.61.1 / headless shell
+149.0.7827.55：
+
+| 用例 | `2453d01`（旧 checker、旧 workflow） | `501eb58` | `a83264f` |
+| --- | --- | --- | --- |
+| workflow 接线 | 失败：`paths` 缺 `package.json`（第一个缺项） | 失败 | 通过 |
+| 锁文件固定 | 通过（对照） | 通过 | 通过 |
+| 门脚本形态 | 通过（对照） | 通过 | 通过 |
+| 正常页三视口通过 | 通过（对照） | 通过 | 通过 |
+| 通过行带视口尺寸 | 失败：`desktop: ok /rendered/ …` | 通过 | 通过 |
+| 挂载前抛错 | 失败：只有 `blank page at /throws/`，没有 `pageerror` | 通过 | 通过 |
+| `#app` 为空、外面有文字 | 失败：三视口都通过（`visibleNodes=1 text=32`） | 通过 | 通过 |
+| `console.error`、`/api/` 500、缺 `#app` | 通过（对照） | 通过 | 通过 |
+| 合计 | 6/10 | 9/10 | 10/10（约 13 s） |
+
+### 8.3 门脚本行为（R3）
+
+本地拉取（不构建）已发布的 `ghcr.io/changshengyu/openreader:92c98a9`（index
+`sha256:3b29f501e659454ea096fddcc4e0a05ba3c881cccacf8c3a684218649ba218d2`，本机取 arm64，revision
+`92c98a971dce5c9166c0426695f89cd75f37cf94`），以 `IMAGE=<该镜像>` 运行门脚本：
+
+| 产物 | 旧 checker（`2453d01`） | 新 checker（`501eb58` 起） |
+| --- | --- | --- |
+| 镜像自带产物 | exit 0，7 s；三视口 `/login`，可见节点 26、文字 33 | exit 0，6 s；`desktop 1440x900: ok /login …` 等三行 |
+| `SMOKE_PUBLIC_DIR`=当前树构建 | exit 0，6 s | exit 0，6 s |
+| `SMOKE_PUBLIC_DIR`=删除 `strictExecutionOrder: true` 的构建 | exit 1，3 s：`blank page at /` 与容器日志 | exit 1，4 s：`desktop 1440x900: empty #app at /`、`pageerror: e is not a function` 与容器日志 |
+
+健康检查返回镜像自身的 commit；每次结束后没有残留容器。门脚本在 `dash`（Ubuntu 的 `/bin/sh`）下同样通过，
+`sh -n` / `dash -n` 语法检查通过。删除 `strictExecutionOrder: true` 的构建在 `frontend/vite.config.js` 临时改动后输出到
+草稿目录，随即 `git checkout` 恢复；其产物没有 `rolldown-runtime` chunk，与 2026-10-22 的空白产物结构相同。
+
+### 8.4 回归
+
+| 门 | 结果 |
+| --- | --- |
+| 门测试 `release-browser-smoke.test.mjs` | 10/10 |
+| 三项 advisory 门测试（同样读取 workflow） | 131/131 |
+| Go advisory 实际扫描 | `pass-with-not-applicable`，go1.26.10，符号级，数据库 2026-10-21T00:27:29Z，247 条，唯一发现仍是既有不适用的 GO-2026-5932（复审期 2026-11-16） |
+| 前端全锁 advisory 实际扫描（`CI=true`） | `pass`，132 包 0 发现，lockHash `1a4f72372dafdedcb3c48e04b6c229bb509c4d8556d6c4271061c3d8649e530b`（与上次发布相同） |
+| 前端 `npm test` / `npm run build` | 810/810；构建通过，产物含 `rolldown-runtime` chunk |
+| `docker compose config --quiet`、存储 HTTP 合同 | 通过 |
+| workflow YAML 解析 | 29 步；新步骤为第 17、18、22 步，顺序符合 4.3 |
+| Go full / vet / race | 未在本地重跑：本切片不改 Go 代码；可信 Actions 的 “Test backend” 在发布前运行 |
+
+无效的首次尝试（均已重跑，不计为通过）：沙箱内 `npm test` 806/810（沙箱禁止 Vite 测试服务监听本地端口）；沙箱外
+一次 `npm test` 中 `dependency advisory actual worker: source-map-offset-negative` 停顿 1066 s 后被取消（该用例自身超时
+12 s，说明是进程整体停顿而非断言失败），单独运行 26/26、整套重跑 810/810；同一时段 Go 扫描报 `tool timeout`，重跑 11 s
+通过；前端扫描首次因本机 npm 11.17.0 在 stderr 打印升级提示被门拒绝，按 CI 的 `CI=true`（关闭 npm 升级提示）重跑通过。
+
+### 8.5 状态
+
+- Git：分支 `claude/peaceful-burnell-ca0ef7` 在本记录提交；`origin/main` 仍为 `b1e84f3`。
+- 镜像：未发布；新门尚未在可信 Actions 上运行。
+- 生产：未访问，运行版本未知。
