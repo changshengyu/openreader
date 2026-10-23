@@ -12,8 +12,14 @@ P0 合同第 8 节定下方向的后续切片。`OPENREADER_JWT_SECRET` 未设�
 密钥行为不变且不碰该文件。公开值签名的新格式会话由 `user_sessions` 摘要认证，过渡期继续接受、不设截止时间；旧格式
 token 在实例密钥模式下一律拒绝；capability 没有过渡。代价：切换前的资源链接（12–48 小时）失效一次；回滚到 `92c98a9`
 及更早的镜像时切换后签发的会话失效。门：api 层红测、未设置密钥的真实启动/卷门（fresh、historical、restart、rollback、
-re-upgrade，旧镜像按 digest 固定），历史卷门新增未设置密钥模式。状态 **contract-only**。完整合同见
+re-upgrade，旧镜像按 digest 固定），历史卷门新增未设置密钥模式。完整合同见
 [`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](instance-signing-secret-fixed-baseline-second-audit-p1-contract.md)。
+
+记录（2026-10-22）：合同 `b0972b4`、红测 `3dec2ad`、Actions 接线 `f10c266`、夹具修正 `77dfee0`、实现 `26948f9`。`b1e84f3` 上 R1 4/4、
+R2 5/5、R3 3/3 子测试按预期失败，生命周期合同（二进制方式与已发布 `92c98a9` 镜像的 Docker 方式）在“升级后生成实例密钥”处失败，
+未设置密钥的卷门在首次启动处失败；实现后同一组断言全部通过，生命周期合同十个场景通过，四次临时变异各自只让对应用例变红。
+Go 30 包、vet、race，前端 810/810 与 build，advisory 门通过。状态 **implementation-complete / regression-validated**，候选镜像的
+Docker 门由 Actions 执行。
 
 ## 2026-10-22 P1 依赖维护 发布门新增公告
 

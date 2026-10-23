@@ -22,6 +22,25 @@ IMAGE=ghcr.io/changshengyu/openreader:latest scripts/docker-volume-backup-smoke.
 PORT=18080 scripts/docker-volume-backup-smoke.sh
 KEEP_OPENREADER_SMOKE=1 scripts/docker-volume-backup-smoke.sh
 HISTORICAL_VOLUME=1 IMAGE=ghcr.io/changshengyu/openreader:latest scripts/docker-volume-backup-smoke.sh
+JWT_SECRET_MODE=unset scripts/docker-volume-backup-smoke.sh
+HISTORICAL_VOLUME=1 JWT_SECRET_MODE=unset scripts/docker-volume-backup-smoke.sh
+```
+
+`JWT_SECRET_MODE` selects how the containers get their signing secret. The default `custom` passes a
+smoke-only `OPENREADER_JWT_SECRET` and asserts that `data/instance-secret` never appears. `unset` starts
+every container without the variable, the way the standard Compose file does, and asserts that the
+first start creates `data/instance-secret` as a 0600 regular 65-byte file whose inode and mtime survive
+each restart (on both the source and the portable destination volume).
+
+The instance-secret lifecycle contract runs the same unset form across one volume from an older
+release to the candidate and back again (see the 2026-10-22 section below):
+
+```bash
+CANDIDATE_IMAGE=<candidate> \
+PREVIOUS_IMAGE=ghcr.io/changshengyu/openreader@sha256:3b29f501e659454ea096fddcc4e0a05ba3c881cccacf8c3a684218649ba218d2 \
+  node scripts/smoke/instance-secret-volume-contract.mjs
+# or, without Docker, with binaries built from this tree and from 92c98a9:
+CANDIDATE_BIN=<binary> PREVIOUS_BIN=<92c98a9 binary> node scripts/smoke/instance-secret-volume-contract.mjs
 ```
 
 ## What the smoke checks
@@ -217,3 +236,27 @@ Archive layout/public755-644/marker600/private-stage700-600, old URLs, schema an
 The shared core is published; extra placeholder external deletion/rebind coverage, fullparserCPU,
 scan/peakFD budgets, exactly-once, device/advisory/overall audit remain open. See
 [`local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md`](compat/local-book-import-durable-commit-lifecycle-fixed-baseline-second-audit-p2-contract.md), sections10–12.
+
+## 2026-10-22 Instance signing secret (S2)
+
+The standard Compose file does not set `OPENREADER_JWT_SECRET`, yet every earlier volume gate set one, so the
+deployed form was never started for real. Two gates now run it, both before anything is pushed:
+
+- `scripts/docker-volume-backup-smoke.sh` with `JWT_SECRET_MODE=unset`, fresh and `HISTORICAL_VOLUME=1`: the full
+  portable/backup/restore/restart flows, plus a 0600 regular 65-byte `data/instance-secret` created on first start and
+  kept (same inode and mtime) across restarts on the source and portable-destination volumes.
+- `scripts/smoke/instance-secret-volume-contract.mjs` against the candidate image and the last release that signs with
+  the published default (`92c98a9`, pinned by OCI index digest): that release creates a volume with a session and a CBZ
+  link; the candidate upgrades it (old session still valid on REST, both WebDAV prefixes and `/ws/sync`; old link 403;
+  new tokens and links verify only with the instance secret); WebDAV, `/uploads`, local-store and backup-download
+  traversal and the ordinary and portable backup archives never yield the secret; a restart keeps the file; a rollback
+  to `92c98a9` leaves it untouched and rejects post-switch sessions; the re-upgrade reuses it and accepts sessions from
+  before, during and after the rollback. Fresh, `change-me-in-production`, custom and malformed volumes follow; a
+  malformed file stops the start before `openreader.db` is created.
+
+Local evidence (no local image build): the lifecycle contract passes in binary mode on `26948f9` and fails on
+`b1e84f3` at the upgrade step. Run against the published `92c98a9` image, it fails at the same step, the unset-mode
+volume smoke fails at its first start (fresh and historical), and the custom-mode fresh smoke passes. The custom-mode
+historical smoke hit the known one-off HTTP 404 after fixture creation once; two reruns of the edited script and one
+of the original `b1e84f3` script passed. See
+[`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](compat/instance-signing-secret-fixed-baseline-second-audit-p1-contract.md).

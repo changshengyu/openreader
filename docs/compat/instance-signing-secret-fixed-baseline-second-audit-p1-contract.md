@@ -5,7 +5,7 @@
 当前实施基线：`OpenReader@b1e84f3`（`origin/main`；应用代码与已发布的 `92c98a9` 相同）
 
 审查日期：2026-10-22
-状态：**contract-only**
+状态：**implementation-complete / regression-validated**（证据见第 10 节；发布见第 11 节）
 
 前置合同：[`authenticated-session-legacy-public-secret-fixed-baseline-second-audit-p0-contract.md`](authenticated-session-legacy-public-secret-fixed-baseline-second-audit-p0-contract.md)
 （下称“P0 合同”）。本合同实现 P0 合同第 8 节定下方向的后续切片 S2，处理其 F3；P0 合同的 T1、T2 与
@@ -199,8 +199,9 @@
 
 ### 7.3 Actions 接线
 
-`docker-publish.yml` 在现有 fresh 与 historical 卷门之后新增两步，均在推送镜像之前：
+`docker-publish.yml` 在现有 fresh 与 historical 卷门之后新增三步，均在推送镜像之前（实施时比计划多了第一步）：
 
+- `JWT_SECRET_MODE=unset` 的 fresh 卷门（portable v1/v2、跨用户恢复与重启，源卷和恢复目标卷各有自己的实例密钥）；
 - `HISTORICAL_VOLUME=1 JWT_SECRET_MODE=unset` 的历史卷门（旧 schema 夹具在未设置密钥时迁移、隔离、备份、重启）；
 - `instance-secret-volume-contract.mjs` 的 Docker 方式（上面 1–7）。
 
@@ -230,3 +231,43 @@
   文件，无 schema 变化）、`docs/docker-volume-backup-compatibility.md`（新门与 `JWT_SECRET_MODE`）。
 - 发布后直接改 main 上的 README / README_CN“在公网上使用”第 1 步与配置表：未设置密钥时会自动生成并保存在
   `data/instance-secret`，`data/` 要妥善保管、迁移时整份复制；设置自己的密钥变为可选，并写明第 5.4 节的代价。
+
+## 10. 实施与验证证据（2026-10-22）
+
+### 10.1 提交
+
+| 提交 | 内容 |
+| --- | --- |
+| `b0972b4` | 本合同及 gap-analysis / matrix 登记 |
+| `3dec2ad` | 红测：api 层 R1–R3 与四组正常对照、`instance-secret-volume-contract.mjs`、卷门 `JWT_SECRET_MODE` |
+| `f10c266` | Actions 接线：fresh / historical 卷门各加未设置密钥模式，加生命周期合同（旧镜像按 digest 固定） |
+| `77dfee0` | 生命周期合同夹具修正：备份探测移到“只有封面的书”之前（portable 备份拒绝没有原件的本地书架条目，候选版本越过升级步骤后才暴露）；新增“非法文件时数据库尚未打开”断言 |
+| `26948f9` | 实现：`services/instancesecret`、`config.JWTPreviousSecrets`、`authsession.New(..., previous...)`、`RegisterRoutes` 守卫、`main` 在打开数据库前准备；附单元测试 |
+
+### 10.2 红 → 绿
+
+- `b1e84f3` 上（旧实现）：R1 4/4 子测试失败（文件不存在、token 用配置值签名）；R2 5/5 失败（四类 HMAC capability 用公开值重算相等、公开值重签后请求为 200；封面能用公开值解开、伪造封面为 404）；R3 3/3 失败（重启前文件不存在、已有文件不被采用、0644 不被收紧）。过渡、自定义密钥（2 个子测试）、存储与备份不可外读三组对照通过。
+- 生命周期合同二进制方式（候选 = `b1e84f3`，旧版本 = `92c98a9`）：historical 步骤通过，在“upgrade: data/instance-secret was not created”处失败。Docker 方式以已发布的 `92c98a9` 镜像同时充当两端：同一处失败；卷门 `JWT_SECRET_MODE=unset` 的 fresh 与 historical 都在“first start: data/instance-secret is absent”处失败；`custom` 模式 fresh 通过，historical 第一次在夹具创建后遇到一次 HTTP 404，随后两次修改后脚本与一次 `b1e84f3` 原脚本重跑全部通过（与本文件以前记录的历史卷偶发 404 相同，未复现，不归因于本切片）。
+- `26948f9` 上：同一组 api 断言全部通过；生命周期合同二进制方式全部通过（historical、upgrade、exposure、restart、rollback、re-upgrade、fresh、previous-default、custom、malformed）。
+- 临时变异（未提交，均已恢复并逐字节核对）：去掉 previous 时的旧格式拒绝 → 服务层旧格式用例 3 个子测试变红；去掉 `RegisterRoutes` 守卫 → R1、R2、R3 变红；保留守卫、去掉 `main` 的提前准备 → 生命周期合同只在新增的“数据库尚未打开”断言处变红；把硬链接发布换成 rename → 并发首启用例 3/3 次变红。
+
+### 10.3 真实启动
+
+- 不设置 `OPENREADER_JWT_SECRET` 的二进制：首次启动日志 `created a random instance secret in <data>/instance-secret`，文件 0600、65 字节；再次启动日志 `signing with the instance secret in ...`；文件内容非法时以状态 1 退出，错误只含路径与恢复方法，数据库未被打开。
+- `authenticated-session-lifecycle-real-api-contract.mjs` 在未设置密钥的实例上通过（双登录、logout 204/401、改密与删用户后 401，REST/WebDAV/WS）；服务日志中没有实例密钥，也没有 token 形态的内容。
+- 浏览器（未设置密钥的实例 + 本树 `frontend/dist`）：`openreader-smoke.mjs` 1440×900、390×844、360×800 通过；
+  `reader-cbz-contract.mjs` 与 `reader-epub-contract.mjs` 三视口通过（Reader 经实例密钥签名的 capability 加载 CBZ 页面与
+  EPUB 资源）；服务日志中没有实例密钥。前端代码未改，这是对签名换钥后资源链接真实可用的验证。
+
+### 10.4 回归
+
+| 门 | 结果 |
+| --- | --- |
+| `go test ./...` | 30 包通过（新增 `services/instancesecret`） |
+| `go vet ./...` | exit 0 |
+| `go test -race -timeout 40m ./api ./db ./services/...` | 25 包通过，api 1179.6 s，无 DATA RACE |
+| 前端 | `npm test` 810/810（Node 26），`npm run build` 通过；前端代码未改 |
+| advisory 门 | 离线合同测试 131/131；Go 实际扫描 pass-with-not-applicable（1 项既有已审查不适用），前端全锁扫描 pass（0） |
+| 其它 | `docker compose config --quiet`、`store-read-list-lifecycle-contract.mjs` 通过 |
+
+未在本地运行：候选镜像的 Docker 卷门与 Docker 方式的生命周期合同（本地不构建镜像），由 Actions 在推送镜像前执行。

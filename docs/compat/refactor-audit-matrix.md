@@ -9,8 +9,13 @@ P0 合同 F3 的后续切片。密钥未设置、空白或为公开默认值时�
 用它签名一切；自定义密钥不变、不碰文件；公开值签名的新格式会话由摘要认证继续接受，旧格式 token 一律拒绝，capability
 无过渡。代价写进发布记录：切换前链接失效一次、回滚到 `92c98a9` 及更早时切换后会话失效。红测在 api 层（R1 公开值换成
 实例密钥、R2 五类 capability、R3 重启复用）与新的真实启动卷门（fresh/historical/restart/rollback/re-upgrade/custom/malformed，
-Docker 与二进制两种方式）上表达；历史卷门加 `JWT_SECRET_MODE=unset`。状态 contract-only；README 公网一节（O1）在发布后
-直接改 main。
+Docker 与二进制两种方式）上表达；历史卷门加 `JWT_SECRET_MODE=unset`。README 公网一节（O1）在发布后直接改 main。
+
+记录（2026-10-22，取代上段状态）：b0972b4/3dec2ad/f10c266/77dfee0/26948f9。红测在 b1e84f3 上按预期失败（R1 4/4、R2 5/5、R3 3/3，生命周期
+合同停在升级步骤，未设置密钥卷门停在首次启动），实现后同一断言转绿；生命周期合同二进制方式十个场景通过；四次临时变异（previous 下
+旧格式拒绝、RegisterRoutes 守卫、main 提前准备、硬链接发布）各被对应用例拦下。Go full/vet/race、前端 810/810 与 build、advisory 门、
+Compose、存储 HTTP 合同、未设置密钥的真实会话合同通过。状态 implementation-complete / regression-validated；候选镜像 Docker 门在
+Actions。
 
 ## 2026-10-22 当前切片：发布门新增依赖公告维护（P1，阻塞 P0 发布）
 

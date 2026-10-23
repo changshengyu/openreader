@@ -389,14 +389,37 @@ Contract `31b2963`, red tests `5734f74` and implementation `3bb465f` landed in o
 
 ## Authentication and authorization
 
-- [ ] `OPENREADER_JWT_SECRET` is not logged. It is **not** required: when unset, `config.Load()` falls back to a
-  default that is published in this repository, so deployments should set their own value. Legacy-format session
-  tokens are never adopted under a published or blank secret, and fresh installs have no legacy adoption window
-  (see the P0 entry below). Resource capability links are still signed with the configured secret (follow-up S2).
+- [ ] `OPENREADER_JWT_SECRET` is not logged. It is **not** required: when it is unset, blank or one of the two
+  published defaults, nothing is signed with that value; the first start creates a random instance secret in
+  `data/instance-secret` (0600) and sessions and resource capability links are signed with it (see the S2 entry
+  below). The instance secret is never logged, served or backed up, and travels only with a full copy of `data/`.
+  Legacy-format session tokens are never adopted under a published, blank or instance secret, and fresh installs
+  have no legacy adoption window (see the P0 entry below).
 - [ ] Protected endpoints require valid JWT.
 - [ ] Admin endpoints check admin role.
 - [ ] User-owned rows are scoped by authenticated user ID.
 - [ ] Batch operations cannot affect another user’s data.
+
+### P1 instance signing secret instead of published defaults (S2, 2026-10-22 implemented)
+
+- [x] A blank or published `OPENREADER_JWT_SECRET` signs nothing. `main` (before the database opens) and
+  `RegisterRoutes` (for any other caller) apply `services/instancesecret`: the first start creates
+  `data/instance-secret` (32 random bytes as 64 hex characters, `O_EXCL` 0600 stage, `fsync`, published by hard link
+  so an existing file is never replaced); later starts read it and narrow wider permissions. A non-regular file
+  (symlink, directory, FIFO) or any content other than 64 hex characters stops the start before migration, with an
+  error that names the path and never the content.
+- [x] Sessions and the EPUB/CBZ/audio/chapter-image/cover capabilities are signed with the instance secret. The
+  published value only verifies jti-backed sessions that an older image signed (their `user_sessions` row is the
+  authenticator); every legacy-format token is refused before account lookup. Capabilities have no transition.
+- [x] The file sits outside the WebDAV (`data/webdav[/users/<name>]`), `/uploads` (`data/uploads`), local-store
+  (`library/localStore`) and backup-download roots; ordinary and portable backups do not contain it. Traversal probes
+  on all of them and archive scans are contract tests and part of the real-startup gate.
+- [x] A custom secret keeps today's behaviour and never reads, creates or changes the file.
+- [x] Costs are recorded: pre-switch resource links (12–48 h) fail once; rolling back to `92c98a9` or older
+  invalidates sessions issued after the switch; deleting the file is a key change.
+
+Target contract:
+[`docs/compat/instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](compat/instance-signing-secret-fixed-baseline-second-audit-p1-contract.md).
 
 ### P0 legacy session adoption under a public default secret (2026-10-22 implemented)
 
@@ -409,8 +432,8 @@ Contract `31b2963`, red tests `5734f74` and implementation `3bb465f` landed in o
 - [x] Modern `jti`-backed sessions, the dual-default compatibility for them, legitimate adoption on upgraded
   custom-secret instances, schema, backups and startup are unchanged. Legacy tokens on upgraded instances that use a
   published secret are deliberately abandoned (one re-login).
-- [ ] Resource capability links (EPUB/CBZ/audio/chapter image: low; cover: medium) still use the configured secret;
-  follow-up slice S2 will stop signing with a published value.
+- [x] Resource capability links (EPUB/CBZ/audio/chapter image: low; cover: medium) no longer use a published value:
+  resolved by S2 above.
 
 Target contract:
 [`docs/compat/authenticated-session-legacy-public-secret-fixed-baseline-second-audit-p0-contract.md`](compat/authenticated-session-legacy-public-secret-fixed-baseline-second-audit-p0-contract.md).
