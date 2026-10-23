@@ -1,5 +1,18 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-23 当前切片：Reader 桌面工作区面板打开时的正文控件盘点
+
+见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)。
+固定fa22四个桌面面板是无遮罩的click popover：element-ui在document冒泡阶段关面板，正文eventHandler在面板打开时直接返回；按面板外
+控件时控件照常执行、面板随之关闭（加载下一章、右栏、进度、左栏），只有阻止冒泡的音频控件执行后不关；用vue 2.7.16与element-ui
+2.15.14搭的最小页面在真实浏览器里复现。当前关闭层z-index 3、面板4，章末加载下一章与R7之后的两个“重新加载”同为3且DOM更靠后。
+本地Go服务+生产前端两份基线（98f4ddb即R7前；0962dca与已发布238e3f3同树），1440×900鼠标、iPad 1366×1024与1024×1366触摸，逐面板
+实测：加载下一章执行、面板不关；内联重试R7前只关面板不重试，R7后重试不关面板；主错误块按钮被面板盖住；空白处只关闭；没有触发
+点击层或正文触摸判定。加载下一章与内联重试判must-fix（执行并关闭面板）；空白处、主错误块、右栏、面板切换aligned；进度块上一章/
+下一章同一规则判must-fix，但不在本切片，由协调方决定是否并入。实现走现有runWithDesktopWorkspaceClosed，不改关闭层、面板与R7
+层级，没有用户决定点。状态contract-only；下一步红测（源码合同+新浏览器合同），再实现；实现提交改frontend，合入main会触发发布，
+由用户决定。
+
 ## 2026-10-22 当前切片：发布流程浏览器启动门（P1，O3）
 
 见[`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。

@@ -446,6 +446,8 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
    两个“重新加载”都是 `z-index: 3` 且在 DOM 中更靠后，露在面板下方时点中的是按钮：执行按钮动作，面板不关。上游四个桌面面板是
    `el-popover trigger="click"`（`Reader.vue` L9–55），没有遮罩：点面板外的控件时控件照常执行，面板也随之关闭；正文的点击分区在
    面板打开时由 `eventHandler` 直接返回。需要另行裁决这类控件在面板打开时应该怎样响应。
+   2026-10-23 补记：已在[桌面面板正文控件合同](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)
+   逐面板实测并裁决：两个“重新加载”与 `加载下一章` 判 `must-fix`，目标是执行动作并关闭面板，不改 R7 的按钮层级（contract-only）。
 
 ## 11. R7 实施与验证（2026-10-18）
 
