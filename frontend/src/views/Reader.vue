@@ -172,7 +172,7 @@
             :epub-style="epubStyleText"
             :built-in-night="usesBlackNightContentSurface"
             :viewport-height="readerViewportHeight"
-            @reload="reloadChapter"
+            @reload="runWithDesktopWorkspaceClosed(reloadChapter)"
             @epub-load="handleEpubLoad"
             @epub-height="handleEpubHeight"
             @epub-click="handleEpubClick"
@@ -190,7 +190,7 @@
             @audio-previous="goAudioChapter(currentIndex - 1)"
             @audio-next="goAudioChapter(currentIndex + 1)"
             @image-load="handleReaderImageLoad"
-            @retry-block="retryContinuousChapter"
+            @retry-block="runWithDesktopWorkspaceClosed(() => retryContinuousChapter($event))"
           />
           <button
             v-if="showChapterEndPrompt"
@@ -2407,11 +2407,14 @@ function goAudioChapter(index) {
 }
 
 function handleChapterEndNext() {
-  if (currentIndex.value >= chapters.value.length - 1) {
-    showReaderToast('本章是最后一章')
-    return
-  }
-  goChapter(currentIndex.value + 1)
+  // Like every control outside reader-dev's click popovers, the press also closes an open desktop panel.
+  runWithDesktopWorkspaceClosed(() => {
+    if (currentIndex.value >= chapters.value.length - 1) {
+      showReaderToast('本章是最后一章')
+      return
+    }
+    goChapter(currentIndex.value + 1)
+  })
 }
 
 function handleAudioEnded() {
