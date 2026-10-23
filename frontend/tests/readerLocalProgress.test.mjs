@@ -1,28 +1,86 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
-import { reactive, ref } from 'vue'
-import { useReaderLocalProgress } from '../src/composables/useReaderLocalProgress.js'
+import test, { after } from 'node:test'
+import { ref } from 'vue'
+import { createServer } from 'vite'
 
-function createController(overrides = {}) {
-  const calls = []
-  const book = ref({ id: 7, title: '测试书' })
-  // Catalog rows carry their book, index and id like /books/:id/chapters; `chapter` is row 2's loaded chapter.
-  const chapter = ref({ id: 12, bookId: 7, index: 2, title: '第三章' })
-  const reader = reactive({
-    mode: 'scroll',
-    progressByBook: {},
-    applyProgress(progress) {
-      this.progressByBook[progress.bookId] = progress
-      calls.push(['apply', progress])
+// Local progress snapshots go through the real Pinia reader and bookshelf stores, so the
+// bookshelf.upsertBook → reader.applyServerProgress path is part of every assertion (contract:
+// docs/compat/reader-progress-pending-sync-keepalive-fixed-baseline-second-audit-p0-contract.md 8.1(7)).
+
+const storage = new Map()
+globalThis.localStorage = {
+  get length() { return storage.size },
+  getItem: key => storage.get(String(key)) ?? null,
+  key: index => [...storage.keys()][index] ?? null,
+  removeItem: key => storage.delete(String(key)),
+  setItem: (key, value) => storage.set(String(key), String(value)),
+}
+globalThis.window = {
+  localStorage: globalThis.localStorage,
+  sessionStorage: globalThis.localStorage,
+  location: { protocol: 'http:', host: 'openreader.test' },
+  addEventListener() {},
+  removeEventListener() {},
+  dispatchEvent() {},
+}
+
+const vite = await createServer({
+  root: new URL('..', import.meta.url).pathname,
+  appType: 'custom',
+  logLevel: 'silent',
+  server: { middlewareMode: true },
+})
+after(() => vite.close())
+
+const { createPinia, setActivePinia } = await import('pinia')
+const { useReaderStore } = await vite.ssrLoadModule('/src/stores/reader.js')
+const { mergeShelfBook, useBookshelfStore } = await vite.ssrLoadModule('/src/stores/bookshelf.js')
+const { useReaderLocalProgress } = await vite.ssrLoadModule('/src/composables/useReaderLocalProgress.js')
+
+// Unsigned test value: the stores only decode its payload to scope the progress storage key.
+const TOKEN = ['test', Buffer.from(JSON.stringify({ userId: 5 })).toString('base64url'), 'unsigned'].join('.')
+const SERVER_UPDATED_AT = '2026-07-01T23:59:58.123456Z'
+
+// Records the composable's own store calls and delegates them to the real store; calls the stores make
+// internally (upsertBook → applyServerProgress → replaceProgress) still run but are not counted.
+function recordingView(store, names, calls) {
+  return new Proxy(store, {
+    get(target, key) {
+      if (!Object.hasOwn(names, key)) return target[key]
+      return (...args) => {
+        calls.push([names[key], ...args])
+        return target[key](...args)
+      }
     },
   })
-  const bookshelf = {
-    upsertBook: row => calls.push(['upsert', row]),
-    applyBookProgress: (progress, options) => calls.push(['shelf', progress, options]),
+}
+
+function createController(overrides = {}) {
+  storage.clear()
+  storage.set('openreader_token', TOKEN)
+  setActivePinia(createPinia())
+  const reader = useReaderStore()
+  const bookshelf = useBookshelfStore()
+  reader.mode = 'scroll'
+  const serverProgress = {
+    bookId: 7,
+    chapterId: 11,
+    chapterIndex: 1,
+    chapterTitle: '第二章',
+    offset: 0,
+    percent: 0.1,
+    chapterPercent: 0,
+    mode: 'scroll',
+    updatedAt: SERVER_UPDATED_AT,
   }
+  reader.replaceProgress(serverProgress)
+  bookshelf.books = [{ id: 7, title: '测试书', progress: serverProgress }]
+  const calls = []
+  const book = ref({ id: 7, title: '测试书', progress: serverProgress })
+  const chapter = ref({ id: 12, title: '第三章' })
   const controller = useReaderLocalProgress({
-    reader,
-    bookshelf,
+    reader: recordingView(reader, { applyProgress: 'apply' }, calls),
+    bookshelf: recordingView(bookshelf, { upsertBook: 'upsert', applyBookProgress: 'shelf' }, calls),
     bookId: ref(7),
     book,
     chapter,
@@ -31,12 +89,24 @@ function createController(overrides = {}) {
     getVisibleSnapshot: () => null,
     getCurrentOffset: () => 120,
     getCurrentPercent: () => 0.4,
-    mergeBook: (current, incoming) => ({ ...current, ...incoming }),
+    mergeBook: mergeShelfBook,
     now: () => new Date('2026-07-02T00:00:00Z'),
     getMode: () => reader.mode,
     ...overrides,
   })
-  return { book, calls, chapter, controller, reader }
+  return { book, bookshelf, calls, chapter, controller, reader }
+}
+
+function storedProgress(bookId) {
+  const raw = storage.get(`openreader_chapter_progress@user:5@${bookId}`)
+  return raw ? JSON.parse(raw) : null
+}
+
+function pendingFields(progress) {
+  return {
+    pendingSync: Boolean(progress?.pendingSync),
+    baseUpdatedAt: progress?.baseUpdatedAt || '',
+  }
 }
 
 test('builds progress from the current chapter when no visible snapshot exists', () => {
@@ -59,8 +129,18 @@ test('deduplicates local progress while allowing forced snapshots', () => {
   fixture.controller.apply(undefined, { force: true })
   assert.equal(fixture.calls.filter(call => call[0] === 'apply').length, 2)
   assert.equal(fixture.calls.filter(call => call[0] === 'upsert').length, 2)
-  assert.equal(fixture.book.value.progress.pendingSync, true)
   assert.equal(fixture.book.value.shelfOrderAt, '2026-07-02T00:00:00.000Z')
+  // The snapshot stays pending on its server base wherever the Reader, the shelf and the next session read it.
+  const pending = { pendingSync: true, baseUpdatedAt: SERVER_UPDATED_AT }
+  assert.deepEqual({
+    book: pendingFields(fixture.book.value.progress),
+    memory: pendingFields(fixture.reader.progressByBook[7]),
+    stored: pendingFields(storedProgress(7)),
+  }, {
+    book: pending,
+    memory: pending,
+    stored: pending,
+  })
 })
 
 test('preserves a pending server base and updates unrelated shelf progress', () => {
@@ -75,6 +155,7 @@ test('preserves a pending server base and updates unrelated shelf progress', () 
   assert.deepEqual(fixture.calls, [
     ['shelf', { bookId: 8, updatedAt: 'other-v1' }, { replace: true }],
   ])
+  assert.deepEqual(pendingFields(fixture.reader.progressByBook[7]), { pendingSync: true, baseUpdatedAt: 'server-v1' })
 })
 
 // docs/compat/reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md U8.
