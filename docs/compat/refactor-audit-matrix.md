@@ -13,6 +13,14 @@
 层级，没有用户决定点。状态contract-only；下一步红测（源码合同+新浏览器合同），再实现；实现提交改frontend，合入main会触发发布，
 由用户决定。
 
+记录（2026-10-23，取代上段的状态）：合同3a0d507以20fb76d cherry-pick到main a7fd6aa之上（与ec67388树相同）。红测860b9ea（源码合同
+5条，新增`reader-desktop-panel-controls-contract.mjs`三视口×四面板×C1–C4共108组）在20fb76d（Reader源码=已发布238e3f3）上48/108失败，
+正好是C1、C2全部用例且只在“面板关闭”，C3、C4通过，单元只有新增3条失败→74da65c只改Reader.vue：@reload、@retry-block在绑定里经过
+runWithDesktopWorkspaceClosed，handleChapterEndNext两个分支放进同一函数（绑定由readerPageEndPrompt固定）；层级、DOM顺序、.stop不变。
+修复后108/108、frontend 815/815与build、末章探针12/12，R7错误面30/30、连续、移动、文字模式、openreader-smoke对照通过；M1只红C1、
+M2只红C2且都只在面板关闭，M3（“只关闭”做法）红C1/C2命中与动作及层级源码合同，M4只红源码锁定。进度块（第10节第1条）未获并入
+确认，没有C5。状态implementation-complete / regression-validated。本地未推送、未合入main；镜像未构建；生产未动。
+
 ## 2026-10-22 当前切片：发布流程浏览器启动门（P1，O3）
 
 见[`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。

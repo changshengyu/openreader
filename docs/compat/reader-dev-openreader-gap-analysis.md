@@ -16,7 +16,19 @@
 已有的 `runWithDesktopWorkspaceClosed`，不改关闭层、面板和 R7 的层级，所以没有需要用户决定的事项。点击层分区与映射、R7 按钮层级、
 移动端面板都不重开。另记几条观察，不并入本切片：移动端面板盖住 `加载下一章`；音频控件；连续模式加载后阅读位置被拉回。完整合同见
 [`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)。
-当前状态为 **contract-only**：产品代码和测试都没有改。
+2026-10-23 记录（合同第 11 节）：合同提交 `3a0d507` 以 `20fb76d` cherry-pick 到 main `a7fd6aa` 之上（与
+`claude/desktop-panel-content-controls` 上的 `ec67388` 树相同）。红测 `860b9ea`（8.1 源码合同 5 条；8.2 新增浏览器合同
+`reader-desktop-panel-controls-contract.mjs`：1440×900 鼠标、iPad 1366×1024 与 1024×1366 触摸，四个面板，C1–C4 共 108 组）在 `20fb76d`
+（Reader 源码与已发布的 `238e3f3` 相同）上按盘点复现：C1、C2 的 48 组全部只在“面板关闭”失败，包括盘点没有实测的 1024×1366 flip
+设置；C3、C4 的 60 组通过；单元 815 条中只有新增的 3 条处理函数断言失败。实现 `74da65c` 只改 `Reader.vue`：`@reload`、`@retry-block`
+在绑定里经过 `runWithDesktopWorkspaceClosed`，`handleChapterEndNext` 的两个分支放进同一个函数（绑定 `@click.stop="handleChapterEndNext"`
+由 `readerPageEndPrompt` 固定，没有改）；关闭层、面板与三个控件的层级、DOM 顺序和 `.stop` 都不变。修复后浏览器 108/108、frontend
+815/815 与 build 通过，末章分支探针 12/12（提示 `本章是最后一章` 并关闭面板）；R7 错误面合同 30/30、连续、移动（含 iPad 外点、同工具与
+可见关闭）、文字模式与 openreader-smoke 对照通过。四项临时变异各只让对应断言变红：去掉章末包装（M1）只红 C1 的 24 组，去掉内联包装
+（M2）只红 C2 的 24 组，都只在“面板关闭”；把关闭层抬到 4 并移到正文之后（M3，第 7 节不采用的“只关闭”做法）时 C1、C2 的命中与动作
+断言失败而“面板关闭”通过，`readerDesktopPrimaryPopoverContract` 失败；去掉移动端判断（M4）只让源码锁定断言失败。进度块上一章/下一章
+（第 10 节第 1 条）没有收到并入确认，没有加 C5。状态 **implementation-complete / regression-validated**；本地未推送、未合入 main，镜像
+未构建，生产未动。
 
 ## 2026-10-22 P1 发布流程 浏览器启动门（O3）
 

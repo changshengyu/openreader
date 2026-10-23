@@ -1,7 +1,9 @@
 # Reader 桌面工作区面板打开时的正文控件盘点（P0）
 
-状态：**contract-only**。本切片只写文档，产品代码和测试都没有改。第 2.4 节、第 4 节的真实浏览器复现用的是会话 scratchpad 里的
-临时探针，没有入库；探针和原始输出的副本在共享笔记目录 `panel-content-controls/`。红测与实现按第 9 节在后续阶段进行。
+状态：**implementation-complete / regression-validated**（红测 `860b9ea`、实现 `74da65c`，见第 11 节）。盘点提交 `3a0d507`（在 main
+上 cherry-pick 为 `20fb76d`）只写文档；第 2.4 节、第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，没有入库，探针和原始输出的
+副本在共享笔记目录 `panel-content-controls/`；其中第 4.2、4.3 节的正文控件与对照部分已由入库的
+`scripts/smoke/reader-desktop-panel-controls-contract.mjs` 承接。第 10 节第 1 条（桌面进度块）没有并入。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
 `/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不可写，用的是另一个会话 scratchpad 里已 checkout 同一提交的克隆
@@ -334,3 +336,95 @@ P6. 不变：
 4. 连续模式的阅读位置：探针把内联按钮放到 88% 后，窗口稳定的那一两秒里，有 9 组被拉回到第 0 行开头（文档滚动 72）。这是探针
    时序里的现象，没有定性；如果真实用户在加载刚结束时滚动也会被拉回，值得在连续模式合同里看一眼。
 5. 右栏“重新载入章节”之后，文档滚动从 0 变成 90（第 4.3 节）。本文不裁决，归“刷新正文”盘点（错误面合同第 10 节第 1 条）。
+
+## 11. 实施与验证（2026-10-23）
+
+只做 P3、P4：章末 `加载下一章` 与两个“重新加载”。第 10 节第 1 条（桌面进度块的上一章/下一章）没有收到协调方的并入确认，本次
+没有加 C5；进度块仍是“执行，面板不关”（第 4.3 节），留给后续切片。
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `20fb76d` | 合同 | `3a0d507` 的 cherry-pick（见下）。 |
+| `860b9ea` | 红测 | 8.1：新增源码合同 `frontend/tests/readerDesktopPanelContentControls.test.mjs`（5 条）。8.2：新增浏览器合同 `scripts/smoke/reader-desktop-panel-controls-contract.mjs`（3 个视口 × 4 个面板 × C1–C4，共 108 组）。 |
+| `74da65c` | 实现 | 见下。 |
+
+分支 `claude/vibrant-pasteur-1c3edb` 先快进到 origin/main `a7fd6aa`；`3a0d507` 当时不在 main 上，cherry-pick 为 `20fb76d`。gap analysis 与
+matrix 顶部冲突，2026-10-23 条目放在三个 2026-10-22 条目之上；四个文件的增删行数与 `3a0d507` 相同，本文件逐字节相同。另一会话在
+`claude/desktop-panel-content-controls` 上做的同一个 cherry-pick `ec67388` 与 `20fb76d` 树相同（`158b346`），只差提交时间，所以
+`860b9ea` 之后的提交可以原样接在任一个上。
+`git diff 238e3f3 20fb76d -- frontend/src frontend/tests` 为空：红测基线的 Reader 源码与现行发布 `238e3f3` 相同，依赖与构建配置是 main
+上的（vite 8.1.6、`strictExecutionOrder`）。`git diff 20fb76d 74da65c -- backend` 为空。
+
+**实现**（产品代码只改 `Reader.vue`，+10/−7）：
+
+- `<ReaderChapterContent>` 的 `@reload="reloadChapter"` 改为 `@reload="runWithDesktopWorkspaceClosed(reloadChapter)"`，
+  `@retry-block="retryContinuousChapter"` 改为 `@retry-block="runWithDesktopWorkspaceClosed(() => retryContinuousChapter($event))"`
+  （`$event` 是内联块 emit 的章节序号），写法同右栏“重新载入章节”（`:2005`）。
+- `handleChapterEndNext` 的函数体（末章提示与进入下一章两个分支）整体放进 `runWithDesktopWorkspaceClosed(() => { … })`。章末按钮的
+  绑定没有改成包装形式：`readerPageEndPrompt.test.mjs` 固定了 `@click.stop="handleChapterEndNext"` 这一写法，而第 8.1 节第 2 项要求
+  现有断言不动；第 8.1 节第 1 项本来就接受“在同一个处理函数里先关闭”。所以第 9 节的“只改三处绑定”实际是两处绑定加一个处理函数。
+  两个分支都在关闭之后执行，结果与“先关面板、再按”相同（P3）。
+- 没改：关闭层、面板、左右栏、进度块、调暗层、点击层和三个控件的 `z-index`、DOM 顺序与 `.stop`；`runWithDesktopWorkspaceClosed`
+  本身（移动端仍不关任何面板）；桌面进度块与右栏其他入口；后端、API、数据与存储 key。
+
+**源码合同的写法**：第 8.1 节允许二选一，这里选源码合同，不为测试改产品结构。为减轻正则的脆性，测试先在模板里按属性解析出三个
+绑定，再把绑定落到 `Reader.vue` 的处理函数：接受“绑定写成 `runWithDesktopWorkspaceClosed(<动作>)`”和“绑定命名的处理函数把全部
+动作放进 `runWithDesktopWorkspaceClosed`（或先调用 `closeDesktopWorkspace()`）”两种形式。`runWithDesktopWorkspaceClosed(reloadChapter())`
+（先执行再关闭）、`runWithDesktopWorkspaceClosed(retryContinuousChapter)`（丢掉章节序号）、只把下一章分支包进去（末章提示时面板
+不关）都判失败；箭头参数写法 `index => runWithDesktopWorkspaceClosed(() => retryContinuousChapter(index))` 判通过。提交前在会话
+scratchpad 里逐一验证过这些写法。
+
+**单元**（`node --test`，沙箱外）：
+
+| 代码 | 结果 |
+| --- | --- |
+| `860b9ea` | 815 条中 812 通过。新增 5 条中 3 条失败：`.reader-chapter-end 加载下一章 @click.stop="handleChapterEndNext" does not close the desktop workspace: handleChapterEndNext never closes the desktop workspace before it acts`；`@reload="reloadChapter" … reloadChapter is bound directly and is not a Reader.vue function, so nothing closes the panel`；`@retry-block="retryContinuousChapter" …`（同上）。锁定现状的 2 条通过：`runWithDesktopWorkspaceClosed` 只在 `!isMobileReader` 时关闭、并先于动作；章末按钮保留三个 `.stop`、不带 `.prevent`。 |
+| `74da65c` | 815/815。`npm run build` 通过，只有既有的 chunk 大小提示。 |
+
+**浏览器**：本 worktree 编译的 go1.26.10 二进制（`GOCACHE=$TMPDIR/go-build`）加 `vite build` 生产前端。红测基线（`20fb76d` 的前端树）、
+修复（`74da65c`，`npm run build` 的产物）和三个变异各自构建到独立目录，各起一个服务（`127.0.0.1:18481`–`18485`），每个服务有独立的
+临时 data/cache/library 与随机 JWT secret（未输出）。接口全部由 `page.route` 模拟（同 R7 合同），服务只提供静态文件。Playwright 1.61.1 /
+chromium-headless-shell 1228，Node v26.4.0；服务与浏览器都在沙箱外。每组一个全新上下文；C1、C2 把控件中心放到视口 88% 处，连续两次
+确认（间隔 450ms）才算放好，打开面板后再确认一次，必要时重放；按下前等到请求与进度写入静默 900ms。夹具正文比盘点探针长，
+所以按下前的文档滚动值与第 4 节不同，坐标与面板底边相同。
+
+结果（每格是 4 个面板；书架、书源、目录、设置的结果相同，只有面板底边不同）：
+
+| 视口 / 输入 | C1 page · flip | C2 scroll · scroll2 | C3 page · scroll | C4 空白处 · 右栏重新载入 · 面板切换 |
+| --- | --- | --- | --- | --- |
+| 1440×900 鼠标（细指针，点击层显示） | 红：8 组 FAIL，都只在 `C1 panel closed`（面板与关闭层仍挂载）。按钮中心 (720,792) 命中 `button.reader-chapter-end`；按下后路由 `?chapter=0` → `?chapter=1`，文档 3488→0，只显示第二章，`PUT 1:第二章 后邻` 一次；`click` 停在按钮上，没有到达 `.reader-page`、点击层和 `document`。绿：8 组 PASS，面板与关闭层都卸载，其余同红 | 红：8 组 FAIL，都只在 `C2 panel closed`。按钮 (720,792) 命中；第 1 行请求一次，`[0,1]` 原位替换，文档 3752 不变，没有进度写入。绿：8 组 PASS | 红、绿 8 组都 PASS：面板打开时按钮中心 (720,157) 命中面板内容（书架、书源是空状态插图或列表，目录是 `button.toc-item.active`，设置是 `div.settings-list`）；按面板的关闭按钮后命中按钮 | 红、绿 12 组都 PASS：(720,792) 命中关闭层，只关闭面板，路由、滚动不变，没有请求和进度写入；右栏重新载入关闭面板，第 0 行请求一次，提示 `章节已重新载入`（文档 0→54，第 10 节第 5 条）；面板切换正常 |
+| iPad 1366×1024 触摸（点击层隐藏） | 红：8 组 FAIL，只在面板关闭。(683,901)，文档 3379→0；`touchstart`、`touchend`、`click` 都停在按钮上。绿：8 组 PASS | 红：8 组 FAIL，只在面板关闭。(683,901)，文档 3670 不变。绿：8 组 PASS | 红、绿都 PASS，(683,157) | 红、绿都 PASS。(683,901) 命中关闭层；触摸的 `touchstart`、`touchend` 冒泡到 `document`，但不经过 `.reader-page` |
+| iPad 1024×1366 触摸 | 红：8 组 FAIL，只在面板关闭，包括盘点没有实测的 flip 设置。(512,1202)，文档 3078→0。绿：8 组 PASS | 红：8 组 FAIL，只在面板关闭。(512,1202)，文档 3446 不变。绿：8 组 PASS | 红、绿都 PASS，(512,157) | 红、绿都 PASS，同上 |
+
+面板底边：书源 390，书架与目录 392，设置 503 / 559 / 713（依次对应三个视口），与第 4.2 节相同。
+
+合计：红测基线跑了两次（第一次用提交前只差日志文字的脚本，第二次用 `860b9ea` 的脚本），结果相同：48/108 FAIL，正好是 C1 的 24 组和
+C2 的 24 组，每组只有“面板关闭”一个失败点；C3、C4 的 60 组通过；没有 harness、页面或路由错误。修复 `74da65c` 上 108/108 PASS。所有
+放置都第一次就稳住，打开面板后都没有移动（盘点探针里的“窗口回到第 0 行”这次没有出现）。服务日志除 `/ws/sync` 的 401（假 token，
+`page.route` 拦不到 WebSocket）外都是 200；没有 5xx（502 在浏览器侧注入），没有 panic。
+
+**末章分支**（P3 的另一半；scratchpad 探针，未入库）：用同一个 harness 从 `?chapter=7`（末章）打开，page 模式，三个视口 × 四个面板。
+红测基线 12 组都只在“面板关闭”失败：提示 `本章是最后一章`，面板不关；修复后 12/12 通过：提示 `本章是最后一章`，面板关闭，路由
+（`?chapter=7`）、滚动不变，没有请求和进度写入，事件停在按钮上。
+
+**临时变异**（只改工作区，构建到独立目录后立即 `git checkout` 还原，未提交；每次还原后 `git status` 干净）：
+
+| 变异 | 改动（施加在 `74da65c` 上） | 单元（815 条） | 浏览器（108 组全跑） |
+| --- | --- | --- | --- |
+| M1 | `handleChapterEndNext` 去掉关闭包装，恢复原函数体 | 814/815：只有 `P3/P4 .reader-chapter-end 加载下一章 …` 失败（`handleChapterEndNext never closes the desktop workspace before it acts`） | 24 组 FAIL，正好是 C1 的全部用例，都只在“面板关闭”；C2、C3、C4 的 84 组 PASS |
+| M2 | `@retry-block` 恢复直接绑定 `retryContinuousChapter` | 814/815：只有 `P3/P4 <ReaderChapterContent> @retry-block …` 失败（`retryContinuousChapter is bound directly …`） | 24 组 FAIL，正好是 C2 的全部用例，都只在“面板关闭”；C1、C3、C4 的 84 组 PASS |
+| M3 | 关闭层改为 `z-index: 4`，并把整个面板组件挪到 `.reader-page` 之后（第 7 节不采用的“只关闭”做法） | 814/815：只有 `readerDesktopPrimaryPopoverContract` 的 `desktop panel stack is explicit above content hit zones and below retained rails` 失败（关闭层不再是 3） | 48 组 FAIL，正好是 C1、C2 的全部用例：按钮中心命中 `button.reader-workspace-dismiss`，按下只关闭面板、不执行（C1 的命中、路由、显示与进度断言失败，C2 的命中、重试与原位替换断言失败），“面板关闭”断言通过；iPad 触摸时 `touchstart`、`touchend` 从关闭层冒泡到 `document`，`document` 断言也失败。C3、C4 的 60 组 PASS。这就是第 7 节说的“只关闭，不执行”，内联重试的结果与第 4.2 节 `98f4ddb`（R7 之前）相同 |
+| M4 | `runWithDesktopWorkspaceClosed` 去掉 `!isMobileReader` 判断 | 814/815：只有 `runWithDesktopWorkspaceClosed closes every desktop panel first, never the mobile ones, then runs the action` 失败 | 不跑：移动端不在这份浏览器合同里（第 8.3 节） |
+
+**回归**（`74da65c`，同一服务）：
+
+- `reader-error-surface-contract`：30/30（R7 的主错误块与内联重试，1440×900 鼠标与两种手机的触摸、鼠标）。
+- `reader-continuous-contract`、`reader-text-modes-contract`：通过。
+- `reader-mobile-contract`：通过（桌面、手机、自适应 iPad、强制移动 iPad；包括 iPad 外点关闭、同工具关闭、可见关闭按钮和手机面板）。
+- `openreader-smoke`：三个视口通过（全新数据目录，入口为 `/login`）。
+
+**其余门**：Go `test`/`vet`/`race` 跳过（后端无改动）；依赖 advisory、Compose 与卷门跳过（依赖、Dockerfile、数据格式都没改，卷门只在
+Actions 上运行）。实现提交改了 `frontend/**`，命中 `docker-publish.yml` 的路径过滤，合入 main 会触发镜像发布，是否合入由用户决定。
+
+**状态**：Git 为本地分支 `claude/vibrant-pasteur-1c3edb` 上的提交（`20fb76d`、`860b9ea`、`74da65c` 与本记录），未推送，未合入 main。
+镜像：未构建，未推送。生产：未访问，未操作。
