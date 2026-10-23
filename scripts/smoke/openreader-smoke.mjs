@@ -35,45 +35,60 @@ async function assertAppNotBlank(page) {
   const result = await page.evaluate(() => {
     const app = document.querySelector('#app')
     const bodyText = document.body?.innerText?.trim() || ''
-    const visibleNodes = Array.from(document.body.querySelectorAll('*')).filter((node) => {
+    const isVisible = (node) => {
       const rect = node.getBoundingClientRect()
       const style = window.getComputedStyle(node)
       return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
-    }).length
+    }
     return {
       hasApp: Boolean(app),
       bodyTextLength: bodyText.length,
-      visibleNodes,
+      visibleNodes: Array.from(document.body.querySelectorAll('*')).filter(isVisible).length,
+      appTextLength: app?.innerText?.trim().length || 0,
+      appVisibleNodes: app ? Array.from(app.querySelectorAll('*')).filter(isVisible).length : 0,
       title: document.title,
       pathname: window.location.pathname,
     }
   })
   assert(result.hasApp, `missing #app at ${result.pathname}`)
-  assert(result.bodyTextLength > 0 || result.visibleNodes > 3, `blank page at ${result.pathname}`)
+  // Only what the app rendered counts: markup outside #app (teleported overlays,
+  // static fallbacks) must not hide an app that never mounted.
+  assert(result.appTextLength > 0 || result.appVisibleNodes > 3, `empty #app at ${result.pathname}`)
   return result
 }
 
-async function smokeViewport(browser, viewport, url) {
+async function smokeViewport(browser, name, viewport, url) {
   const context = await browser.newContext({ viewport })
   const page = await context.newPage()
   const failures = await collectPageSignals(page)
-  await page.goto(url, { waitUntil: 'networkidle' })
-  const result = await assertAppNotBlank(page)
-  assert(failures.length === 0, failures.join('\n'))
-  await context.close()
-  return result
+  try {
+    await page.goto(url, { waitUntil: 'networkidle' })
+    const result = await assertAppNotBlank(page)
+    assert(failures.length === 0, 'page reported errors')
+    return result
+  } catch (error) {
+    // A blank page usually has a pageerror behind it; report both with the viewport.
+    throw new Error([`${name} ${viewport.width}x${viewport.height}: ${error.message}`, ...failures].join('\n'))
+  } finally {
+    await context.close()
+  }
 }
 
 async function main() {
+  const targets = [
+    ['desktop', { width: 1440, height: 900 }, targetUrl],
+    ['mobile-390', { width: 390, height: 844 }, targetUrl],
+    ['mobile-360', { width: 360, height: 800 }, targetUrl],
+  ]
+  if (readerUrl) {
+    targets.push(['reader-mobile-390', { width: 390, height: 844 }, readerUrl])
+  }
+
   const browser = await openSmokeBrowser()
   try {
     const checks = []
-    checks.push(['desktop', await smokeViewport(browser, { width: 1440, height: 900 }, targetUrl)])
-    checks.push(['mobile-390', await smokeViewport(browser, { width: 390, height: 844 }, targetUrl)])
-    checks.push(['mobile-360', await smokeViewport(browser, { width: 360, height: 800 }, targetUrl)])
-
-    if (readerUrl) {
-      checks.push(['reader-mobile-390', await smokeViewport(browser, { width: 390, height: 844 }, readerUrl)])
+    for (const [name, viewport, url] of targets) {
+      checks.push([`${name} ${viewport.width}x${viewport.height}`, await smokeViewport(browser, name, viewport, url)])
     }
 
     for (const [name, result] of checks) {

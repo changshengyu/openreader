@@ -9,6 +9,8 @@ on:
       - .dockerignore
       - Dockerfile
       - docker-compose.yml
+      - package.json
+      - package-lock.json
       - backend/**
       - frontend/**
       - scripts/docker-volume-backup-smoke.sh
@@ -16,6 +18,10 @@ on:
       - scripts/smoke/instance-secret-volume-contract.mjs
       - scripts/smoke/webdav-protocol-contract.sh
       - scripts/smoke/local-store-directory-lifecycle-contract.mjs
+      - scripts/smoke/openreader-smoke.mjs
+      - scripts/smoke/playwright-runtime.mjs
+      - scripts/smoke/release-browser-smoke.sh
+      - scripts/smoke/release-browser-smoke.test.mjs
       - scripts/check-go-advisories.mjs
       - scripts/check-go-advisories.test.mjs
       - scripts/check-frontend-advisories.mjs
@@ -108,6 +114,12 @@ jobs:
       - name: Validate isolated storage read-list and import HTTP contracts
         run: node scripts/smoke/store-read-list-lifecycle-contract.mjs
 
+      - name: Install pinned smoke browser
+        run: npm ci && npm run smoke:install-browser
+
+      - name: Test browser smoke gate precision and wiring
+        run: node --test scripts/smoke/release-browser-smoke.test.mjs
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -130,6 +142,14 @@ jobs:
             BUILD_DATE=${{ steps.metadata.outputs.build_date }}
           cache-from: type=gha,scope=openreader-docker
           cache-to: type=gha,mode=max,scope=openreader-docker
+
+      # A bundle that builds can still render a blank page. Both platforms copy
+      # this build-platform bundle, so check it here, before the arm64 build.
+      - name: Load the native validation image in a real browser
+        timeout-minutes: 10
+        env:
+          IMAGE: openreader-ci:${{ github.sha }}
+        run: ./scripts/smoke/release-browser-smoke.sh
 
       # The OS gate must see both published platforms before anything is pushed.
       - name: Build arm64 validation image

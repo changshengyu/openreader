@@ -38,6 +38,23 @@ The repository tooling package pins the Playwright version used by the shared ru
 from the frontend dependencies copied into Docker. On macOS the browser process
 may need to run outside a restricted sandbox so it can register its Mach rendezvous port.
 
+## Release gate
+
+`.github/workflows/docker-publish.yml` runs `scripts/smoke/release-browser-smoke.sh` right after the
+native validation image is built, before the arm64 build and the publish step. The script starts a
+fresh container from `openreader-ci:<sha>` (no volumes, Docker-assigned loopback port) and runs
+`openreader-smoke.mjs` in the pinned headless shell: a page error, console error, `/api/` 5xx or empty
+`#app` at any of the three viewports fails the release. `release-browser-smoke.test.mjs` checks the
+workflow wiring and the checker's failure handling on owned pages.
+
+Images are not built locally. To check a local frontend build in the release runtime, serve it
+through a published image:
+
+```bash
+docker pull ghcr.io/changshengyu/openreader:latest
+IMAGE=ghcr.io/changshengyu/openreader:latest SMOKE_PUBLIC_DIR=frontend/dist ./scripts/smoke/release-browser-smoke.sh
+```
+
 ## Required manual/automated coverage for reader work
 
 - Desktop: `1440x900`.

@@ -125,7 +125,8 @@ GO-2026-6809 涉及的具体中间证书不在本仓库可控范围内，不编�
 （`book-management-real-api-contract.mjs`、`reader-progress-multiclient-contract.mjs`）。
 
 观察 O3：CI 只跑前端单元测试和构建，不在浏览器里加载产物；同样的空白页如果合入 main，Actions 会照常发布
-镜像。给发布流程补一个“产物能启动”的浏览器门另起后续，不在本切片修改 workflow。
+镜像。给发布流程补一个“产物能启动”的浏览器门另起后续，不在本切片修改 workflow。后续合同：
+[`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。
 
 ## 9. 实施与验证证据（2026-10-22）
 
