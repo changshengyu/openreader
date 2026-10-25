@@ -15,6 +15,13 @@
 512000 对 8000 的样本差异（E3）为 `acceptable-change`；Shift_JIS/EUC-KR 在对齐时也被判成 `gb18030`（E4）为 `unknown`，另行盘点。512000 探测窗口、目录规则、
 伪章节、暂存流程与 parser 预算都不重开。完整合同见
 [`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)。
+2026-10-25 记录（合同第 8 节）：合同 `364aa82`；红测 `8f001c8` 在 `1b8ef35` 上 engine 三项截断拆字（GBK 保留 1 字节、
+GB18030 四字节保留 2 字节、Big5 保留 1 字节）与 api 三个入口（直接上传 400，LocalStore/WebDAV 预检条目报错无 book）按合同
+失败，五项对照通过；实现 `f84398d` 让 `decodeTXTForCatalog` 截取样本时以 `atEOF=false` 解码旧编码候选，同一六个子测试转绿，
+把调用改回 `atEOF=true` 的变异恰好让它们重新失败。用户文件解析为 455 章，解码全文与 `iconv -f GB18030` 逐字节一致；真实浏览器
+1440×900 下书仓导入直接进入“导入本地书籍”（455 章），导入后 Reader 打开截断处所在的 `第056章 担心`，正文无 U+FFFD。backend
+全量 29 包、vet、frontend 815/815 与 build、advisory 门与扫描、Compose、存储 HTTP 合同通过。状态
+**implementation-complete / regression-validated**；E2/E4/E5 未处理。
 
 ## 2026-10-23 P0 Reader 桌面工作区面板打开时的正文控件盘点
 

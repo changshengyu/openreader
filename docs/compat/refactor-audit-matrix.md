@@ -11,6 +11,12 @@
 截断拆字夹具（自检确实拆字）+ api 直接上传、LocalStore、WebDAV 预检→导入→缓存重建；对照：对齐截断、UTF-8 截断、既有编码测试。
 状态 contract-only；不改前端、数据与已导入书籍。
 
+记录（2026-10-25，取代上段的状态）：提交364aa82/8f001c8/f84398d。红测在1b8ef35上engine三项拆字（GBK保留1字节、GB18030四字节保留2、
+Big5保留1）与api三入口（直接上传400，LocalStore/WebDAV预检报错无book）失败，五项对照通过；f84398d只改engine：截取样本时旧编码
+候选按atEOF=false解码，同一六项转绿，改回atEOF=true的变异恰好重新变红。用户文件455章、全文与iconv逐字节一致；真实浏览器1440×900
+书仓导入直接进入“导入本地书籍”455章，Reader第056章（截断处）无U+FFFD。backend全量29包/vet、race（engine/localbook/api）、frontend 815/815与
+build、advisory门131/131与两项扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+
 ## 2026-10-23 当前切片：Reader 桌面工作区面板打开时的正文控件盘点
 
 见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)。

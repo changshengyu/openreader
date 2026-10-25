@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `1b8ef35`。
 
 审查日期：2026-10-25
-状态：**contract-only**
+状态：**implementation-complete / regression-validated**（证据见第 8 节；尚未经可信 Actions 运行）
 
 来源：用户报告。`前浪(校对加料版全本 1-425) 作者：刀一耕.txt`（4,117,155 字节，GBK）在导入预检里显示“待修复”和
 `unable to detect text encoding`，同一文件在上游能正常导入。2026-07-11 签收的 TXT 目录规则合同
@@ -112,5 +112,48 @@ OpenReader 从文件开头截取 512000 字节，用来判定编码。截取位�
 - 512000 字节探测窗口、目录规则选择、前言、无目录 10 KiB 伪章节、显式规则空目录（2026-07-11 签收）。
 - 编码候选顺序与评分、UTF-16 无 BOM 判定、`DecodeBody` 的 HTML charset 检测。
 - 导入暂存、token、LocalStore/WebDAV 流程与 parser 预算（[`local-text-parser-budget-p2-contract.md`](local-text-parser-budget-p2-contract.md)）。
-- 前端预检对话框的呈现：后端预检成功后，“待修复”自然变为“可导入”，前端不改。
+- 前端导入流程不改：`useStorageImportWorkflow.js#chooseInitialPhase` 只在有失败行时显示预检列表（“待修复”）；全部预检
+  成功时直接进入确认，单本即“导入本地书籍”；混合批次里成功的行显示“可导入”。
 - SQLite、`data/`、`cache/`、`library/`、备份与已导入书籍。
+
+## 8. 记录（2026-10-25）
+
+分支 `claude/txt-legacy-probe-boundary`，基于 `1b8ef35`：
+
+| 提交 | 内容 |
+|---|---|
+| `364aa82` docs | 本合同、gap-analysis 与矩阵条目。 |
+| `8f001c8` test | engine `TestParseTXTDetectsEncodingWhereverTheCharsetProbeEnds`；api `TestTXTSplitAtCharsetProbeImportsThroughEveryLocalEntry`。 |
+| `f84398d` fix | `text_encoding.go` 新增 `detectAndDecodeTextSample(data, atEOF)` 与 `decodeLegacyText`；`decodeTXTForCatalog` 截取样本时传 `atEOF=false`。`detectAndDecodeText`（`DecodeBody` 的完整 HTTP 正文）仍为 `atEOF=true`。 |
+
+红测（`8f001c8`，应用代码为 `1b8ef35`）：
+
+- engine：截断拆开字符的三项失败，都是 `unable to detect text encoding`：GBK 双字节（样本保留该字符 1 字节）、GB18030
+  四字节（保留 2 字节）、Big5（保留 1 字节）。五项对照通过：三种编码截断对齐，以及 UTF-8 截断拆字与对齐。
+- api：直接上传预览返回 `400 failed to parse local book: unable to detect text encoding`；LocalStore、WebDAV 预检条目带
+  同一错误且没有 book，即界面上的“待修复”。
+- 完整 engine 与 api 包只有这六个子测试失败，`services/localbook` 通过。含 httptest 监听的用例在沙箱外运行（沙箱禁止监听本地端口）。
+
+实现后（`f84398d`）：
+
+- 同一六个子测试转绿，五项对照仍通过；既有 `TestDirectTXTEncodingAndLongRuleCatalogRemainReadableAcrossStageImport`
+  （UTF-8 BOM、GBK、GB18030、长规则章节）与 `TestStorageGB18030NoTocStageImportRemainsReadable` 通过。
+- 变异 M1：把 `decodeTXTForCatalog` 的调用改回 `atEOF=true`，恰好这六个子测试重新失败；已还原。
+- 用户文件：`engine.ParseTXT` 得到 455 章（`前言`、`序章 如果有来生`、`第001章 有来生` … `第425章 春节档`、`终章 盗梦`），
+  解码全文的 SHA-256 与 `iconv -f GB18030 -t UTF-8` 的输出一致（`d2cb6d97…3057`）。
+- 真实浏览器（1440×900；`f84398d` 构建的二进制加生产前端，全新数据卷，书仓里放该文件的副本）：书仓“加入书架”和勾选后
+  “批量加入书架”都直接进入“导入本地书籍”，章节列表 455；确定导入后提示“导入 1 本”。Reader 打开 `前言` 和样本截断处所在的
+  `第056章 担心`（索引 58），正文含“孔泉抬手、做投降状，片刻后，说：”，U+FFFD 为 0。
+
+回归：
+
+- backend `go test ./...` 29 个包全部 ok，`go vet ./...` 通过；`go test -race -timeout 40m ./engine ./services/localbook ./api` 全部 ok（api 1018.8s），没有 data race。
+- frontend 按 lock `npm ci`（vite 8.1.6）后 `npm test` 815/815（沙箱外；沙箱内 3 条 advisory worker 用例因禁止监听
+  127.0.0.1 失败），`npm run build` 通过。
+- advisory 门自测（Go、前端、OS）131/131；Go 与前端实际扫描均 exit 0。
+- `docker compose config --quiet` 通过；`store-read-list-lifecycle-contract.mjs` 全部 PASS；
+  `release-browser-smoke.test.mjs` 10/10。
+- 未在本地运行：三视口浏览器（前端未改）；native/arm64 镜像、浏览器启动门、OS APK 门、fresh/historical 卷门与双平台发布
+  由合入 main 后的可信 Actions 运行。
+
+E2、E4、E5 未处理，见第 4 节。Git：分支已推送并经 `git ls-remote` 核验。镜像：未构建。生产：未访问。
