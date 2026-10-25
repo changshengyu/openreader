@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `5a2fc7d`（应用代码与已发布的 `7c447a5` 相同）。
 
 审查日期：2026-10-25
-状态：**contract-only**
+状态：**implementation-complete / regression-validated**（证据见第 10 节；尚未经可信 Actions 运行）
 
 来源：[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)
 （下称 E2 合同）第 5 节的 E4、E8。用户 2026-10-25 要求：开始下一个编码切片，E4（Shift_JIS/EUC-KR 被评分判成 GB18030）和 E8
@@ -125,8 +125,10 @@ UTF-16、E2 的“基本是 UTF-8”，然后四个旧编码候选：无坏字�
 3. 去 BOM 后的合法 UTF-8 → `utf-8`；零字节比例 → UTF-16；E2“基本是 UTF-8” → `utf-8`：不变。
 4. 新增：多字节（Shift_JIS、GB18030、EUC-JP、EUC-KR、Big5）最高置信度大于 10 且大于单字节最高者 → 在置信度并列第一的
    多字节编码中按 OpenReader 现有评分选出；解码（沿用 E1 前缀解码）须满足 E2 的 20:1，否则报错。
-5. 新增：单字节最高置信度大于 10，且没有任何多字节识别器处在“不超过 10 个多字节字符且无坏字符”的状态 → 采用 ICU 单字节
-   第一名（并列时列表靠后者优先），ISO-8859-8-I 按 ISO-8859-8 解码。
+5. 新增：单字节最高置信度大于 10，且没有任何多字节识别器处在“不超过 10 个多字节字符、无坏字符、且多字节字符至少占其遍历
+   字符的一半”的状态 → 采用 ICU 单字节第一名（并列时列表靠后者优先），ISO-8859-8-I 按 ISO-8859-8 解码。“至少占一半”是实现中
+   的细化（第 10 节）：一段德文的 5 个变音字母各自后接字母，被 GBK 读成 5 个无坏字符的双字节字符，原条件把它留在现有选择里
+   （GB18030 乱码）；ICU 在这个分支的注释本就是“ASCII or ISO file?”，多字节字符只占很小一部分时应视为单字节文本。
 6. 否则沿用 E2 的四候选选择（无坏字符优先、20:1、评分）；仍无结果则报 `unable to detect text encoding`。
 
 全量解码新增 `euc-jp`、`iso-2022-jp` 与上述单字节编码名称。目录规则、伪章节、导入流程与已导入书籍不变。
@@ -160,3 +162,49 @@ UTF-16、E2 的“基本是 UTF-8”，然后四个旧编码候选：无坏字�
 - E1 截断前缀解码、E2 的 UTF-8 认定与 20:1 门槛、512000 字节样本。
 - E5 的报错立场；J2（ISO-2022-KR/CN）。
 - 目录规则、伪章节、导入暂存与前端；SQLite、`data/`、`cache/`、`library/` 与已导入书籍。
+
+## 10. 记录（2026-10-25）
+
+分支 `claude/charset-cjk-single-byte`，基于 `5a2fc7d`：
+
+| 提交 | 内容 |
+|---|---|
+| `7a161c8` docs | 本合同、gap-analysis 与矩阵条目。 |
+| `b45f75c` test | engine 14 种语言/编码 `TestParseTXTRecognizesJapaneseKoreanAndSingleByteTextLikeUpstream`、短中文对照 `TestParseTXTKeepsShortChineseTextOnItsCurrentCharset`、`TestDecodeBodyAutoCharsetRecognizesJapaneseAndCyrillicPages`；api `TestJapaneseAndCyrillicTXTImportAndRead`。 |
+| `2521eca` test | `TestParseTXTRecognizesAParagraphOfGermanAsLatin1`（实现第一版暴露的情形，见第 6 节第 5 步）。 |
+| `c03827d` fix | `charset_icu.go`、`charset_icu_tables.go`（表格由脚本从上游 Java 源转写，保留 Unicode/ICU 声明）、`charset_icu_test.go`（与上游 Java 逐项比对）、`text_encoding.go` 的判断顺序与解码表。 |
+| `d84b837` test | 为比对测试加一个 Shift_JIS 置信度未饱和的夹具。 |
+
+红测：
+
+- `b45f75c` 在 `5a2fc7d` 上：14 种语言/编码全部失败（乱码或报错）；`DecodeBody` 的 Shift_JIS、windows-1251 页面失败；api 的
+  Shift_JIS 书导入成乱码（“崱擔偼…”）、windows-1251 书预览 `400 unable to detect text encoding`；五个短中文对照通过。完整
+  engine、api 包只有这些失败，`services/localbook` 通过。
+- `2521eca`：一段德文 ISO-8859-1 在 `5a2fc7d` 上被解成 GB18030（语料 `de_*_1p`），在实现第一版上也是（“sch鰊”）。
+
+实现后：
+
+- 上述用例全部通过；E1、E2 全部测试与现有编码测试通过。
+- 移植比对：Go 对 178 个语料文件给出的前五名名称与置信度与上游 Java `detectAll` 完全一致；`TestICUCharsetConfidencesMatchUpstream`
+  的 31 个夹具逐个识别器（全部非零结果）一致。
+- 语料判断（完整新流程）：上游判对的日文、韩文、各单字节夹具全部给出同一编码；希伯来文解为 `iso-8859-8`（上游导入失败）；
+  用户小说 32 个片段全为 `gb18030`；GBK/Big5 4–48 字与现有测试短文本保持原编码；4、8 字的日文、4–12 字的韩文、4 字俄文保持现有
+  结果（与现在相同的乱码，S1），8、12 字俄文仍报错；E2 夹具结果不变，Latin-1 英文由报错变为 `iso-8859-1`；随机字节与超出容错的输入仍报错。细化第 5 步
+  后与第一版相比只有三处德文输入由 `gb18030` 变为 `iso-8859-1`。
+- 用户 GBK 小说：`gb18030`、455 章，解码全文 SHA-256 仍为 `d2cb6d97…3057`。
+- 变异：M1 去掉多字节证据一步 → 日文/韩文、Shift_JIS 页面、既有 Big5 用例与“UTF-8 每 20 字节坏一个”对照失败；M2 并列按 ICU
+  列表顺序 → 13 字 GB18030 文本解成 EUC-JP（“涙朕村嫗准坪否”），既有无目录测试与短中文对照失败；M3 去掉短文本保护 → Big5 4、8
+  字对照失败；M4 去掉“至少一半” → 德文段落失败；M5 去掉 ISO-2022-JP 一步 → ISO-2022-JP 用例失败；M6 改动 Shift_JIS 常用字表
+  一项 → 第一版比对测试未发现（置信度饱和），加入未饱和夹具后失败（70 对 84）。均已还原。
+
+回归：
+
+- backend `go test ./...` 29 个包全部 ok，`go vet ./...` 通过；`go test -race -timeout 40m ./engine ./services/localbook ./api`
+  全部 ok（api 1023.0s），没有 data race。
+- `backend/go.mod`、`go.sum` 未变（`charmap` 属于已有的 `golang.org/x/text`）。frontend `npm test` 815/815、`npm run build` 通过；
+  advisory 门自测 131/131，Go 与前端实际扫描 exit 0；`docker compose config --quiet`、`store-read-list-lifecycle-contract.mjs`
+  10 项 PASS、`release-browser-smoke.test.mjs` 10/10。含本地端口的用例在沙箱外运行。
+- 未在本地运行：真实浏览器（前端与导入流程未改；api 用例覆盖直接上传）；镜像、浏览器启动门、OS APK 门、fresh/historical 卷门与
+  双平台发布由合入 main 后的可信 Actions 运行。
+
+J2（ISO-2022-KR/CN）与 E5 未改。Git：分支已推送并经 `git ls-remote` 核验。镜像：未构建。生产：未访问。

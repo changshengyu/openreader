@@ -12,6 +12,12 @@ ISO-2022 与单字节识别器，多字节有证据（置信度大于 10 且高�
 样本不是“不超过 10 个多字节字符且无坏字符”时用单字节（S1），否则保持现有选择；ISO-8859-8-I 按 ISO-8859-8 解码（H1）。S1、
 S2、H1 为 `intentional-redesign`；ISO-2022-KR/CN（J2）为 `unknown` 不改；E5 报错立场不变。完整合同见
 [`txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md`](txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md)。
+2026-10-25 记录（合同第 10 节）：合同 `7a161c8`；红测 `b45f75c`（14 种语言/编码、`DecodeBody` 两页、api 两本书）与 `2521eca`（一段德文）
+在 `5a2fc7d` 上按合同失败，短中文对照通过；实现 `c03827d` 移植上游 ICU 多字节、ISO-2022 与单字节识别器，`d84b837` 补比对夹具。Go 移植
+对 178 个语料文件的前五名与 31 个比对夹具的全部识别器结果与上游 Java 完全一致。实现中把第 5 步细化为“多字节字符还须占一半以上”，
+否则一段德文会被当成短中日韩文本。上游判对的日文、韩文与单字节夹具全部同编码，希伯来文可解码（上游失败），用户小说与短中文不变。
+六项变异各有测试捕获。backend 全量、vet、race，frontend 815/815 与 build，advisory 门与扫描，Compose，存储 HTTP 合同通过。状态
+**implementation-complete / regression-validated**；J2、E5 未改。
 
 ## 2026-10-25 P1 文本编码探测的少量非法字节容错（E2）
 

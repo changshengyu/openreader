@@ -11,6 +11,12 @@
 engine 日文三种、韩文与十种单字节文本，`DecodeBody` 日文/俄文页面，api 上传日文与俄文书；对照：短中文、13 字测试文本、E1/E2
 全部、随机字节仍报错。状态 contract-only。
 
+记录（2026-10-25，取代上段的状态）：提交7a161c8/b45f75c/2521eca/c03827d/d84b837。红测在5a2fc7d上14种语言/编码、DecodeBody两页、
+api两本书与一段德文失败，短中文对照通过；c03827d移植上游ICU识别器（表格脚本转写、保留Unicode/ICU声明），Go对178个语料文件与31个
+比对夹具的结果与上游Java逐项一致。实现中第5步细化为“多字节字符须占一半以上”（否则德文段落被当成短中日韩文本）。日文/韩文/单字节
+夹具与上游同编码，希伯来文可解码，用户小说与短中文不变；六项变异各有测试捕获。backend全量/vet/race、frontend 815/815与build、advisory
+门与扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+
 ## 2026-10-25 当前切片：文本编码探测的少量非法字节容错（P1，E2）
 
 见[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)。
