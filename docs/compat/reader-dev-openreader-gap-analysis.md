@@ -22,6 +22,9 @@ GB18030 四字节保留 2 字节、Big5 保留 1 字节）与 api 三个入口�
 1440×900 下书仓导入直接进入“导入本地书籍”（455 章），导入后 Reader 打开截断处所在的 `第056章 担心`，正文无 U+FFFD。backend
 全量 29 包、vet、frontend 815/815 与 build、advisory 门与扫描、Compose、存储 HTTP 合同通过。状态
 **implementation-complete / regression-validated**；E2/E4/E5 未处理。
+2026-10-25 发布（合同第 9 节）：`main` 快进到 `94c696f`，可信 Actions run `40174734994` 全部成功；`94c696f`/`latest` 为 OCI
+index `sha256:50cd42f1fb17df94fae00b42253cfdc88ad4ca0b935e45ba5ea93215f60bc62d`（amd64 + arm64，revision 标签为完整提交号）。
+状态 **aligned / Docker-published / awaiting-device-verification**；生产运行版本未知。
 
 ## 2026-10-23 P0 Reader 桌面工作区面板打开时的正文控件盘点
 

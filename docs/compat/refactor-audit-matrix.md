@@ -16,6 +16,8 @@ Big5保留1）与api三入口（直接上传400，LocalStore/WebDAV预检报错�
 候选按atEOF=false解码，同一六项转绿，改回atEOF=true的变异恰好重新变红。用户文件455章、全文与iconv逐字节一致；真实浏览器1440×900
 书仓导入直接进入“导入本地书籍”455章，Reader第056章（截断处）无U+FFFD。backend全量29包/vet、race（engine/localbook/api）、frontend 815/815与
 build、advisory门131/131与两项扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+发布（2026-10-25）：main快进到94c696f，run 40174734994全部成功，94c696f/latest index `sha256:50cd42f1…c62d`（amd64+arm64，revision
+标签核验）。状态aligned / Docker-published / awaiting-device-verification；生产未动。下一步候选：E2（样本内少量坏字节容错）另起切片。
 
 ## 2026-10-23 当前切片：Reader 桌面工作区面板打开时的正文控件盘点
 

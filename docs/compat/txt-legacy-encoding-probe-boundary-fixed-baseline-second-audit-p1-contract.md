@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `1b8ef35`。
 
 审查日期：2026-10-25
-状态：**implementation-complete / regression-validated**（证据见第 8 节；尚未经可信 Actions 运行）
+状态：**aligned / Docker-published / awaiting-device-verification**（E1；证据见第 8 节，发布见第 9 节；E2/E4/E5 未处理）
 
 来源：用户报告。`前浪(校对加料版全本 1-425) 作者：刀一耕.txt`（4,117,155 字节，GBK）在导入预检里显示“待修复”和
 `unable to detect text encoding`，同一文件在上游能正常导入。2026-07-11 签收的 TXT 目录规则合同
@@ -157,3 +157,18 @@ OpenReader 从文件开头截取 512000 字节，用来判定编码。截取位�
   由合入 main 后的可信 Actions 运行。
 
 E2、E4、E5 未处理，见第 4 节。Git：分支已推送并经 `git ls-remote` 核验。镜像：未构建。生产：未访问。
+
+## 9. 发布（2026-10-25）
+
+`main` 由 `1b8ef35` 快进到 `94c696f`（本切片的四个提交，没有 force push）。可信 Actions run `40174734994` 全部步骤成功：
+Go 测试、Go/前端/OS advisory 门、前端测试与构建、Compose、存储 HTTP 合同、native 候选镜像与浏览器启动门、arm64 候选、
+OS APK 门、fresh/historical 卷门、双平台发布与平台核验。
+
+- `ghcr.io/changshengyu/openreader:94c696f` 与 `latest`：OCI index
+  `sha256:50cd42f1fb17df94fae00b42253cfdc88ad4ca0b935e45ba5ea93215f60bc62d`。
+- `linux/amd64` manifest `sha256:3699aaea397b2335a833a404d7a397e4574e3d9e841c0b5623b0bdcb124135f8`；
+  `linux/arm64` manifest `sha256:73ae128eb07e7a6f070e8ffa2ae553c4fa56da927f783da1c399b4c3a92643fe`。
+- 两个平台的 `org.opencontainers.image.revision` 都是 `94c696ffb4ec7c9a3757f88349aa5df54dc79a74`。
+
+本记录提交只改文档，不触发新镜像。生产在另一台 Mac，未访问，实际运行版本未知。升级到该镜像后重新导入此前“待修复”的书即可：
+失败的预检没有写入书架数据，不需要迁移。
