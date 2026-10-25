@@ -9,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 	unicodeencoding "golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/encoding/unicode/utf32"
+	"golang.org/x/text/transform"
 
 	"openreader/backend/models"
 )
@@ -437,6 +439,118 @@ func TestParseTXTNoTocFallbackPreservesLegacyEncodingContent(t *testing.T) {
 	if len(chapters) != 1 || chapters[0].Title != "第1章(1)" || chapters[0].Content != string(input) {
 		t.Fatalf("legacy no-TOC fallback = %+v", chapters)
 	}
+}
+
+func TestParseTXTDetectsEncodingWhereverTheCharsetProbeEnds(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		titles   [2]string
+		line     string
+		marker   string
+		// splitsCharacter accepts how many bytes of a character the probe
+		// keeps when it cuts that character off.
+		splitsCharacter func(int) bool
+	}{
+		{
+			name:            "GBK double-byte",
+			encoding:        simplifiedchinese.GBK,
+			titles:          [2]string{"第1章 开端", "第2章 尾声"},
+			line:            "前浪推后浪，他们在雨里说了很多话。\n",
+			marker:          "探测边界之后的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 1 },
+		},
+		{
+			name:            "GB18030 four-byte",
+			encoding:        simplifiedchinese.GB18030,
+			titles:          [2]string{"第1章 开端", "第2章 尾声"},
+			line:            "前浪推后浪，𠀀𠀁𠀂他们在雨里说了很多话。\n",
+			marker:          "探测边界之后的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 2 },
+		},
+		{
+			name:            "Big5",
+			encoding:        traditionalchinese.Big5,
+			titles:          [2]string{"第1章 開端", "第2章 尾聲"},
+			line:            "前浪推後浪，他們在雨裡說了很多話。\n",
+			marker:          "探測邊界之後的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 1 },
+		},
+		{
+			name:            "UTF-8",
+			encoding:        unicodeencoding.UTF8,
+			titles:          [2]string{"第1章 开端", "第2章 尾声"},
+			line:            "前浪推后浪，他们在雨里说了很多话。\n",
+			marker:          "探测边界之后的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 1 },
+		},
+	}
+	for _, test := range tests {
+		boundaries := []struct {
+			name   string
+			accept func(int) bool
+		}{
+			{name: "probe ends inside a character", accept: test.splitsCharacter},
+			{name: "probe ends on a character boundary", accept: func(kept int) bool { return kept == 0 }},
+		}
+		for _, boundary := range boundaries {
+			t.Run(test.name+"/"+boundary.name, func(t *testing.T) {
+				data, firstContent, kept := encodeTXTAtCharsetProbeBoundary(t, test.encoding, test.titles, test.line, test.marker, boundary.accept)
+				chapters, err := ParseTXT(data)
+				if err != nil {
+					t.Fatalf("ParseTXT with the charset probe keeping %d byte(s) of its last character: %v", kept, err)
+				}
+				if len(chapters) != 2 || chapters[0].Title != test.titles[0] || chapters[1].Title != test.titles[1] {
+					t.Fatalf("chapters = %d %q, want titles %q", len(chapters), txtChapterTitles(chapters), test.titles)
+				}
+				if chapters[0].Content != firstContent {
+					t.Fatalf("first chapter, which spans the probe end, decoded to %d bytes, want %d", len(chapters[0].Content), len(firstContent))
+				}
+				if chapters[1].Content != test.marker {
+					t.Fatalf("chapter after the probe = %q, want %q", chapters[1].Content, test.marker)
+				}
+			})
+		}
+	}
+}
+
+// encodeTXTAtCharsetProbeBoundary encodes a two-chapter book that is larger
+// than the charset probe, shifting the first chapter with leading spaces until
+// accept holds for the number of bytes of a cut-off character the probe keeps
+// (0 when the probe ends on a character boundary). It returns the encoded book,
+// the expected content of the first chapter and that kept byte count.
+func encodeTXTAtCharsetProbeBoundary(t *testing.T, textEncoding encoding.Encoding, titles [2]string, line string, marker string, accept func(int) bool) ([]byte, string, int) {
+	t.Helper()
+	encodedLine, err := textEncoding.NewEncoder().Bytes([]byte(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat(line, txtDetectionProbeBytes/len(encodedLine)+64)
+	for padding := 0; padding < 8; padding++ {
+		first := strings.Repeat(" ", padding) + body
+		data, err := textEncoding.NewEncoder().Bytes([]byte(titles[0] + "\n" + first + titles[1] + "\n" + marker + "\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		probe := data[:txtDetectionProbeBytes]
+		_, consumed, err := textEncoding.NewDecoder().Transform(make([]byte, 4*len(probe)), probe, false)
+		if err != nil && !errors.Is(err, transform.ErrShortSrc) {
+			t.Fatalf("measure the charset probe boundary: %v", err)
+		}
+		if kept := len(probe) - consumed; accept(kept) {
+			return data, strings.TrimSpace(first), kept
+		}
+	}
+	t.Fatal("no padding gives the wanted charset probe boundary")
+	return nil, "", 0
+}
+
+func txtChapterTitles(chapters []TXTChapter) []string {
+	titles := make([]string, len(chapters))
+	for index, chapter := range chapters {
+		titles[index] = chapter.Title
+	}
+	return titles
 }
 
 func joinTXTChapterContents(chapters []TXTChapter) string {
