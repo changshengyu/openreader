@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
@@ -157,6 +160,33 @@ func TestDecodeBodyAutoCharsetToleratesSparseMalformedBytes(t *testing.T) {
 	}
 	if want := "<html><body><p>" + paragraph + "�" + paragraph + "</p></body></html>"; decoded != want {
 		t.Fatalf("GBK page with a stray byte decoded as %q", decoded)
+	}
+}
+
+func TestDecodeBodyAutoCharsetRecognizesJapaneseAndCyrillicPages(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		text     string
+	}{
+		{name: "Shift_JIS", encoding: japanese.ShiftJIS, text: recognitionTestJapanese},
+		{name: "windows-1251", encoding: charmap.Windows1251, text: recognitionTestRussian},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page := "<html><body><p>" + strings.Repeat(test.text, 4) + "</p></body></html>"
+			body, err := test.encoding.NewEncoder().Bytes([]byte(page))
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := DecodeBody(body, "")
+			if err != nil {
+				t.Fatalf("DecodeBody: %v", err)
+			}
+			if decoded != page {
+				t.Fatalf("page without a charset decoded as %q...", firstRunes(decoded, 24))
+			}
+		})
 	}
 }
 

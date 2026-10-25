@@ -10,6 +10,9 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/korean"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 	unicodeencoding "golang.org/x/text/encoding/unicode"
@@ -683,6 +686,88 @@ func TestParseTXTStillRejectsInputBeyondUpstreamMalformedTolerance(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			if chapters, err := ParseTXT(data); err == nil || !strings.Contains(err.Error(), "unable to detect text encoding") {
 				t.Fatalf("ParseTXT = %d chapters, err %v; want unable to detect text encoding", len(chapters), err)
+			}
+		})
+	}
+}
+
+const (
+	recognitionTestJapanese = "今日はとても良い天気ですね。私は朝から公園を散歩して、友達と一緒に昼ご飯を食べました。午後は図書館で本を読みながら、明日の予定について考えていました。夕方になると、駅の近くの小さな店でコーヒーを飲みました。\n"
+	recognitionTestKorean   = "오늘은 날씨가 정말 좋습니다. 저는 아침부터 공원을 산책하고 친구와 함께 점심을 먹었습니다. 오후에는 도서관에서 책을 읽으면서 내일 계획에 대해 생각했습니다. 저녁에는 역 근처의 작은 가게에서 커피를 마셨습니다.\n"
+	recognitionTestEnglish  = "The weather was lovely this morning, so I walked through the park and had lunch with a friend at the café. In the afternoon I read a book at the library — “a quiet one” — and thought about my plans for tomorrow. It’s a good day.\n"
+	recognitionTestFrench   = "Ce matin, il faisait très beau. J'ai marché dans le parc et j'ai déjeuné avec un ami. L'après-midi, j'ai lu un livre à la bibliothèque en pensant à mes projets pour demain. Le soir, nous avons pris un café près de la gare.\n"
+	recognitionTestGerman   = "Heute Morgen war das Wetter sehr schön. Ich bin durch den Park gegangen und habe mit einem Freund zu Mittag gegessen. Am Nachmittag habe ich in der Bibliothek ein Buch gelesen und über meine Pläne für morgen nachgedacht. Abends trinken wir große Tassen Kaffee.\n"
+	recognitionTestPolish   = "Dziś rano była piękna pogoda. Spacerowałem po parku i zjadłem obiad z przyjacielem. Po południu czytałem książkę w bibliotece i myślałem o planach na jutro. Wieczorem piliśmy kawę w małej kawiarni.\n"
+	recognitionTestRussian  = "Сегодня утром была прекрасная погода. Я гулял по парку и обедал с другом. Днём я читал книгу в библиотеке и думал о своих планах на завтра.\n"
+	recognitionTestGreek    = "Σήμερα το πρωί ο καιρός ήταν υπέροχος. Περπάτησα στο πάρκο και έφαγα μεσημεριανό με έναν φίλο. Το απόγευμα διάβασα ένα βιβλίο στη βιβλιοθήκη.\n"
+	recognitionTestTurkish  = "Bu sabah hava çok güzeldi. Parkta yürüyüş yaptım ve bir arkadaşımla öğle yemeği yedim. Öğleden sonra kütüphanede kitap okudum ve yarın için planlarımı düşündüm. Akşam istasyonun yakınında kahve içtik.\n"
+	recognitionTestHebrew   = "הבוקר מזג האוויר היה נפלא. טיילתי בפארק ואכלתי ארוחת צהריים עם חבר. אחר הצהריים קראתי ספר בספרייה וחשבתי על התוכניות שלי למחר.\n"
+	recognitionTestArabic   = "كان الطقس جميلا جدا هذا الصباح. مشيت في الحديقة وتناولت الغداء مع صديق. في فترة ما بعد الظهر قرأت كتابا في المكتبة وفكرت في خططي للغد.\n"
+)
+
+func TestParseTXTRecognizesJapaneseKoreanAndSingleByteTextLikeUpstream(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		text     string
+	}{
+		{name: "Japanese Shift_JIS", encoding: japanese.ShiftJIS, text: recognitionTestJapanese},
+		{name: "Japanese EUC-JP", encoding: japanese.EUCJP, text: recognitionTestJapanese},
+		{name: "Japanese ISO-2022-JP", encoding: japanese.ISO2022JP, text: recognitionTestJapanese},
+		{name: "Korean EUC-KR", encoding: korean.EUCKR, text: recognitionTestKorean},
+		{name: "English windows-1252", encoding: charmap.Windows1252, text: recognitionTestEnglish},
+		{name: "French ISO-8859-1", encoding: charmap.ISO8859_1, text: recognitionTestFrench},
+		{name: "German ISO-8859-1", encoding: charmap.ISO8859_1, text: recognitionTestGerman},
+		{name: "Polish ISO-8859-2", encoding: charmap.ISO8859_2, text: recognitionTestPolish},
+		{name: "Russian windows-1251", encoding: charmap.Windows1251, text: recognitionTestRussian},
+		{name: "Russian KOI8-R", encoding: charmap.KOI8R, text: recognitionTestRussian},
+		{name: "Greek ISO-8859-7", encoding: charmap.ISO8859_7, text: recognitionTestGreek},
+		{name: "Turkish ISO-8859-9", encoding: charmap.ISO8859_9, text: recognitionTestTurkish},
+		{name: "Hebrew ISO-8859-8", encoding: charmap.ISO8859_8, text: recognitionTestHebrew},
+		{name: "Arabic windows-1256", encoding: charmap.Windows1256, text: recognitionTestArabic},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			text := strings.Repeat(test.text, 3000/len(test.text)+1)
+			data, err := test.encoding.NewEncoder().Bytes([]byte(text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			chapters, err := ParseTXT(data)
+			if err != nil {
+				t.Fatalf("ParseTXT(%d bytes): %v", len(data), err)
+			}
+			if got := joinTXTChapterContents(chapters); got != text {
+				t.Fatalf("decoded as %q..., want %q...", firstRunes(got, 16), firstRunes(text, 16))
+			}
+		})
+	}
+}
+
+func TestParseTXTKeepsShortChineseTextOnItsCurrentCharset(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		text     string
+	}{
+		{name: "GBK four characters", encoding: simplifiedchinese.GBK, text: "前浪推后"},
+		{name: "GBK eight characters", encoding: simplifiedchinese.GBK, text: "前浪推后浪，他们"},
+		{name: "Big5 four characters", encoding: traditionalchinese.Big5, text: "前浪推後"},
+		{name: "Big5 eight characters", encoding: traditionalchinese.Big5, text: "前浪推後浪，他們"},
+		{name: "GB18030 tied with EUC-JP upstream", encoding: simplifiedchinese.GB18030, text: "无目录章节内容。\n第二段内容。"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := test.encoding.NewEncoder().Bytes([]byte(test.text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			chapters, err := ParseTXT(data)
+			if err != nil {
+				t.Fatalf("ParseTXT: %v", err)
+			}
+			if got := joinTXTChapterContents(chapters); got != test.text {
+				t.Fatalf("decoded as %q, want %q", got, test.text)
 			}
 		})
 	}
