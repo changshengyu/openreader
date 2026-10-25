@@ -21,6 +21,9 @@ UTF-8 认定）恰好让 UTF-8 用例失败，M3（旧编码见坏字符即淘�
 上游实测夹具中，OpenReader 现在在上游判 GB18030/Big5/UTF-8 的地方给出相同编码，不带 BOM 的损坏 UTF-8 判 UTF-8（上游 Shift_JIS
 乱码）；用户小说结果不变，插入一个坏字节后 GBK 与 UTF-8 版本都能导入（455 章）。回归见合同第 9 节。状态
 **implementation-complete / regression-validated**；E4/E5/E8 未处理。
+2026-10-25 发布（合同第 10 节）：`main` 快进到 `7c447a5`，可信 Actions run `40179627517` 全部成功；`7c447a5`/`latest` 为 OCI
+index `sha256:afe0290b923ee8bd599a9abf787d982558382d273bbcf5fbbb65f7c3506d64ba`（amd64 + arm64，revision 标签为完整提交号）。
+状态 **aligned / Docker-published / awaiting-device-verification**；生产运行版本未知。
 
 ## 2026-10-25 P1 本地 TXT 旧编码探测边界
 

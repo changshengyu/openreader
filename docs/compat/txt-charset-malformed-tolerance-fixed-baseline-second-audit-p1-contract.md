@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `83f7e48`（应用代码与已发布的 `94c696f` 相同）。
 
 审查日期：2026-10-25
-状态：**implementation-complete / regression-validated**（证据见第 9 节；尚未经可信 Actions 运行）
+状态：**aligned / Docker-published / awaiting-device-verification**（证据见第 9 节，发布见第 10 节；E4/E5/E8 未处理）
 
 来源：[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)
 （下称 E1 合同）第 4 节的 E2。用户 2026-10-25 要求：按上游 ICU 的容错规则，让样本里少量非法字节不再导致
@@ -191,3 +191,16 @@ E1 合同说“ICU `CharsetDetector` 最多只看样本的前 8000 字节”，�
   浏览器启动门、OS APK 门、fresh/historical 卷门与双平台发布由合入 main 后的可信 Actions 运行。
 
 E4、E5、E8 未处理。Git：分支已推送并经 `git ls-remote` 核验。镜像：未构建。生产：未访问。
+
+## 10. 发布（2026-10-25）
+
+`main` 由 `83f7e48` 快进到 `7c447a5`（本切片的四个提交，没有 force push）。可信 Actions run `40179627517` 全部步骤成功。
+
+- `ghcr.io/changshengyu/openreader:7c447a5` 与 `latest`：OCI index
+  `sha256:afe0290b923ee8bd599a9abf787d982558382d273bbcf5fbbb65f7c3506d64ba`。
+- `linux/amd64` manifest `sha256:af11e858a86d927b98ec7610af06b7a36cf8a9e39f9d7a8ef24a321d11baee49`；
+  `linux/arm64` manifest `sha256:0c53f8929397dc19e458c02d3a7bf412c0244ae6d3ada1c31df8040d90003570`。
+- 两个平台的 `org.opencontainers.image.revision` 都是 `7c447a5ae9b3b83819d7505721a5b3559882f5ff`。
+
+本记录提交只改文档，不触发新镜像。生产在另一台 Mac，未访问，实际运行版本未知。升级后，此前因少量坏字节报
+`unable to detect text encoding` 的书重新导入即可；已导入的书不变。

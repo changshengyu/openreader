@@ -16,6 +16,8 @@ T7 书源 `DecodeBody` 同样适用。E5 不改，E8（单字节编码）must-fi
 变异M1/M2只红UTF-8用例，M3只红GBK/Big5用例，M4只红超出容错对照。上游实测夹具结果与上游一致（损坏UTF-8按用户要求判UTF-8）；
 用户小说不变，插入坏字节后GBK/UTF-8版都455章。backend全量29包/vet/race（engine/localbook/api）、frontend 815/815与build、advisory门131/131与两项
 扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+发布（2026-10-25）：main快进到7c447a5，run 40179627517全部成功，7c447a5/latest index `sha256:afe0290b…64ba`（amd64+arm64，revision
+标签核验）。状态aligned / Docker-published / awaiting-device-verification；生产未动。编码相关仍开放：E4、E5、E8。
 
 ## 2026-10-25 当前切片：本地 TXT 旧编码探测边界（P1）
 
