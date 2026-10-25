@@ -545,6 +545,157 @@ func encodeTXTAtCharsetProbeBoundary(t *testing.T, textEncoding encoding.Encodin
 	return nil, "", 0
 }
 
+const (
+	malformedTestSimplifiedLine  = "前浪推后浪，他们在雨里说了很多话。彭向明站在窗前，看着楼下来来往往的人群，心里想着明天的事情。这是一段用来测试编码探测的正文。\n"
+	malformedTestTraditionalLine = "前浪推後浪，他們在雨裡說了很多話。彭向明站在窗前，看著樓下來來往往的人群，心裡想著明天的事情。這是一段用來測試編碼探測的正文。\n"
+)
+
+// txtSegment is part of a test book: text is encoded with the book's charset,
+// while raw bytes are written as is and decode to decoded.
+type txtSegment struct {
+	text    string
+	raw     string
+	decoded string
+}
+
+func encodeTXTSegments(t *testing.T, textEncoding encoding.Encoding, segments []txtSegment) ([]byte, string) {
+	t.Helper()
+	var data []byte
+	var want strings.Builder
+	for _, segment := range segments {
+		if segment.text == "" {
+			data = append(data, segment.raw...)
+			want.WriteString(segment.decoded)
+			continue
+		}
+		encoded := []byte(segment.text)
+		if textEncoding != nil {
+			var err error
+			if encoded, err = textEncoding.NewEncoder().Bytes(encoded); err != nil {
+				t.Fatal(err)
+			}
+		}
+		data = append(data, encoded...)
+		want.WriteString(segment.text)
+	}
+	return data, want.String()
+}
+
+func TestParseTXTToleratesSparseMalformedBytesLikeUpstream(t *testing.T) {
+	simplified := func(lines int) txtSegment {
+		return txtSegment{text: strings.Repeat(malformedTestSimplifiedLine, lines)}
+	}
+	traditional := func(lines int) txtSegment {
+		return txtSegment{text: strings.Repeat(malformedTestTraditionalLine, lines)}
+	}
+	replaced := func(raw string) txtSegment { return txtSegment{raw: raw, decoded: "�"} }
+	kept := func(raw string) txtSegment { return txtSegment{raw: raw, decoded: raw} }
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		segments []txtSegment
+	}{
+		{
+			name:     "GBK with one stray byte",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{simplified(10), replaced("\xff"), simplified(10)},
+		},
+		{
+			name:     "GBK longer than the probe with stray bytes inside it",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{simplified(500), replaced("\xff"), simplified(500), replaced("\xff"), simplified(500), replaced("\xff"), simplified(3000)},
+		},
+		{
+			name:     "GBK with lead bytes cut off before newlines",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{
+				simplified(20), {text: strings.TrimSuffix(malformedTestSimplifiedLine, "\n")}, replaced("\xd6"), {text: "\n"},
+				simplified(20), {text: strings.TrimSuffix(malformedTestSimplifiedLine, "\n")}, replaced("\xd6"), {text: "\n"},
+				simplified(20),
+			},
+		},
+		{
+			name:     "Big5 longer than the probe with stray bytes inside it",
+			encoding: traditionalchinese.Big5,
+			segments: []txtSegment{traditional(500), replaced("\xff"), traditional(500), replaced("\xff"), traditional(500), replaced("\xff"), traditional(3000)},
+		},
+		{
+			name:     "UTF-8 with BOM and a stray byte",
+			segments: []txtSegment{{raw: "\xef\xbb\xbf"}, simplified(10), kept("\xff"), simplified(10)},
+		},
+		{
+			name:     "UTF-8 cut inside its last character",
+			segments: []txtSegment{simplified(20), kept("\xe6\x9c")},
+		},
+		{
+			name:     "UTF-8 without BOM and a stray byte",
+			segments: []txtSegment{simplified(10), kept("\xff"), simplified(10)},
+		},
+		{
+			name:     "UTF-8 longer than the probe with Latin-1 bytes inside it",
+			segments: []txtSegment{simplified(500), kept("caf\xe9 "), simplified(500), kept("caf\xe9 "), simplified(500), kept("caf\xe9 "), simplified(2500)},
+		},
+		{
+			name:     "GBK without malformed bytes",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{simplified(20)},
+		},
+		{
+			name:     "Big5 without malformed bytes",
+			encoding: traditionalchinese.Big5,
+			segments: []txtSegment{traditional(20)},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, want := encodeTXTSegments(t, test.encoding, test.segments)
+			chapters, err := ParseTXT(data)
+			if err != nil {
+				t.Fatalf("ParseTXT(%d bytes): %v", len(data), err)
+			}
+			if got := joinTXTChapterContents(chapters); got != want {
+				t.Fatalf("decoded text differs from the original apart from the malformed bytes: got %d bytes starting %q, want %d bytes starting %q",
+					len(got), firstRunes(got, 12), len(want), firstRunes(want, 12))
+			}
+		})
+	}
+}
+
+func TestParseTXTStillRejectsInputBeyondUpstreamMalformedTolerance(t *testing.T) {
+	gbk, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(strings.Repeat(malformedTestSimplifiedLine, 20)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < len(gbk); index += 12 {
+		gbk[index] = 0xFF
+	}
+	utf8Text := []byte(strings.Repeat(malformedTestSimplifiedLine, 20))
+	for index := 0; index < len(utf8Text); index += 20 {
+		utf8Text[index] = 0xFF
+	}
+	random := make([]byte, 20000)
+	state := uint32(7)
+	for index := range random {
+		state = state*1664525 + 1013904223
+		random[index] = byte(state >> 24)
+	}
+	for name, data := range map[string][]byte{"GBK with every 12th byte broken": gbk, "UTF-8 with every 20th byte broken": utf8Text, "random bytes": random} {
+		t.Run(name, func(t *testing.T) {
+			if chapters, err := ParseTXT(data); err == nil || !strings.Contains(err.Error(), "unable to detect text encoding") {
+				t.Fatalf("ParseTXT = %d chapters, err %v; want unable to detect text encoding", len(chapters), err)
+			}
+		})
+	}
+}
+
+func firstRunes(value string, count int) string {
+	runes := []rune(value)
+	if len(runes) > count {
+		runes = runes[:count]
+	}
+	return string(runes)
+}
+
 func txtChapterTitles(chapters []TXTChapter) []string {
 	titles := make([]string, len(chapters))
 	for index, chapter := range chapters {
