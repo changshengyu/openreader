@@ -15,6 +15,12 @@ BOM 或末尾截断）为 **`must-fix`**；T3（不带 BOM 的损坏 UTF-8 认�
 （`DecodeBody`）与上游同用一个探测器（T7）。E5（超出容错时报错）保持 `unknown` 不改；新记 E8（单字节编码）为 `must-fix`，另起
 切片。同时勘误 E1：上游多字节与 UTF 识别器读整个 512000 字节样本，不是只看前 8000 字节，E3 实为 `aligned`。完整合同见
 [`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)。
+2026-10-25 记录（合同第 9 节）：合同 `3350984`；红测 `5ca5684` 在 `83f7e48` 上 engine 八个容错用例、`DecodeBody` UTF-8 网页与
+api 两次上传按合同失败，无坏字节两行与三个超出容错的对照通过；实现 `9ce3d39` 后全部转绿，对照仍报错。变异 M1/M2（去掉或后移
+UTF-8 认定）恰好让 UTF-8 用例失败，M3（旧编码见坏字符即淘汰）恰好让 GBK/Big5 用例失败，M4（去掉 20:1）恰好让三个对照失败。
+上游实测夹具中，OpenReader 现在在上游判 GB18030/Big5/UTF-8 的地方给出相同编码，不带 BOM 的损坏 UTF-8 判 UTF-8（上游 Shift_JIS
+乱码）；用户小说结果不变，插入一个坏字节后 GBK 与 UTF-8 版本都能导入（455 章）。回归见合同第 9 节。状态
+**implementation-complete / regression-validated**；E4/E5/E8 未处理。
 
 ## 2026-10-25 P1 本地 TXT 旧编码探测边界
 

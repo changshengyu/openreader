@@ -11,6 +11,12 @@ T7 书源 `DecodeBody` 同样适用。E5 不改，E8（单字节编码）must-fi
 实为 aligned。计划红测：engine GBK/Big5/UTF-8 坏字节、UTF-8 BOM、末尾截断与 `DecodeBody`，api 直接上传两本；对照：无坏字节
 夹具、E1 截断、超出容错仍报错。状态 contract-only。
 
+记录（2026-10-25，取代上段的状态）：提交3350984/5ca5684/9ce3d39。红测在83f7e48上engine八个容错用例、DecodeBody与api两次上传
+失败，对照通过；9ce3d39只改`text_encoding.go`（`mostlyUTF8`移植ICU UTF-8计数、旧编码20:1容错、无坏字符优先），全部转绿。
+变异M1/M2只红UTF-8用例，M3只红GBK/Big5用例，M4只红超出容错对照。上游实测夹具结果与上游一致（损坏UTF-8按用户要求判UTF-8）；
+用户小说不变，插入坏字节后GBK/UTF-8版都455章。backend全量29包/vet/race（engine/localbook/api）、frontend 815/815与build、advisory门131/131与两项
+扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+
 ## 2026-10-25 当前切片：本地 TXT 旧编码探测边界（P1）
 
 见[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)。

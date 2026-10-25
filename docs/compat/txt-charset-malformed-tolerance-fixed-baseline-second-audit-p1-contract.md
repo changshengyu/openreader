@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `83f7e48`（应用代码与已发布的 `94c696f` 相同）。
 
 审查日期：2026-10-25
-状态：**contract-only**
+状态：**implementation-complete / regression-validated**（证据见第 9 节；尚未经可信 Actions 运行）
 
 来源：[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)
 （下称 E1 合同）第 4 节的 E2。用户 2026-10-25 要求：按上游 ICU 的容错规则，让样本里少量非法字节不再导致
@@ -144,3 +144,50 @@ E1 合同说“ICU `CharsetDetector` 最多只看样本的前 8000 字节”，�
 - 候选列表、评分、UTF-16 无 BOM 判断与 HTML `<meta charset>` 解析。
 - E4（Shift_JIS/EUC-KR 评分）、E5（超出容错时报错）、E8（单字节编码）。
 - 导入暂存、token、LocalStore/WebDAV 流程、parser 预算与前端；SQLite、`data/`、`cache/`、`library/` 与已导入书籍。
+
+## 9. 记录（2026-10-25）
+
+分支 `claude/txt-charset-malformed-tolerance`，基于 `83f7e48`：
+
+| 提交 | 内容 |
+|---|---|
+| `3350984` docs | 本合同、gap-analysis 与矩阵条目，以及 E1 合同和 E1 gap-analysis 条目的勘误注记。 |
+| `5ca5684` test | engine `TestParseTXTToleratesSparseMalformedBytesLikeUpstream`、`TestParseTXTStillRejectsInputBeyondUpstreamMalformedTolerance`、`TestDecodeBodyAutoCharsetToleratesSparseMalformedBytes`；api `TestTXTWithSparseMalformedBytesImportsAndReads`。 |
+| `9ce3d39` fix | `text_encoding.go`：新增 `mostlyUTF8`（移植 ICU UTF-8 计数）与 `countDecodedRunes`；在 UTF-16 判断之后、旧编码之前认定损坏的 UTF-8；旧编码候选按 20:1 容错入选，无坏字符的候选优先。 |
+
+红测（`5ca5684`，应用代码为 `83f7e48`）：
+
+- engine：八个容错用例全部报 `unable to detect text encoding`：GBK 1 个坏字节；GBK 571,503 字节、样本内 3 个坏字节；
+  GBK 换行前孤立前导字节；Big5 571,503 字节、样本内 3 个坏字节；UTF-8 带 BOM 加坏字节；UTF-8 末尾截断；UTF-8 无 BOM
+  加坏字节；UTF-8 760,015 字节、样本内 3 处 Latin-1 `é`。无坏字节的 GBK、Big5 两行通过。
+- 对照 `TestParseTXTStillRejectsInputBeyondUpstreamMalformedTolerance`（GBK 每 12 字节一个坏字节、UTF-8 每 20 字节一个、
+  随机字节）通过：仍报错。
+- `DecodeBody`：带一个坏字节的 UTF-8 网页报错。api：GBK 与 UTF-8 各带一个坏字节，预览都返回
+  `400 failed to parse local book: unable to detect text encoding`。
+- 完整 engine、api 包只有这些用例失败，`services/localbook` 通过。
+
+实现后（`9ce3d39`）：
+
+- 上述用例全部转绿，对照仍报错；E1 的截断测试、既有编码测试、`DecodeBody` 既有测试与 GBK/GB18030/BOM 导入测试通过。
+- 变异：M1 去掉 UTF-8 认定，M2 把它移到旧编码之后（即错误的优先级），都恰好让四个 UTF-8 用例、`DecodeBody` 与 api UTF-8
+  失败；M3 把旧编码恢复为见坏字符即淘汰，恰好让四个 GBK/Big5 用例、`DecodeBody`（GBK 部分）与 api GBK 失败；M4 去掉
+  20:1 门槛，恰好让三个超出容错的对照失败。每次都已还原。
+- 第 3 节全部夹具：GBK、Big5（含 GBK 合法的坏对）判 `gb18030`、`big5`，坏字节处为 U+FFFD；UTF-8 带 BOM、末尾截断、不带
+  BOM 的坏字节与 Latin-1 `é` 都判 `utf-8`，坏字节原样保留；GBK 8%、UTF-8 每 20 字节、随机字节、Latin-1 英文仍报错。
+  GBK 行首孤立前导字节会和下一个字的前导字节拼成一个字，该行其余部分在上游和 OpenReader 中都是乱码；乱码的具体字符不同
+  （x/text 把 GBK 自定义区码位解成 U+FFFD，Java 解成私用区字符），属于 T6。
+- 用户 GBK 小说结果不变：`gb18030`、455 章、解码全文 SHA-256 仍为 `d2cb6d97…3057`。在其第 100,000 字节后的换行处插入一个
+  `0xFF`：GBK 原文判 `gb18030`，455 章，1 个 U+FFFD；转成 UTF-8 后同样插入，判 `utf-8`，455 章，1 个原样保留的坏字节。
+
+回归：
+
+- backend `go test ./...` 29 个包全部 ok，`go vet ./...` 通过；`go test -race -timeout 40m ./engine ./services/localbook ./api`
+  全部 ok（api 1021.3s），没有 data race。后台运行时用 `go -C backend` 指定模块目录：此前两次后台运行在模块解析阶段失败
+  （`directory prefix . does not contain main module`），没有执行任何测试，不计为结果。
+- frontend `npm test` 815/815、`npm run build` 通过；advisory 门自测 131/131，Go 与前端实际扫描 exit 0；
+  `docker compose config --quiet` 通过；`store-read-list-lifecycle-contract.mjs` 10 项 PASS；`release-browser-smoke.test.mjs` 10/10。
+  含本地端口的用例均在沙箱外运行。
+- 未在本地运行：真实浏览器（前端与导入流程未改，E1 已在 1440×900 验证同一流程；本切片由 engine 与 api 用例覆盖）；镜像、
+  浏览器启动门、OS APK 门、fresh/historical 卷门与双平台发布由合入 main 后的可信 Actions 运行。
+
+E4、E5、E8 未处理。Git：分支已推送并经 `git ls-remote` 核验。镜像：未构建。生产：未访问。
