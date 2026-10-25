@@ -67,6 +67,11 @@ func detectAndDecodeTextSample(data []byte, atEOF bool) (string, string, error) 
 	if looksLikeUTF16(data, false) {
 		return decodeKnownText(data, "utf-16be", unicodeencoding.UTF16(unicodeencoding.BigEndian, unicodeencoding.IgnoreBOM))
 	}
+	// Corrupted UTF-8 is recognized before the legacy charsets, which would
+	// also tolerate its malformed bytes and decode it as mojibake.
+	if mostlyUTF8(data) {
+		return string(data), "utf-8", nil
+	}
 
 	candidates := []legacyTextEncoding{
 		{name: "gb18030", encoding: simplifiedchinese.GB18030, commonRunes: commonSimplifiedRunes, primaryRange: unicode.Han},
@@ -77,17 +82,28 @@ func detectAndDecodeTextSample(data []byte, atEOF bool) (string, string, error) 
 	bestScore := -1 << 30
 	bestName := ""
 	bestText := ""
+	bestClean := false
 	for _, candidate := range candidates {
 		decoded, err := decodeLegacyText(candidate.encoding, data, atEOF)
-		if err != nil || !utf8.Valid(decoded) || bytes.ContainsRune(decoded, utf8.RuneError) {
+		if err != nil || !utf8.Valid(decoded) {
 			continue
 		}
 		text := string(decoded)
+		malformed, multibyte := countDecodedRunes(text)
+		// reader-dev's ICU CharsetRecog_mbcs keeps a charset while its valid
+		// multibyte characters outnumber malformed ones at least 20 to 1.
+		if multibyte < 20*malformed {
+			continue
+		}
+		// A candidate that decodes without replacement characters still wins,
+		// so every file that decoded cleanly before keeps its charset.
+		clean := malformed == 0
 		score := scoreDecodedText(text, candidate)
-		if score > bestScore {
+		if (clean && !bestClean) || (clean == bestClean && score > bestScore) {
 			bestScore = score
 			bestName = candidate.name
 			bestText = text
+			bestClean = clean
 		}
 	}
 	if bestName == "" {
@@ -209,6 +225,60 @@ func looksLikeUTF16(data []byte, littleEndian bool) bool {
 		}
 	}
 	return zeroes*10 >= pairs*3
+}
+
+// mostlyUTF8 reports whether reader-dev's ICU CharsetRecog_UTF8 still matches
+// data: its valid multibyte sequences outnumber invalid ones more than
+// tenfold. As in ICU, a sequence cut off by the end of data counts as neither.
+func mostlyUTF8(data []byte) bool {
+	valid, invalid := 0, 0
+	for index := 0; index < len(data); index++ {
+		current := data[index]
+		if current < utf8.RuneSelf {
+			continue
+		}
+		var trailing int
+		switch {
+		case current&0xE0 == 0xC0:
+			trailing = 1
+		case current&0xF0 == 0xE0:
+			trailing = 2
+		case current&0xF8 == 0xF0:
+			trailing = 3
+		default:
+			invalid++
+			continue
+		}
+		for trailing > 0 {
+			index++
+			if index >= len(data) {
+				break
+			}
+			if data[index]&0xC0 != 0x80 {
+				invalid++
+				break
+			}
+			trailing--
+		}
+		if trailing == 0 {
+			valid++
+		}
+	}
+	return valid > 0 && valid > 10*invalid
+}
+
+// countDecodedRunes returns how many U+FFFD replacement characters and how
+// many other non-ASCII characters text contains.
+func countDecodedRunes(text string) (malformed, multibyte int) {
+	for _, current := range text {
+		switch {
+		case current == utf8.RuneError:
+			malformed++
+		case current >= utf8.RuneSelf:
+			multibyte++
+		}
+	}
+	return malformed, multibyte
 }
 
 func scoreDecodedText(text string, candidate legacyTextEncoding) int {
