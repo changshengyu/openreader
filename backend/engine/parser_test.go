@@ -744,6 +744,22 @@ func TestParseTXTRecognizesJapaneseKoreanAndSingleByteTextLikeUpstream(t *testin
 	}
 }
 
+func TestParseTXTRecognizesAParagraphOfGermanAsLatin1(t *testing.T) {
+	// Each of the paragraph's five umlauts is followed by a letter, so GBK reads
+	// them as five clean double-byte characters among about 250 ASCII ones.
+	data, err := charmap.ISO8859_1.NewEncoder().Bytes([]byte(recognitionTestGerman))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chapters, err := ParseTXT(data)
+	if err != nil {
+		t.Fatalf("ParseTXT: %v", err)
+	}
+	if got := joinTXTChapterContents(chapters); got != recognitionTestGerman {
+		t.Fatalf("decoded as %q", got)
+	}
+}
+
 func TestParseTXTKeepsShortChineseTextOnItsCurrentCharset(t *testing.T) {
 	tests := []struct {
 		name     string
