@@ -1,5 +1,16 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-25 当前切片：文本编码识别——日文/韩文与单字节编码（P1，E4/E8）
+
+见[`txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md`](txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md)。
+日文/韩文被评分判成 GB18030/Big5 乱码，ISO-2022-JP 被当成 UTF-8，西文/俄文/希腊文/土耳其文/希伯来文/阿拉伯文报错或乱码。上游 ICU
+实测：文本不太短时全部判对，用户小说片段全为 GB18030；短文本上游不可靠（短中文判成 Big5/ISO-8859-1，13 字测试文本判成 EUC-JP），
+希伯来文判成 Java 不认的 ISO-8859-8-I 而导入失败。E4/E8 must-fix：移植 ICU 多字节、ISO-2022、单字节识别器（与上游 Java 逐项比对
+置信度），多字节有证据且高于单字节时按置信度选（并列用现有评分），单字节大于 10 且不是短的干净多字节样本时用单字节，否则保持
+现有选择；ISO-8859-8-I 按 ISO-8859-8 解码。S1/S2/H1 intentional-redesign，J2（ISO-2022-KR/CN）unknown 不改，E5 不变。计划红测：
+engine 日文三种、韩文与十种单字节文本，`DecodeBody` 日文/俄文页面，api 上传日文与俄文书；对照：短中文、13 字测试文本、E1/E2
+全部、随机字节仍报错。状态 contract-only。
+
 ## 2026-10-25 当前切片：文本编码探测的少量非法字节容错（P1，E2）
 
 见[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)。

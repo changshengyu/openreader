@@ -1,5 +1,18 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-25 P1 文本编码识别：日文/韩文与单字节编码（E4/E8）
+
+OpenReader 只有 `gb18030`、`big5`、`shift_jis`、`euc-kr` 四个旧编码候选，自写评分偏向“解出汉字多”的结果：Shift_JIS 日文、
+EUC-KR 韩文被解成 GB18030 乱码，EUC-JP 日文成 Big5 乱码，ISO-2022-JP 被当成 UTF-8；没有单字节候选，西文、俄文、希腊文、土耳其文、
+希伯来文、阿拉伯文报错或成乱码。用上游 ICU 源码实测（75 个多语言夹具、55 个短文本、32 个用户小说片段）：文本不太短时上游对日文（Shift_JIS/EUC-JP/ISO-2022-JP）、
+韩文与各单字节语言都判对；用户 GBK 小说 32 个片段全为 GB18030（100）。但短文本（约 10 字以内）上游很不可靠：GBK 4–8 字判成
+Big5，Big5 4–8 字判成 ISO-8859-1，日文 8 字判成 windows-1255，现有测试里 13 字的 GB18030 文本因 EUC-JP 与 GB18030 并列 88 而判成
+EUC-JP；希伯来文被判成 Java 不认的 ISO-8859-8-I，上游导入直接失败。判定：E4、E8 为 **`must-fix`**；移植上游 ICU 的多字节、
+ISO-2022 与单字节识别器，多字节有证据（置信度大于 10 且高于单字节）时按置信度选、并列用现有评分（S2），单字节最高大于 10 且
+样本不是“不超过 10 个多字节字符且无坏字符”时用单字节（S1），否则保持现有选择；ISO-8859-8-I 按 ISO-8859-8 解码（H1）。S1、
+S2、H1 为 `intentional-redesign`；ISO-2022-KR/CN（J2）为 `unknown` 不改；E5 报错立场不变。完整合同见
+[`txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md`](txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md)。
+
 ## 2026-10-25 P1 文本编码探测的少量非法字节容错（E2）
 
 E1 记下的 E2：样本里只要有一个坏字节，`detectAndDecodeText` 就淘汰对应的旧编码候选，非合法 UTF-8 也不再考虑 UTF-8，于是
