@@ -1,5 +1,16 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-25 当前切片：文本编码探测的少量非法字节容错（P1，E2）
+
+见[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)。
+样本里一个坏字节就让 GBK/Big5/UTF-8 报 `unable to detect text encoding`。上游 ICU 源码实测：GBK/Big5 少量坏字节按 GB18030/Big5
+解码；UTF-8 带 BOM 或末尾截断判 UTF-8；不带 BOM 的损坏 UTF-8 被 Shift_JIS 压过成乱码。GB18030 在损坏的 UTF-8 上也满足多字节
+容错，所以先按 ICU UTF-8 计数（有效>10×无效）认 UTF-8，再选无坏字符的旧编码（结果不变），最后在“有效多字节≥20×坏字符”的
+旧编码里按现有评分选择；仍无候选照旧报错。T1/T2 must-fix，T3/T4 用户要求的 intentional-redesign，T5 technical-stack-equivalent，
+T7 书源 `DecodeBody` 同样适用。E5 不改，E8（单字节编码）must-fix 另起。勘误 E1：上游多字节/UTF 识别器读整个 512000 字节，E3
+实为 aligned。计划红测：engine GBK/Big5/UTF-8 坏字节、UTF-8 BOM、末尾截断与 `DecodeBody`，api 直接上传两本；对照：无坏字节
+夹具、E1 截断、超出容错仍报错。状态 contract-only。
+
 ## 2026-10-25 当前切片：本地 TXT 旧编码探测边界（P1）
 
 见[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)。

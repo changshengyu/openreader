@@ -1,5 +1,21 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-25 P1 文本编码探测的少量非法字节容错（E2）
+
+E1 记下的 E2：样本里只要有一个坏字节，`detectAndDecodeText` 就淘汰对应的旧编码候选，非合法 UTF-8 也不再考虑 UTF-8，于是
+GBK、Big5、UTF-8 文件都报 `unable to detect text encoding`。用上游 `io.legado.app.lib.icu4j` 源码在 `eclipse-temurin:21-jdk`
+里照 `TextFile` 的调用方式实测 17 个夹具：GBK、Big5 有少量坏字节时上游按 GB18030、Big5（置信度 100）解码，坏字节处为
+U+FFFD；UTF-8 带 BOM 加坏字节（80）或末尾截断（100）判 UTF-8；不带 BOM 只有个别坏字节的 UTF-8 中文，上游 UTF-8 只得 25，
+被 Shift_JIS（53–72）压过，整本乱码；超出容错的输入与随机字节被判成 EUC-JP/Shift_JIS/UTF-16LE 乱码；Latin-1 英文判
+ISO-8859-1。OpenReader `83f7e48` 对除无坏字节夹具外的全部报错。用 OpenReader 解码器统计：GB18030 在损坏的 UTF-8 上也满足
+ICU 多字节容错（坏字符约 5%），所以必须先按 ICU 的 UTF-8 计数（有效序列多于无效序列 10 倍）认定 UTF-8；合法 GBK/Big5 按
+UTF-8 计数无效远多于有效，不会被误认。判定：T1（旧编码少量坏字节，按有效多字节字符不少于坏字符 20 倍入选）与 T2（UTF-8 带
+BOM 或末尾截断）为 **`must-fix`**；T3（不带 BOM 的损坏 UTF-8 认作 UTF-8 并排在旧编码之前）与 T4（按整个样本比例而非 ICU 扫描
+中途放弃）为用户要求的 `intentional-redesign`；无坏字符的候选仍然优先（T5，当前能导入的文件结果不变）；书源正文自动 charset
+（`DecodeBody`）与上游同用一个探测器（T7）。E5（超出容错时报错）保持 `unknown` 不改；新记 E8（单字节编码）为 `must-fix`，另起
+切片。同时勘误 E1：上游多字节与 UTF 识别器读整个 512000 字节样本，不是只看前 8000 字节，E3 实为 `aligned`。完整合同见
+[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)。
+
 ## 2026-10-25 P1 本地 TXT 旧编码探测边界
 
 用户报告：4,117,155 字节的 GBK 小说 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt` 在导入预检里显示“待修复”和
@@ -10,6 +26,8 @@
 截断落在字符中间的概率约为一半。固定上游 `TextFile.getChapterList` 用 `EncodingDetect.getEncode` → ICU `CharsetDetector`，
 后者只看前 8000 字节（`kBufSize`），被截断的末尾字符至多记一个 `badCharCount`，非法字符在约 5% 以内仍判定该编码，从不报错。
 （这一点修正了 2026-07-11 TXT 目录合同“Detection sample”一行：上游的 512000 字节只用于选目录规则，编码判定只看前 8000 字节。）
+（**勘误 2026-10-25**：上面这条“修正”不对。上游 UTF-8/16/32 与多字节识别器读整个 512000 字节样本，只有 ISO-2022 与单字节
+识别器看前 8000 字节；原“Detection sample”一行正确，E3 实为 `aligned`。见下方 2026-10-25 E2 条目。）
 判定：截断拆开字符导致导入失败为 **`must-fix`（E1，本切片）**，目标是截断样本按“未到输入末尾”解码旧编码候选，末尾残缺字符
 不算错误；样本内部真实的少量非法字节（E2）为 `must-fix`，另起切片；无候选时上游回退 UTF-8（E5）为 `unknown`，随 E2 判定；
 512000 对 8000 的样本差异（E3）为 `acceptable-change`；Shift_JIS/EUC-KR 在对齐时也被判成 `gb18030`（E4）为 `unknown`，另行盘点。512000 探测窗口、目录规则、

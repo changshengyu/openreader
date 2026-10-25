@@ -21,7 +21,8 @@ OpenReader 从文件开头截取 512000 字节，用来判定编码。截取位�
 字节属于双字节字符），所以超过 512000 字节的中文旧编码 TXT 大约有一半会这样失败。
 
 上游的编码判定不会因为截断位置失败：ICU `CharsetDetector` 最多只看样本的前 8000 字节，并且容许被截断的末尾字符和少量
-非法字节。
+非法字节。（**勘误 2026-10-25**：UTF-8/16/32 与多字节识别器读整个 512000 字节样本，只有 ISO-2022 与单字节识别器只看前
+8000 字节，见 [E2 合同](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)第 2.1 节；本合同结论不变。）
 
 裁决：**must-fix（P1，本地导入失败）**。旧编码候选在截断样本上按“未到输入末尾”解码：样本末尾不完整的字符属于文件的后续
 部分，不算作该编码的错误。其余检测规则、全量解码与解析结果不变。
@@ -32,12 +33,12 @@ OpenReader 从文件开头截取 512000 字节，用来判定编码。截取位�
 |---|---|
 | `src/main/java/io/legado/app/model/localBook/TextFile.kt#getChapterList`（L64–88） | `bis.read(buffer)` 读最多 `bufferSize = 512000` 字节（L50、L67–68）；`book.charset` 为空时调用 `EncodingDetect.getEncode(buffer.copyOf(length))`（L69–71）；随后用 `String(buffer, 0, length, charset)` 解码同一段字节来选目录规则（L73–76）。 |
 | `src/main/java/io/legado/app/utils/EncodingDetect.kt#getEncode(bytes)`（L54–57） | `CharsetDetector().setText(bytes).detect()`，没有匹配时回退 `"UTF-8"`，从不报错。 |
-| `src/main/java/io/legado/app/lib/icu4j/CharsetDetector.java` | `kBufSize = 8000`（L96）；`fStripTags` 默认 `false`（L438–439）；`MungeInput`（L331 起）只把前 `min(length, 8000)` 字节复制给识别器（L373–384）。所以编码判定实际只看前 8000 字节。 |
+| `src/main/java/io/legado/app/lib/icu4j/CharsetDetector.java` | `kBufSize = 8000`（L96）；`fStripTags` 默认 `false`（L438–439）；`MungeInput`（L331 起）只把前 `min(length, 8000)` 字节复制给识别器（L373–384）。所以编码判定实际只看前 8000 字节。（**勘误 2026-10-25**：只适用于 ISO-2022 与单字节识别器；UTF-8/16/32 与多字节识别器读 `fRawInput` 全部字节，见 E2 合同第 2.1 节。） |
 | `src/main/java/io/legado/app/lib/icu4j/CharsetRecog_mbcs.java#match`（L49 起） | 逐字符计数 `badCharCount`；`badCharCount >= 2 && badCharCount * 5 >= doubleByteCharCount` 时提前放弃（L80），`doubleByteCharCount < 20 * badCharCount` 时置信度为 0（L106）。也就是非法字符不超过双字节字符的约 5% 时，该编码仍可胜出。 |
 | `CharsetRecog_gb_18030#nextChar`（L457 起，Big5 L245、Shift_JIS L185、EUC-KR L420 同理） | 样本末尾只有前导字节、没有后续字节时，记一个错误字符并结束。被截断的末尾字符至多算一个 `badCharCount`，不会让 GB18030/Big5 等编码落选。 |
 | `TextFile.kt#analyze`（L105–135） | 正文按 512000 字节块读，每块在最后一个 `0x0a`（`blank`，L47）处切开，再用 `String(buffer, 0, end, charset)` 解码。Java 的这个构造方法把非法序列替换为 U+FFFD，不抛异常。 |
 
-结论：上游的编码判定只看前 8000 字节，被截断的字符至多算一个错误，判定从不失败，所以截断位置不影响导入。
+结论：上游的编码判定只看前 8000 字节（勘误见上表），被截断的字符至多算一个错误，判定从不失败，所以截断位置不影响导入。
 
 ## 3. 当前实现
 
@@ -76,7 +77,7 @@ OpenReader 从文件开头截取 512000 字节，用来判定编码。截取位�
 |---|---|---|
 | E1 | 截断样本末尾被拆开的多字节字符让所有旧编码候选落选，导入失败；上游不受截断位置影响。 | **must-fix（本切片）** |
 | E2 | 样本内部真正存在的少量非法字节序列：上游在约 5% 以内仍判定该编码并以 U+FFFD 解码；当前只要有一个 U+FFFD 就拒绝，最终报错。 | **must-fix，另起切片**。需要同时设计损坏 UTF-8 与旧编码的容错先后，否则带个别坏字节的 UTF-8 文件会被判成 GB18030 乱码。本切片不改。 |
-| E3 | 编码判定样本：上游只看前 8000 字节，当前看前 512000 字节。 | `acceptable-change`：样本更大只增加证据（例如前 8000 字节全是 ASCII 时上游会判错）。不重开。 |
+| E3 | 编码判定样本：上游只看前 8000 字节，当前看前 512000 字节。 | `acceptable-change`：样本更大只增加证据（例如前 8000 字节全是 ASCII 时上游会判错）。不重开。**勘误 2026-10-25**：上游 UTF 与多字节识别器同样读整个 512000 字节样本，E3 实为 `aligned`，见 E2 合同第 2.1 节。 |
 | E4 | Shift_JIS、EUC-KR：截断对齐时也被当前评分判成 `gb18030`；上游 ICU 有各自的常用字识别。 | `unknown`，需另行盘点。本切片的修复让这两种编码在截断时与对齐时结果一致，不改它们的评分。 |
 | E5 | 没有任何候选时，上游回退 UTF-8 继续导入，当前返回错误。 | `unknown`：对无法解码的文件，明确报错与按 UTF-8 导入乱码哪个更合适，与 E2 一起另起切片判定。本切片不改。 |
 | E6 | 用于选目录规则的样本文本：上游含被截断字符的一个 U+FFFD，修复后 OpenReader 不含这个残缺字符。 | `technical-stack-equivalent`：只差样本末尾一个字符，不影响规则匹配计数。 |
