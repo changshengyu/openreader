@@ -18,6 +18,9 @@ S2、H1 为 `intentional-redesign`；ISO-2022-KR/CN（J2）为 `unknown` 不改�
 否则一段德文会被当成短中日韩文本。上游判对的日文、韩文与单字节夹具全部同编码，希伯来文可解码（上游失败），用户小说与短中文不变。
 六项变异各有测试捕获。backend 全量、vet、race，frontend 815/815 与 build，advisory 门与扫描，Compose，存储 HTTP 合同通过。状态
 **implementation-complete / regression-validated**；J2、E5 未改。
+2026-10-25 发布（合同第 11 节）：`main` 快进到 `3ccab90`，可信 Actions run `40185661590` 全部成功；`3ccab90`/`latest` 为 OCI index
+`sha256:9fd02a9cf548780ee313465c48a8e9b2ea4573875256042081dfe3f6442a5562`（amd64 + arm64，revision 标签为完整提交号）。状态
+**aligned / Docker-published / awaiting-device-verification**；生产运行版本未知。
 
 ## 2026-10-25 P1 文本编码探测的少量非法字节容错（E2）
 

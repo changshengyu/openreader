@@ -16,6 +16,8 @@ api两本书与一段德文失败，短中文对照通过；c03827d移植上游I
 比对夹具的结果与上游Java逐项一致。实现中第5步细化为“多字节字符须占一半以上”（否则德文段落被当成短中日韩文本）。日文/韩文/单字节
 夹具与上游同编码，希伯来文可解码，用户小说与短中文不变；六项变异各有测试捕获。backend全量/vet/race、frontend 815/815与build、advisory
 门与扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+发布（2026-10-25）：main快进到3ccab90，run 40185661590全部成功，3ccab90/latest index `sha256:9fd02a9c…5562`（amd64+arm64，revision
+标签核验）。状态aligned / Docker-published / awaiting-device-verification；生产未动。编码相关仍开放：J2（ISO-2022-KR/CN）、E5。
 
 ## 2026-10-25 当前切片：文本编码探测的少量非法字节容错（P1，E2）
 

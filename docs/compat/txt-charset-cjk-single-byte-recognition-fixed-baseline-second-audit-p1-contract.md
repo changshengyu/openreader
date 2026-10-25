@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `5a2fc7d`（应用代码与已发布的 `7c447a5` 相同）。
 
 审查日期：2026-10-25
-状态：**implementation-complete / regression-validated**（证据见第 10 节；尚未经可信 Actions 运行）
+状态：**aligned / Docker-published / awaiting-device-verification**（证据见第 10 节，发布见第 11 节；J2、E5 未改）
 
 来源：[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)
 （下称 E2 合同）第 5 节的 E4、E8。用户 2026-10-25 要求：开始下一个编码切片，E4（Shift_JIS/EUC-KR 被评分判成 GB18030）和 E8
@@ -208,3 +208,16 @@ UTF-16、E2 的“基本是 UTF-8”，然后四个旧编码候选：无坏字�
   双平台发布由合入 main 后的可信 Actions 运行。
 
 J2（ISO-2022-KR/CN）与 E5 未改。Git：分支已推送并经 `git ls-remote` 核验。镜像：未构建。生产：未访问。
+
+## 11. 发布（2026-10-25）
+
+`main` 由 `5a2fc7d` 快进到 `3ccab90`（本切片的六个提交，没有 force push）。可信 Actions run `40185661590` 全部步骤成功。
+
+- `ghcr.io/changshengyu/openreader:3ccab90` 与 `latest`：OCI index
+  `sha256:9fd02a9cf548780ee313465c48a8e9b2ea4573875256042081dfe3f6442a5562`。
+- `linux/amd64` manifest `sha256:341a116d1d8042278a8e04052fbcaabf8949ebd7773ef43502583f85269f0f95`；
+  `linux/arm64` manifest `sha256:759a320e33fd53fa951683ccec4385a07b9d0a23914476c1dc6d1cdb11b7ba0e`。
+- 两个平台的 `org.opencontainers.image.revision` 都是 `3ccab9032447e2dde444e2c1374454f7639630f3`。
+
+本记录提交只改文档，不触发新镜像。生产在另一台 Mac，未访问，实际运行版本未知。升级后，此前被解成乱码或报错的日文、韩文、
+西文等 TXT 需要重新导入才会按新编码解码；已导入的书不会自动重新解析。
