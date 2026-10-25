@@ -78,6 +78,11 @@ runWithDesktopWorkspaceClosed，handleChapterEndNext两个分支放进同一函�
 M2只红C2且都只在面板关闭，M3（“只关闭”做法）红C1/C2命中与动作及层级源码合同，M4只红源码锁定。进度块（第10节第1条）未获并入
 确认，没有C5。状态implementation-complete / regression-validated。本地未推送、未合入main；镜像未构建；生产未动。
 
+发布（2026-10-24，取代上段Git/镜像状态）：1b8ef35快进main（ls-remote核验）；发布前本地门见上段。可信Actions 40099542262成功
+（20m6s，全部门通过）；`1b8ef35` = index `04d5d7b4…f78905ea2`（amd64 `aae1a1f2…`、arm64 `4783e699…`），两平台revision为完整提交号，
+前端63个文件与本地同前端树build逐字节一致。`latest`已随之后的3ccab90发布前移，其间未改frontend。P3、P4 released /
+awaiting-device-verification；进度块（第10节第1条）仍开放；生产未操作，实际版本未知。
+
 ## 2026-10-22 当前切片：发布流程浏览器启动门（P1，O3）
 
 见[`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。

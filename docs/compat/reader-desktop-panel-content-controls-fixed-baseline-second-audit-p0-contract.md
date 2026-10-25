@@ -1,6 +1,7 @@
 # Reader 桌面工作区面板打开时的正文控件盘点（P0）
 
-状态：**implementation-complete / regression-validated**（红测 `860b9ea`、实现 `74da65c`，见第 11 节）。盘点提交 `3a0d507`（在 main
+状态：**released / awaiting-device-verification**（红测 `860b9ea`、实现 `74da65c`，见第 11 节；`1b8ef35` 由 Actions `40099542262`
+发布，见第 12 节）。盘点提交 `3a0d507`（在 main
 上 cherry-pick 为 `20fb76d`）只写文档；第 2.4 节、第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，没有入库，探针和原始输出的
 副本在共享笔记目录 `panel-content-controls/`；其中第 4.2、4.3 节的正文控件与对照部分已由入库的
 `scripts/smoke/reader-desktop-panel-controls-contract.mjs` 承接。第 10 节第 1 条（桌面进度块）没有并入。
@@ -428,3 +429,24 @@ Actions 上运行）。实现提交改了 `frontend/**`，命中 `docker-publish
 
 **状态**：Git 为本地分支 `claude/vibrant-pasteur-1c3edb` 上的提交（`20fb76d`、`860b9ea`、`74da65c` 与本记录），未推送，未合入 main。
 镜像：未构建，未推送。生产：未访问，未操作。
+
+## 12. 发布记录（2026-10-24）
+
+按用户在本会话的指示（“按 openreader-docker-release 快进合入 main 并推送”），`1b8ef3557e7c23882772a3fe08fff5b706f1548a` 从 `a7fd6aa`
+快进 main（非 force；推送后 `git ls-remote` 核验 `refs/heads/main` 为 `1b8ef35`）。发布前的本地门见第 11 节：frontend 815/815 与 build，
+新合同 108/108，R7 错误面 30 例、连续、移动、文字模式与 openreader-smoke 通过。后端与依赖相对 `a7fd6aa` 没有改动，本地没有重跑 Go，
+由 Actions 执行。
+
+可信 Actions `40099542262` 成功（2026-10-24 13:45:53Z → 14:06:02Z，任务 20m6s）：Go 测试、Go 与前端 advisory 门、前端测试与构建、
+Compose、存储 HTTP 合同、浏览器启动门、两平台 OS APK 门、新旧卷与 portable 备份、发布与平台核验全部通过。
+`ghcr.io/changshengyu/openreader:1b8ef35` 指向 OCI index `sha256:04d5d7b47d2b2438ce6966dd6e681cd1b775cea3b9d31be477a8e99f78905ea2`
+（amd64 `sha256:aae1a1f2411d5d28011b4d3ada6ec449ee38f9f4fa1f0381832d405ee9e3c7f9`，arm64
+`sha256:4783e699d6d93dd97fa61e629226e80c07af46a0a97be294d1737c30442bc866`，另有两个 attestation manifest），两平台的
+`org.opencontainers.image.revision` 都是完整提交号。按 digest 拉取两平台镜像（只 create，不运行），`/app/public` 的 63 个文件与
+第 11 节绿测用的本地 `npm run build` 产物逐字节一致。
+
+`latest` 现在指向之后的发布 `3ccab90`（run `40185661590`，2026-10-25，文本编码识别切片），index
+`sha256:9fd02a9cf548780ee313465c48a8e9b2ea4573875256042081dfe3f6442a5562`。`1b8ef35..3ccab90` 没有改 `frontend/`，所以 `latest`
+里的 Reader 与本切片验证过的相同。
+
+状态：P3、P4 **released / awaiting-device-verification**；第 10 节第 1 条（桌面进度块）仍开放。生产未访问，实际运行版本未知。

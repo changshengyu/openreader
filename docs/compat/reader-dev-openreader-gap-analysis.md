@@ -104,6 +104,10 @@ index `sha256:50cd42f1fb17df94fae00b42253cfdc88ad4ca0b935e45ba5ea93215f60bc62d`�
 断言失败而“面板关闭”通过，`readerDesktopPrimaryPopoverContract` 失败；去掉移动端判断（M4）只让源码锁定断言失败。进度块上一章/下一章
 （第 10 节第 1 条）没有收到并入确认，没有加 C5。状态 **implementation-complete / regression-validated**；本地未推送、未合入 main，镜像
 未构建，生产未动。
+2026-10-24 发布（合同第 12 节）：`1b8ef35` 快进 main，可信 Actions `40099542262` 成功，`1b8ef35` 指向 index
+`sha256:04d5d7b47d2b2438ce6966dd6e681cd1b775cea3b9d31be477a8e99f78905ea2`（amd64 + arm64，revision 为完整提交号），两平台前端产物与
+本地同一前端树的 build 逐字节一致；`latest` 已随之后的 `3ccab90` 发布前移，其间没有改 `frontend/`。P3、P4 **released /
+awaiting-device-verification**，进度块（第 10 节第 1 条）仍开放，生产未操作。
 
 ## 2026-10-22 P1 发布流程 浏览器启动门（O3）
 
