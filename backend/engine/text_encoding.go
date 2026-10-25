@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/text/encoding/traditionalchinese"
 	unicodeencoding "golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/encoding/unicode/utf32"
+	"golang.org/x/text/transform"
 )
 
 var htmlCharsetPattern = regexp.MustCompile(`(?i)<meta\b[^>]*\bcharset\s*=\s*["']?\s*([a-z0-9._:-]+)`)
@@ -30,6 +32,15 @@ type legacyTextEncoding struct {
 }
 
 func detectAndDecodeText(data []byte) (string, string, error) {
+	return detectAndDecodeTextSample(data, true)
+}
+
+// detectAndDecodeTextSample detects the charset of data and decodes it. atEOF
+// is false when data is a probe cut from the start of a longer document: the
+// cut can split the probe's final multibyte character, whose remaining bytes
+// follow in the document, so legacy candidates leave that character out
+// instead of failing on the U+FFFD it would decode to at end of input.
+func detectAndDecodeTextSample(data []byte, atEOF bool) (string, string, error) {
 	if len(data) == 0 {
 		return "", "utf-8", nil
 	}
@@ -67,7 +78,7 @@ func detectAndDecodeText(data []byte) (string, string, error) {
 	bestName := ""
 	bestText := ""
 	for _, candidate := range candidates {
-		decoded, err := candidate.encoding.NewDecoder().Bytes(data)
+		decoded, err := decodeLegacyText(candidate.encoding, data, atEOF)
 		if err != nil || !utf8.Valid(decoded) || bytes.ContainsRune(decoded, utf8.RuneError) {
 			continue
 		}
@@ -113,6 +124,32 @@ func decodeKnownText(data []byte, name string, textEncoding encoding.Encoding) (
 		return "", "", err
 	}
 	return string(decoded), name, nil
+}
+
+// decodeLegacyText decodes data with a legacy multibyte charset. When atEOF is
+// false, an incomplete multibyte sequence at the end of data is left undecoded
+// rather than replaced with U+FFFD.
+func decodeLegacyText(textEncoding encoding.Encoding, data []byte, atEOF bool) ([]byte, error) {
+	if atEOF {
+		return textEncoding.NewDecoder().Bytes(data)
+	}
+	decoder := textEncoding.NewDecoder()
+	decoded := make([]byte, 0, len(data)*3/2)
+	buffer := make([]byte, 64*1024)
+	for {
+		nDst, nSrc, err := decoder.Transform(buffer, data, false)
+		decoded = append(decoded, buffer[:nDst]...)
+		data = data[nSrc:]
+		switch {
+		case errors.Is(err, transform.ErrShortDst):
+			// buffer is full; decode the rest of data.
+		case errors.Is(err, transform.ErrShortSrc):
+			// Only the incomplete final character is left in data.
+			return decoded, nil
+		default:
+			return decoded, err
+		}
+	}
 }
 
 // decodeTextWithEncoding decodes the complete staged input using the charset
