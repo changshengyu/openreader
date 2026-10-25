@@ -1,5 +1,21 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-25 P1 本地 TXT 旧编码探测边界
+
+用户报告：4,117,155 字节的 GBK 小说 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt` 在导入预检里显示“待修复”和
+`unable to detect text encoding`，上游能正常导入。整个文件按 GBK/GB18030 严格解码没有错误。`decodeTXTForCatalog` 截取前
+512000 字节判定编码，只对合法 UTF-8 回退到字符边界；这个文件的第 511999 字节 `0xCC` 是“抬”的前导字节，后续字节 `0xA7`
+在样本之外。`golang.org/x/text` 解码器把样本末尾当作输入结束，输出 U+FFFD，`detectAndDecodeText` 见到 U+FFFD 就拒绝候选，
+四个旧编码候选全部落选。合成夹具在 `1b8ef35` 上复现：GBK 双字节、GB18030 四字节、Big5 只在截断拆开字符时失败，对齐时成功；
+截断落在字符中间的概率约为一半。固定上游 `TextFile.getChapterList` 用 `EncodingDetect.getEncode` → ICU `CharsetDetector`，
+后者只看前 8000 字节（`kBufSize`），被截断的末尾字符至多记一个 `badCharCount`，非法字符在约 5% 以内仍判定该编码，从不报错。
+（这一点修正了 2026-07-11 TXT 目录合同“Detection sample”一行：上游的 512000 字节只用于选目录规则，编码判定只看前 8000 字节。）
+判定：截断拆开字符导致导入失败为 **`must-fix`（E1，本切片）**，目标是截断样本按“未到输入末尾”解码旧编码候选，末尾残缺字符
+不算错误；样本内部真实的少量非法字节（E2）为 `must-fix`，另起切片；无候选时上游回退 UTF-8（E5）为 `unknown`，随 E2 判定；
+512000 对 8000 的样本差异（E3）为 `acceptable-change`；Shift_JIS/EUC-KR 在对齐时也被判成 `gb18030`（E4）为 `unknown`，另行盘点。512000 探测窗口、目录规则、
+伪章节、暂存流程与 parser 预算都不重开。完整合同见
+[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)。
+
 ## 2026-10-23 P0 Reader 桌面工作区面板打开时的正文控件盘点
 
 固定上游的四个桌面面板（书架、书源、目录、设置）是没有遮罩的 `el-popover trigger="click"`（`Reader.vue` L9–55）。element-ui

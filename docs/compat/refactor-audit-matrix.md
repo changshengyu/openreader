@@ -1,5 +1,16 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-25 当前切片：本地 TXT 旧编码探测边界（P1）
+
+见[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)。
+用户的 GBK 小说（4,117,155 字节，严格解码无错）导入预检“待修复”、报 `unable to detect text encoding`，上游可导入。原因：512000 字节
+编码样本只对 UTF-8 对齐字符边界，截断拆开的末尾字符被 x/text 解码成 U+FFFD，旧编码候选见 U+FFFD 即落选。上游 ICU 只看前 8000
+字节且容许截断字符和约 5% 以内的坏字符，从不失败。E1（截断拆开字符）must-fix，本切片：截断样本上旧编码候选按未到末尾解码，
+残缺末尾字符不算错误；完整输入、UTF-8/BOM/UTF-16/32、评分、全量解码与章节结果不变。E2（样本内少量非法字节）must-fix，另起
+切片；E5（无候选时上游回退 UTF-8）unknown，随 E2 判定；E3 样本大小 acceptable-change；E4 Shift_JIS/EUC-KR 误判 unknown。计划红测：engine 三种中文旧编码
+截断拆字夹具（自检确实拆字）+ api 直接上传、LocalStore、WebDAV 预检→导入→缓存重建；对照：对齐截断、UTF-8 截断、既有编码测试。
+状态 contract-only；不改前端、数据与已导入书籍。
+
 ## 2026-10-23 当前切片：Reader 桌面工作区面板打开时的正文控件盘点
 
 见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)。
