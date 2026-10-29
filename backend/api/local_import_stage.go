@@ -157,7 +157,8 @@ func (s *Server) validStagedPreparedImport(prepared localbook.PreparedImport) bo
 		}
 		return true
 	}
-	if !consume(prepared.Extension, prepared.TOCRule, prepared.Book.Title, prepared.Book.Author, prepared.Book.CoverResourcePath) {
+	if !consume(prepared.Extension, prepared.TOCRule, prepared.Book.Title, prepared.Book.Author, prepared.Book.CoverResourcePath,
+		prepared.Book.Intro, prepared.Book.Kind, prepared.Book.TOCRule) {
 		return false
 	}
 	for _, chapter := range prepared.Book.Chapters {

@@ -186,29 +186,41 @@ func ParseTXTWithRule(data []byte, rule string) ([]TXTChapter, error) {
 }
 
 func ParseTXTWithLimits(data []byte, rule string, limits LocalBookParseLimits) ([]TXTChapter, error) {
+	chapters, _, err := parseTXTCatalogWithLimits(data, rule, limits)
+	return chapters, err
+}
+
+// parseTXTCatalogWithLimits also returns the rule the catalogue was split
+// with: the trimmed explicit rule, or the automatically selected default rule
+// (reader-dev TextFile.getChapterList writes it back to book.tocUrl). It is
+// empty when no rule matched and the 10-KiB fallback was used.
+func parseTXTCatalogWithLimits(data []byte, rule string, limits LocalBookParseLimits) ([]TXTChapter, string, error) {
 	limits = limits.normalized()
 	if int64(len(data)) > limits.MaxArchiveBytes {
-		return nil, txtParseLimitError("TXT input exceeds the limit")
+		return nil, "", txtParseLimitError("TXT input exceeds the limit")
 	}
 	text, probe, err := decodeTXTForCatalog(data)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if int64(len(text)) > limits.MaxParsedTextBytes {
-		return nil, txtParseLimitError("TXT decoded text exceeds the limit")
+		return nil, "", txtParseLimitError("TXT decoded text exceeds the limit")
 	}
 	rule = strings.TrimSpace(rule)
 	if len(rule) > MaxTXTTocRuleBytes {
-		return nil, txtParseLimitError("TXT TOC rule exceeds the limit")
+		return nil, "", txtParseLimitError("TXT TOC rule exceeds the limit")
 	}
 	if rule == "" {
-		return parseTXTText(text, detectTXTTitlePattern(probe), limits.MaxParsedChapters)
+		pattern, detected := detectTXTTitlePattern(probe)
+		chapters, err := parseTXTText(text, pattern, limits.MaxParsedChapters)
+		return chapters, detected, err
 	}
 	pattern, err := compileTXTTitleMatcher(rule)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return parseTXTText(text, pattern, limits.MaxParsedChapters)
+	chapters, err := parseTXTText(text, pattern, limits.MaxParsedChapters)
+	return chapters, rule, err
 }
 
 func txtParseLimitError(message string) error {
@@ -374,9 +386,10 @@ func safeTXTBoundary(text string, index int) int {
 	return index
 }
 
-func detectTXTTitlePattern(text string) *txtTitleMatcher {
+func detectTXTTitlePattern(text string) (*txtTitleMatcher, string) {
 	bestCount := 1
 	var bestPattern *txtTitleMatcher
+	bestRule := ""
 	rules := DefaultTXTTocRules()
 	for index := len(rules) - 1; index >= 0; index-- {
 		rule := rules[index]
@@ -388,10 +401,11 @@ func detectTXTTitlePattern(text string) *txtTitleMatcher {
 			if count := countTXTTitleMatches(text, pattern); count >= bestCount {
 				bestCount = count
 				bestPattern = pattern
+				bestRule = rule.Rule
 			}
 		}
 	}
-	return bestPattern
+	return bestPattern, bestRule
 }
 
 func countTXTTitleMatches(text string, pattern *txtTitleMatcher) int {

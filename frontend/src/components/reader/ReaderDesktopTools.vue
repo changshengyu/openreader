@@ -118,8 +118,8 @@ defineEmits(['action'])
   width: 58px;
   align-content: start;
   background: color-mix(in srgb, var(--reader-popup-bg) 64%, transparent);
-  border-right: 1px solid rgba(148, 132, 87, 0.38);
-  border-left: 1px solid rgba(148, 132, 87, 0.26);
+  border-right: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.38));
+  border-left: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.26));
   backdrop-filter: blur(2px);
 }
 
@@ -131,10 +131,10 @@ defineEmits(['action'])
   align-content: center;
   gap: 2px;
   padding: 7px 0 5px;
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-chrome-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   background: color-mix(in srgb, var(--reader-popup-bg) 58%, transparent);
   border: 0;
-  border-bottom: 1px solid rgba(148, 132, 87, 0.35);
+  border-bottom: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.35));
   cursor: pointer;
   font-size: 16px;
 }
@@ -161,7 +161,7 @@ defineEmits(['action'])
 
 .rail-home {
   height: 60px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
 }
 
 .reader-right-rail {
@@ -190,9 +190,9 @@ defineEmits(['action'])
   width: 36px;
   height: 36px;
   place-items: center;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: var(--reader-popup-bg);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--reader-float-border, rgba(255, 255, 255, 0.7));
   border-radius: 999px;
   box-shadow: 0 4px 10px rgba(80, 62, 28, 0.08);
   cursor: pointer;

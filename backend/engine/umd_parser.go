@@ -171,6 +171,15 @@ func parseReaderDevUMDSection(state *umdSegmentState, segmentType uint16, payloa
 			return fmt.Errorf("%w: UMD author exceeds the limit", ErrLocalBookParseLimit)
 		}
 		book.Author = author
+	case 0x0007:
+		kind, err := decodeUMDUTF16LE(payload)
+		if err != nil {
+			return fmt.Errorf("decode UMD book type: %w", err)
+		}
+		if int64(len(kind)) > limits.MaxParsedTextBytes {
+			return fmt.Errorf("%w: UMD book type exceeds the limit", ErrLocalBookParseLimit)
+		}
+		book.Kind = kind
 	case 0x000b:
 		if len(payload) != 4 {
 			return errors.New("invalid UMD content-length section")

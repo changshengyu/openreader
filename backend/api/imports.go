@@ -41,14 +41,15 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		return
 	}
 	request := localbook.ImportRequest{
-		FileName:  fileName,
-		Extension: ext,
-		Data:      data,
-		Title:     payload.title,
-		Author:    payload.author,
-		TOCRule:   payload.tocRule,
+		FileName:     fileName,
+		Extension:    ext,
+		Data:         data,
+		Title:        payload.title,
+		Author:       payload.author,
+		TOCRule:      payload.tocRule,
+		DirectUpload: payload.directUpload(),
 	}
-	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
+	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).PreparePreview(request, maxPreviewCoverResponseBytes)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "importToken": importToken})
 		return
@@ -112,16 +113,17 @@ func (s *Server) importTXT(c *gin.Context) {
 
 	importer := localbook.NewImporter(s.cfg, s.db).WithContext(c.Request.Context())
 	request := localbook.ImportRequest{
-		UserID:      userID,
-		UserName:    userName,
-		FileName:    fileName,
-		Extension:   ext,
-		Data:        data,
-		Title:       payload.title,
-		Author:      payload.author,
-		CategoryID:  categoryID,
-		CategoryIDs: categoryIDs,
-		TOCRule:     payload.tocRule,
+		UserID:       userID,
+		UserName:     userName,
+		FileName:     fileName,
+		Extension:    ext,
+		Data:         data,
+		Title:        payload.title,
+		Author:       payload.author,
+		CategoryID:   categoryID,
+		CategoryIDs:  categoryIDs,
+		TOCRule:      payload.tocRule,
+		DirectUpload: payload.directUpload(),
 	}
 	var result localbook.ImportedBook
 	if importToken != "" {
@@ -229,6 +231,11 @@ func (request localBookImportRequest) requestedPaths() []string {
 	return paths
 }
 
+// maxPreviewCoverResponseBytes is the inline cover budget of one preview
+// response (contract A7): a LocalStore/WebDAV preview carries up to 200
+// books, and rows past the budget show the default cover in the dialog.
+const maxPreviewCoverResponseBytes = 8 << 20
+
 func (s *Server) previewStagedStorageImportData(
 	ctx context.Context,
 	userID uint,
@@ -236,6 +243,7 @@ func (s *Server) previewStagedStorageImportData(
 	extension string,
 	data []byte,
 	override localBookImportItem,
+	coverBudget int64,
 ) (localbook.PreviewResult, string, error) {
 	stage, err := s.localImportStages().Create(ctx, userID, fileName, extension, data)
 	if err != nil {
@@ -254,7 +262,7 @@ func (s *Server) previewStagedStorageImportData(
 		Author:    override.Author,
 		TOCRule:   override.TOCRule,
 	}
-	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
+	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).PreparePreview(request, coverBudget)
 	if err != nil {
 		return localbook.PreviewResult{}, importToken, err
 	}
@@ -271,7 +279,7 @@ func (s *Server) previewStagedStorageImportData(
 // reparseStagedStorageImport keeps the immutable preview snapshot authoritative
 // when a user changes the TOC rule. In particular, it must not fall back to a
 // mutable LocalStore/WebDAV path after the preview has already succeeded.
-func (s *Server) reparseStagedStorageImport(ctx context.Context, userID uint, importToken string, override localBookImportItem) (localbook.PreviewResult, string, error) {
+func (s *Server) reparseStagedStorageImport(ctx context.Context, userID uint, importToken string, override localBookImportItem, coverBudget int64) (localbook.PreviewResult, string, error) {
 	stage, err := s.localImportStages().Open(ctx, userID, importToken)
 	if err != nil {
 		return localbook.PreviewResult{}, "", err
@@ -286,7 +294,7 @@ func (s *Server) reparseStagedStorageImport(ctx context.Context, userID uint, im
 		Author:    override.Author,
 		TOCRule:   override.TOCRule,
 	}
-	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
+	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).PreparePreview(request, coverBudget)
 	if err != nil {
 		return localbook.PreviewResult{}, importToken, err
 	}

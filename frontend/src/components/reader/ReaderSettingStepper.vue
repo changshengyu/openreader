@@ -116,7 +116,7 @@ function cancel() {
   width: 100%;
   min-width: 0;
   grid-template-columns: 48px minmax(72px, 1fr) 48px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
   background: var(--reader-control-bg);
   border: 1px solid var(--reader-control-border);
   border-radius: 4px;
@@ -153,7 +153,7 @@ function cancel() {
 }
 
 .reader-setting-stepper button:disabled {
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 48%, transparent);
+  color: color-mix(in srgb, var(--reader-settings-text, var(--reader-popup-text, var(--reader-text))) 48%, transparent);
   cursor: default;
 }
 
@@ -161,6 +161,11 @@ function cancel() {
 .reader-setting-stepper-input {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
+}
+
+.reader-setting-stepper .reader-setting-stepper-value,
+.reader-setting-stepper .reader-setting-stepper-input {
+  color: var(--reader-settings-value-text, var(--reader-popup-text, var(--reader-text)));
 }
 
 .reader-setting-stepper-value {

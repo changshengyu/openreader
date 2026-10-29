@@ -21,6 +21,65 @@ R2 5/5、R3 3/3 子测试按预期失败，生命周期合同（二进制方式�
 Go 30 包、vet、race，前端 810/810 与 build，advisory 门通过。状态 **implementation-complete / regression-validated**，候选镜像的
 Docker 门由 Actions 执行。
 
+## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
+
+日夜切片（`b3164e3`）把内置夜间阅读面改回上游后，工具按钮与设置面板仍是 2026-07 夜间对比度合同的可读性配色：强调色 `#ff7589`、
+控件面 `#303030`/`#565656`，而且弹层文字按 4.5:1 替换，内置夜间正文是 `#666`、工具与设置文字却是纯白。上游夜间控件只看 `isNight`：
+工具图标/文字 `#666`、工具格线 `#444`、圆钮无边框、设置选项与步进器 `#666` 边框 + `rgba(45, 45, 45, 0.5)`、设置文字 `#606266`、
+数值 `#a6a6a6`、主题色块 `#666`、强调色 `#ed4259`、滑块 `#185798`。用户确认全部改回上游、对所有夜间方案生效（C1–C10
+**`must-fix`**）；悬停/开启高亮（保留 `#7ed8d4`）、日夜共用的分隔线/半透明栏、原生滑块未读段、设置分隔线为 `acceptable-change`；
+目录/书架/换源列表文字、朗读条、全局 Element 夜间覆盖另起切片。完整合同见
+[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+2026-10-29 记录（合同第 8 节）：合同 `795d914`、红测 `a47bc03`、实现 `7d8a0b2`、浏览器合同与补充红测 `f84dbbc`、补充实现 `a44ea45`。实现中发现原生 range 配深色 `accent-color` 时 Chromium 把未读段画成浅色，C10 改为夜间按上游 `el-slider` 自绘（`#185798` 已读段、`#282828` 未读段与滑块）。真实账号对照 `c62c619` 构建：五个视口日间工具栏与设置面板 computed style 完全相同，夜间逐项为上游值；移动/EPUB/设置位置浏览器合同、前端 834/834 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
+
+## 2026-10-29 P1 本地书封面：EPUB/UMD 书架封面与导入确认框封面（M8）
+
+上游导入 EPUB/UMD 时就写出封面：EPUB 按 epublib 取 `meta name="cover"`（清单 id 或 href）与 guide `type="cover"` 中的 JPG/PNG/GIF，UMD 取段 130
+后的附加段；书架、书籍信息与导入确认框都显示。OpenReader 只有 CBZ 有封面。C1（EPUB）、C2（UMD）、C3（确认框预览封面，2 MiB 内用
+`data:` URL）为 **`must-fix`**：EPUB 封面路径记入 `.epub-resources` 抽取标记并用现有 `/api/epub-resource` 能力地址投影，UMD 封面首次投影时
+抽到 `.umd-resources/<fingerprint>/` 并经新 `/api/umd-cover/<capability>` 提供，均只在响应里、自定义封面优先、不改库与备份格式。A1 图片格式、
+A2 预览上限为 acceptable-change，EPUB3 `cover-image` 不采用（上游不认）。完整合同见
+[`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。状态 **contract-only**。
+2026-10-29 记录（合同第 6 节）：骨架 `4dd84e0`，红测 `5ac9d00`/`7105dbf`/`e24def9`，测试修正 `0007fe2`，实现 `7901e1f`/`b5db7d6`，浏览器合同 `ad74f13`，服务测试 `8fb8f88`；补充 A7：一个预览响应的内联封面合计 ≤ 8 MiB，只有确认框预览计算封面。三视口导入 EPUB/UMD，确认框、书架、书籍信息都显示原图；后端全量/vet/race、前端 829/829 与 build、公告门、存储合同与导入浏览器合同通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `21f749d`，可信 Actions run `40880848625` 全部成功；`21f749d`/`latest` 为 OCI index `sha256:fad3291832efb6ffba3866725069fce47ba1a5f96c05836ee829742396dd97a7`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
+
+## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
+
+日夜/导入切片回归时 Go 依赖公告门失败关闭：`unreviewed advisory GO-2026-6860`（CVE-2026-78661，2026-10-27 公开），
+`x/net/html` 合并文本节点为 O(n²)，`v0.62.0` 修复。govulncheck 符号级可达：书源页面经 `goquery → html.Parse`（main 已有），
+EPUB 简介经新的 `html.ParseFragment`。CI 在构建镜像前跑同一门，main 当前也无法发布。裁决 **`must-fix`（发布阻塞）**：`x/net`
+精确升到 `v0.62.0`，随 MVS 带上 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/text v0.43.0`，不动工具链与门脚本。完整合同见
+[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。状态 **contract-only**。
+2026-10-29 记录（合同第 5 节）：合同 `53770f4`，升级 `7a18346`；Go 公告门由 exit 1 变为 exit 0（只剩已评审的 `GO-2026-5932`），后端全量/vet/race 与前端 827/827、build 通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `b3164e3`，可信 Actions run `40834553001` 全部成功；`b3164e3`/`latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
+
+## 2026-10-29 P1 本地书导入：书名/作者/简介/目录规则自动识别
+
+上游导入本地书时先按文件名用四个正则（`《书名》作者：X`、`X《书名》`、`书名 作者：X`、`书名 by X`，再退到删除“作者…/X 著”）拆出
+书名和作者；直接上传先删 `\/:*?"<>|.` 并截到 50 个 UTF-16 单元，书仓/WebDAV 用原名。EPUB 再用第一个 `dc:title`、`dc:creator`
+（epublib“姓, 名”格式）和 `dc:description` 覆盖，UMD 读书名/作者/类型，TXT 把自动选中的目录规则写回 `tocUrl` 并显示在确认框的规则文本框里。
+OpenReader 没有文件名解析：用户的 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt` 在上游是书名 `前浪(校对加料版全本 1-425)`、作者
+`刀一耕`，在 OpenReader 整名当书名、作者为空，reader-dev 备份里的占位书也因此无法按书名+作者回填。用 `eclipse-temurin:21-jdk`
+离线移植上游逻辑实测 26 个文件名与 6 个 EPUB 作者作为夹具。M1–M7 为 **`must-fix`**；EPUB/UMD 封面图片（M8）另起切片。完整合同见
+[`local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md`](local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+2026-10-29 记录（合同第 7 节）：骨架 `d87bb2d`、红测 `4aadc03`（engine/localbook/api/前端均为断言失败）、实现 `d2b4f68`、默认封面文字 `aeaccf0`、浏览器合同 `936f672`。Go 移植对 28 个文件名 × 两种来源与 6 个 EPUB 作者和 Java 结果逐项一致；三视口直接导入用户的书，确认框与书架均为`前浪(校对加料版全本 1-425)` / `刀一耕`，`tocRule` 为自动选中的“目录(去空白)”。状态 **implementation-complete / regression-validated**，待可信 Actions；M8 封面另起切片。
+2026-10-29 发布：`main` 快进到 `b3164e3`，可信 Actions run `40834553001` 全部成功；`b3164e3`/`latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
+
+## 2026-10-29 P1 Reader 日间/夜间：按设备跟随系统与内置夜间配色
+
+上游日/夜只存在本浏览器，自动切换只看本机系统深浅色。OpenReader 的阅读设置是账号级并实时广播，自动切换的结果也会写入账号：
+一台设备启动或系统变色后，另一台设备被带着切换（用户确认遇到的就是这个），而且开着自动切换时每次打开页面都写一次设置。
+N1–N4 为 **`must-fix`**：自动套用只在本设备生效，收到账号设置后按本机系统复核，启动即按系统套用；手动切换写账号、自动切换开关账号级、
+缺少默认方案时回退内置方案为 `acceptable-change`。用户同时决定内置夜间配色改回上游：`body_6`/`content_6` 暗纹理、浮窗 `#121212`、
+正文 `#666`、不做对比度替换、页面边框 `#444`（P1–P5），旧默认 `#ffffff` 在设置版本 15 规范化为 `#666666`（P6）；自定义方案、隐藏
+`black` 主题、日间主题与夜间控件色不变。完整合同见
+[`reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md`](reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+2026-10-29 记录（合同第 7 节）：红测 `1feb7da`（9 项）→ 实现 `07f4752`；双设备检查前发现手动选择会被另一设备的保存改回，补红测 `d1188ce` → `02cefe7`（本设备手动选择保持到刷新、系统变色或重新打开自动切换，与上游一致）；浏览器合同 `936f672`。三视口夜间为 `body_6`/`content_6` 纹理、`#171717` 页面、`#666` 正文；两个上下文（浅色/深色）打开、刷新均不写设置，互不带动。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `b3164e3`，可信 Actions run `40834553001` 全部成功；`b3164e3`/`latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
+
 ## 2026-10-25 P1 文本编码识别：日文/韩文与单字节编码（E4/E8）
 
 OpenReader 只有 `gb18030`、`big5`、`shift_jis`、`euc-kr` 四个旧编码候选，自写评分偏向“解出汉字多”的结果：Shift_JIS 日文、

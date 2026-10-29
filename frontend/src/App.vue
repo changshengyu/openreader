@@ -80,6 +80,9 @@ onMounted(() => {
     bookshelf.ensureShelfScope()
     preferences.ensurePreferenceScope()
     readerStore.ensureReaderSettingsScope()
+    // Follow this device before the account settings arrive (reader-dev
+    // applies the system scheme in App.created); it is not saved anywhere.
+    applyAutoThemeFromSystem()
     connect()
     loadReaderSettingsAndApplyTheme()
     preferences.loadPreferences().catch(() => {})
@@ -94,9 +97,9 @@ onBeforeUnmount(() => {
   }
   if (!systemThemeMedia) return
   if (typeof systemThemeMedia.removeEventListener === 'function') {
-    systemThemeMedia.removeEventListener('change', applyAutoThemeFromSystem)
+    systemThemeMedia.removeEventListener('change', handleSystemThemeChange)
   } else if (typeof systemThemeMedia.removeListener === 'function') {
-    systemThemeMedia.removeListener(applyAutoThemeFromSystem)
+    systemThemeMedia.removeListener(handleSystemThemeChange)
   }
 })
 
@@ -106,6 +109,7 @@ watch(isLoggedIn, (loggedIn) => {
     readerStore.ensureProgressScope()
     readerStore.ensureReaderSettingsScope()
     preferences.ensurePreferenceScope()
+    applyAutoThemeFromSystem()
     connect()
     loadReaderSettingsAndApplyTheme()
     preferences.loadPreferences().catch(() => {})
@@ -138,15 +142,18 @@ function setupAutoThemeListener() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
   systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
   if (typeof systemThemeMedia.addEventListener === 'function') {
-    systemThemeMedia.addEventListener('change', applyAutoThemeFromSystem)
+    systemThemeMedia.addEventListener('change', handleSystemThemeChange)
   } else if (typeof systemThemeMedia.addListener === 'function') {
-    systemThemeMedia.addListener(applyAutoThemeFromSystem)
+    systemThemeMedia.addListener(handleSystemThemeChange)
   }
 }
 
+function handleSystemThemeChange() {
+  readerStore.followSystemColorSchemeChange()
+}
+
 function applyAutoThemeFromSystem() {
-  if (!readerStore.autoTheme || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-  readerStore.applyAutoTheme(window.matchMedia('(prefers-color-scheme: dark)').matches)
+  readerStore.followDeviceColorScheme()
 }
 
 function loadReaderSettingsAndApplyTheme() {

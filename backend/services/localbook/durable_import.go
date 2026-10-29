@@ -72,16 +72,7 @@ func (importer Importer) ImportPreparedResult(request ImportRequest, prepared Pr
 			return ImportedBook{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 		}
 	}
-	title, author := strings.TrimSpace(request.Title), strings.TrimSpace(request.Author)
-	if title == "" {
-		title = parsed.Title
-	}
-	if title == "" {
-		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
-	}
-	if author == "" {
-		author = parsed.Author
-	}
+	title, author := localBookTitleAuthor(request, parsed, nil)
 	placeholder, restore, err := importer.readerDevLocalPlaceholder(request.UserID, title, author)
 	if err != nil {
 		if canceled := importer.context().Err(); canceled != nil {
@@ -211,7 +202,18 @@ func (importer Importer) persistParsedBook(existing *models.Book, request Import
 		}
 		book.Type, book.Title, book.Author = 0, title, author
 		book.LibraryPath, book.OriginalFile, book.TOCFile, book.SourceFile = archive.Directory, archive.OriginalFile, archive.TOCFile, archive.SourceFile
-		book.TOCRule, book.ChapterCount, book.LastChapter = strings.TrimSpace(request.TOCRule), len(parsed.Chapters), ""
+		// reader-dev saves the rule it split the catalogue with (book.tocUrl),
+		// including the automatically selected TXT rule.
+		book.TOCRule, book.ChapterCount, book.LastChapter = firstNonBlank(request.TOCRule, parsed.TOCRule), len(parsed.Chapters), ""
+		// Intro and kind come from the file only when the book has none yet;
+		// a reattached reader-dev placeholder keeps its backed-up values.
+		metadataColumns := map[string]any{}
+		if strings.TrimSpace(book.Intro) == "" && parsed.Intro != "" {
+			book.Intro, metadataColumns["intro"] = parsed.Intro, parsed.Intro
+		}
+		if strings.TrimSpace(book.Kind) == "" && parsed.Kind != "" {
+			book.Kind, metadataColumns["kind"] = parsed.Kind, parsed.Kind
+		}
 		if len(parsed.Chapters) > 0 {
 			book.LastChapter = parsed.Chapters[len(parsed.Chapters)-1].Title
 		}
@@ -268,6 +270,9 @@ func (importer Importer) persistParsedBook(existing *models.Book, request Import
 				"toc_rule": book.TOCRule, "chapter_count": book.ChapterCount, "last_chapter": book.LastChapter}
 			if len(ids) > 0 {
 				columns["category_id"] = ids[0]
+			}
+			for column, value := range metadataColumns {
+				columns[column] = value
 			}
 			query := tx.Model(&models.Book{}).Where("id = ? AND user_id = ? AND source_id = 0 AND url = ? AND COALESCE(library_path, '') = ? AND COALESCE(original_file, '') = ?",
 				book.ID, request.UserID, existing.URL, existing.LibraryPath, existing.OriginalFile).Updates(columns)

@@ -1,6 +1,7 @@
 const MIN_READER_TEXT_CONTRAST = 4.5
 const SAFE_DARK_TEXT = '#171717'
 const SAFE_LIGHT_TEXT = '#ffffff'
+const PRESET_NIGHT_TEXT = '#666666'
 const DAY_PAGE_BORDER = 'rgba(109, 95, 55, 0.28)'
 const DAY_PAGE_SHADOW = 'inset 24px 0 44px rgba(90, 71, 28, 0.05), inset -24px 0 44px rgba(90, 71, 28, 0.05)'
 
@@ -31,8 +32,15 @@ export function resolveReaderTextColor({
   themeType = 'day',
   hasBackgroundImage = false,
   builtInNight = false,
+  theme = '',
 } = {}) {
   if (builtInNight) return SAFE_LIGHT_TEXT
+
+  // reader-dev renders its preset night with the scheme color, or #666, and
+  // no contrast replacement (Content.vue#containerStyle).
+  if (themeType === 'night' && theme && theme !== 'custom') {
+    return normalizedColor(requestedColor) || normalizedColor(themeTextColor) || PRESET_NIGHT_TEXT
+  }
 
   if (hasBackgroundImage) {
     return themeType === 'night' ? SAFE_LIGHT_TEXT : SAFE_DARK_TEXT
@@ -75,38 +83,27 @@ export function resolveReaderSurface({
   themeBodyImage,
   themePageImage,
   themePopupImage,
+  themePageBorder,
   customBackgroundImage = '',
 } = {}) {
   const custom = theme === 'custom'
-  const builtInNight = themeType === 'night' && !custom
-
-  if (builtInNight) {
-    return {
-      bodyColor: '#000000',
-      bodyImage: 'none',
-      pageColor: '#000000',
-      pageImage: 'none',
-      popupColor: normalizedColor(themePopup) || '#171717',
-      popupImage: 'none',
-      pageBorder: 'transparent',
-      pageShadow: 'none',
-    }
-  }
-
+  // Night presets (reader-dev theme 6 and the legacy black alias) bring their
+  // own surfaces; they never inherit the day paper textures or shadow.
+  const night = themeType === 'night'
   const customImage = custom ? normalizedColor(customBackgroundImage) : ''
   return {
-    bodyColor: normalizedColor(themeBody) || '#d9c27f',
-    bodyImage: custom ? 'none' : readerSurfaceImage(themeBodyImage, 'var(--reader-body-texture)'),
-    pageColor: normalizedColor(themeBackground) || '#f4e9bd',
+    bodyColor: normalizedColor(themeBody) || (night ? '#121212' : '#d9c27f'),
+    bodyImage: custom ? 'none' : readerSurfaceImage(themeBodyImage, night ? 'none' : 'var(--reader-body-texture)'),
+    pageColor: normalizedColor(themeBackground) || (night ? '#171717' : '#f4e9bd'),
     pageImage: customImage
       ? `url(${JSON.stringify(customImage)})`
       : custom
         ? 'none'
-        : readerSurfaceImage(themePageImage, 'var(--paper-texture)'),
-    popupColor: normalizedColor(themePopup) || 'rgba(255, 252, 239, 0.94)',
+        : readerSurfaceImage(themePageImage, night ? 'none' : 'var(--paper-texture)'),
+    popupColor: normalizedColor(themePopup) || (night ? '#121212' : 'rgba(255, 252, 239, 0.94)'),
     popupImage: custom ? 'none' : readerSurfaceImage(themePopupImage, 'none'),
-    pageBorder: custom ? 'transparent' : DAY_PAGE_BORDER,
-    pageShadow: custom ? 'none' : DAY_PAGE_SHADOW,
+    pageBorder: custom ? 'transparent' : normalizedColor(themePageBorder) || (night ? 'transparent' : DAY_PAGE_BORDER),
+    pageShadow: custom || night ? 'none' : DAY_PAGE_SHADOW,
   }
 }
 

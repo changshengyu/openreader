@@ -2,6 +2,7 @@ package localbook
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,7 +24,8 @@ var (
 	ErrPreparedImportMismatch = errors.New("prepared local book does not match staged input")
 )
 
-const PreparedImportVersion = 1
+// Version 2 adds the effective TOC rule, intro and kind to the snapshot.
+const PreparedImportVersion = 2
 const maxLocalBookTOCRuleBytes = engine.MaxTXTTocRuleBytes
 
 type Importer struct {
@@ -54,6 +56,9 @@ type ImportRequest struct {
 	// It is an internal callback, never decoded from an HTTP/backup payload.
 	BeforeCommit func() error
 	TOCRule      string
+	// DirectUpload marks a browser upload, whose file name reader-dev
+	// normalizes before deriving the book name and author.
+	DirectUpload bool
 }
 
 type PreviewChapter struct {
@@ -66,6 +71,8 @@ type PreviewResult struct {
 	Author       string           `json:"author"`
 	ChapterCount int              `json:"chapterCount"`
 	Chapters     []PreviewChapter `json:"chapters"`
+	TOCRule      string           `json:"tocRule,omitempty"`
+	CoverURL     string           `json:"coverUrl,omitempty"`
 	ImportToken  string           `json:"importToken,omitempty"`
 }
 
@@ -91,9 +98,29 @@ func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
 	return preview, err
 }
 
+// Prepare parses an import for staging or confirmation. Its preview has no
+// cover: only the import dialog needs one (see PreparePreview).
 func (importer Importer) Prepare(request ImportRequest) (PreviewResult, PreparedImport, error) {
+	preview, prepared, _, err := importer.prepare(request)
+	return preview, prepared, err
+}
+
+// PreparePreview is Prepare for the import dialog: the preview also carries
+// the cover reader-dev writes during preview, when its data URL fits both
+// maxPreviewCoverBytes and coverBudget (what is left of the response's
+// budget, in data URL bytes).
+func (importer Importer) PreparePreview(request ImportRequest, coverBudget int64) (PreviewResult, PreparedImport, error) {
+	preview, prepared, parsedBook, err := importer.prepare(request)
+	if err != nil {
+		return PreviewResult{}, PreparedImport{}, err
+	}
+	preview.CoverURL = previewCoverURL(request, parsedBook, importer.parseLimits(), coverBudget)
+	return preview, prepared, nil
+}
+
+func (importer Importer) prepare(request ImportRequest) (PreviewResult, PreparedImport, engine.ParsedBook, error) {
 	if len(strings.TrimSpace(request.TOCRule)) > maxLocalBookTOCRuleBytes {
-		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: local book TOC rule exceeds the limit", ErrParseFailed)
+		return PreviewResult{}, PreparedImport{}, engine.ParsedBook{}, fmt.Errorf("%w: local book TOC rule exceeds the limit", ErrParseFailed)
 	}
 	var parsedBook engine.ParsedBook
 	var err error
@@ -104,13 +131,41 @@ func (importer Importer) Prepare(request ImportRequest) (PreviewResult, Prepared
 	}
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedFormat) {
-			return PreviewResult{}, PreparedImport{}, err
+			return PreviewResult{}, PreparedImport{}, engine.ParsedBook{}, err
 		}
-		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
+		return PreviewResult{}, PreparedImport{}, engine.ParsedBook{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
 	prepared := NewPreparedImport(request, parsedBook)
 	prepared.EPUBCatalogOnly = normalizedLocalBookExtension(request.Extension) == ".epub"
-	return previewResult(request, parsedBook), prepared, nil
+	return previewResult(request, parsedBook), prepared, parsedBook, nil
+}
+
+// maxPreviewCoverBytes bounds the cover image inlined into an import preview;
+// a larger cover shows only after the import.
+const maxPreviewCoverBytes = 2 << 20
+
+// previewCoverURL is the cover reader-dev writes during preview
+// (Book.initLocalBook → updateFromLocal) and shows in the import dialog,
+// inlined as a data URL because the book does not exist yet. It is empty
+// when the URL would exceed budget bytes.
+func previewCoverURL(request ImportRequest, parsedBook engine.ParsedBook, limits engine.LocalBookParseLimits, budget int64) string {
+	maxBytes := int64(maxPreviewCoverBytes)
+	// Base64 turns every 3 image bytes into 4; 32 bytes cover the prefix.
+	if fit := (budget - 32) / 4 * 3; fit < maxBytes {
+		maxBytes = fit
+	}
+	if maxBytes <= 0 {
+		return ""
+	}
+	contentType, image, ok := engine.LocalBookCoverImage(normalizedLocalBookExtension(request.Extension), request.Data, parsedBook, limits, maxBytes)
+	if !ok {
+		return ""
+	}
+	coverURL := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(image)
+	if int64(len(coverURL)) > budget {
+		return ""
+	}
+	return coverURL
 }
 
 func NewPreparedImport(request ImportRequest, parsedBook engine.ParsedBook) PreparedImport {
@@ -134,18 +189,34 @@ func (prepared PreparedImport) Matches(request ImportRequest) bool {
 	return prepared.SourceSHA256 == hex.EncodeToString(sourceHash[:])
 }
 
-func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewResult {
-	title := strings.TrimSpace(request.Title)
-	if title == "" {
-		title = strings.TrimSpace(parsedBook.Title)
+// localBookTitleAuthor applies reader-dev's precedence: the name/author typed
+// in the import dialog, then (when reattaching) the stored book, then format
+// metadata (EPUB/UMD/CBZ, Book.updateFromLocal), then the file name split by
+// LocalBook.analyzeNameAuthor (Book.initLocalBook).
+func localBookTitleAuthor(request ImportRequest, parsedBook engine.ParsedBook, existing *models.Book) (string, string) {
+	fileTitle, fileAuthor := engine.LocalBookNameAuthor(request.FileName, request.DirectUpload)
+	existingTitle, existingAuthor := "", ""
+	if existing != nil {
+		existingTitle, existingAuthor = existing.Title, existing.Author
 	}
+	title := firstNonBlank(request.Title, existingTitle, parsedBook.Title, fileTitle)
 	if title == "" {
 		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
 	}
-	author := strings.TrimSpace(request.Author)
-	if author == "" {
-		author = strings.TrimSpace(parsedBook.Author)
+	return title, firstNonBlank(request.Author, existingAuthor, parsedBook.Author, fileAuthor)
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
 	}
+	return ""
+}
+
+func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewResult {
+	title, author := localBookTitleAuthor(request, parsedBook, nil)
 
 	chapters := make([]PreviewChapter, 0, len(parsedBook.Chapters))
 	for index, chapter := range parsedBook.Chapters {
@@ -160,6 +231,7 @@ func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewR
 		Author:       author,
 		ChapterCount: len(chapters),
 		Chapters:     chapters,
+		TOCRule:      parsedBook.TOCRule,
 	}
 }
 
@@ -242,24 +314,7 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 		}
 		return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
-	title := strings.TrimSpace(request.Title)
-	if title == "" {
-		title = strings.TrimSpace(existing.Title)
-	}
-	if title == "" {
-		title = strings.TrimSpace(parsedBook.Title)
-	}
-	if title == "" {
-		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
-	}
-	author := strings.TrimSpace(request.Author)
-	if author == "" {
-		author = strings.TrimSpace(existing.Author)
-	}
-	if author == "" {
-		author = strings.TrimSpace(parsedBook.Author)
-	}
-
+	title, author := localBookTitleAuthor(request, parsedBook, &existing)
 	return importer.restoreExistingParsedBook(existing, request, parsedBook, title, author)
 }
 
@@ -335,11 +390,7 @@ func parseUploadedBookWithLimits(ext string, data []byte, tocRule string, limits
 	case ".epub":
 		return engine.ParseEPUBWithLimits(data, tocRule, limits)
 	case ".txt", ".text", ".md":
-		chapters, err := engine.ParseTXTWithLimits(data, tocRule, limits)
-		if err != nil {
-			return engine.ParsedBook{}, err
-		}
-		return engine.ParsedBook{Chapters: chapters}, nil
+		return engine.ParseTXTBookWithLimits(data, tocRule, limits)
 	case ".pdf":
 		return engine.ParsePDFWithLimits(data, limits)
 	case ".umd":

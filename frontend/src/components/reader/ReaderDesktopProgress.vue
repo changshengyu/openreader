@@ -68,7 +68,7 @@ defineEmits([
   display: grid;
   width: 46px;
   background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
-  border: 1px solid rgba(148, 132, 87, 0.38);
+  border: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.38));
   border-bottom: 0;
 }
 
@@ -84,10 +84,10 @@ defineEmits([
   display: grid;
   height: 43px;
   place-items: center;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
   border: 0;
-  border-bottom: 1px solid rgba(148, 132, 87, 0.32);
+  border-bottom: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.32));
   font-size: 16px;
 }
 

@@ -17,6 +17,54 @@ Docker 与二进制两种方式）上表达；历史卷门加 `JWT_SECRET_MODE=u
 Compose、存储 HTTP 合同、未设置密钥的真实会话合同通过。状态 implementation-complete / regression-validated；候选镜像 Docker 门在
 Actions。
 
+## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
+
+见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。
+内置夜间正文已是上游 `#666`，但工具与设置文字被 4.5:1 替换成纯白，强调色/控件面仍是可读性增强的 `#ff7589`/`#303030`/`#565656`。
+用户确认全部改回上游并对所有夜间方案生效：C1–C10 must-fix（`#666` 工具/标签、`#444` 格线、圆钮无边框、`#666` + `rgba(45, 45, 45, 0.5)`
+控件、`#606266`/`#a6a6a6` 设置文字/数值、主题色块 `#666`、`#ed4259`、滑块 `#185798`）；C11–C14 acceptable-change；列表文字、
+朗读条、全局 Element 夜间覆盖另起。计划红测：`readerStyle` 夜间变量组与日间对照、各组件变量与日间回退源码合同；浏览器三视口 + iPad
+computed style。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：合同 `795d914`、红测 `a47bc03`（6 项断言失败，对照通过）、实现 `7d8a0b2`、浏览器合同 + 补充红测 `f84dbbc`、补充实现 `a44ea45`（夜间页码滑块按上游 `el-slider` 自绘，原生未读段在深色 accent 下会变白）。五个视口日间与 `c62c619` 完全相同、夜间为上游值；前端 834/834 与 build、后端全量/vet、advisory 门、移动/EPUB/设置位置浏览器合同通过；面板控件合同 C1 flip 偶发 harness 超时新旧构建都有。状态 implementation-complete / regression-validated，待可信 Actions。
+
+## 2026-10-29 当前切片：本地书封面——EPUB/UMD 书架封面与导入确认框封面（P1，M8）
+
+见[`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。
+上游 EPUB（epublib meta/guide，JPG/PNG/GIF）与 UMD（段 130）都有封面，确认框也显示；OpenReader 只有 CBZ。C1–C3 must-fix：EPUB 封面路径进抽取
+标记、经 `/api/epub-resource` 投影；UMD 封面首次投影时抽到 `.umd-resources`、经新 `/api/umd-cover` 提供；预览返回 2 MiB 内的 `data:` 封面。
+计划红测：engine 封面规则与 UMD 段、api 导入响应/书架/详情/自定义优先/旧标记/能力安全、前端预览封面。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：实现 `7901e1f`/`b5db7d6`（红测 `5ac9d00`/`7105dbf`/`e24def9` 转绿，测试修正 `0007fe2`），浏览器合同 `ad74f13`，服务测试 `8fb8f88`；A7 预览响应封面合计 ≤ 8 MiB。三视口确认框/书架/书籍信息封面、后端全量/vet/race、前端 829/829 与 build、公告门、存储与导入合同通过。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-10-29）：main 快进到 21f749d，run 40880848625 全部成功，21f749d/latest index `sha256:fad32918…97a7`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
+
+## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
+
+见[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。
+`x/net/html` 文本节点合并 O(n²)，可经书源页面解析与 EPUB 简介解析到达；Go 公告门在 `07f4752` 与 main 上都失败关闭。
+must-fix：`x/net v0.62.0`（连带 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/text v0.43.0`），应用代码与门脚本不变。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：升级 `7a18346`，Go 公告门 exit 1→0，后端全量/vet/race、前端 827/827 与 build 通过。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-10-29）：main 快进到 b3164e3，run 40834553001 全部成功，b3164e3/latest index `sha256:39d3d1cc…0ea1`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
+
+## 2026-10-29 当前切片：本地书导入的书名/作者/简介/目录规则自动识别（P1，M1–M7）
+
+见[`local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md`](local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md)。
+上游按文件名四个正则拆书名/作者（直接上传先删 `\/:*?"<>|.` 并截 50 个 UTF-16 单元），EPUB 用 `dc:title`/`dc:creator`（“姓, 名”）/
+`dc:description` 覆盖，UMD 读类型，TXT 回显并保存自动选中的目录规则；OpenReader 都没有。用户 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt`
+上游为书名+作者“刀一耕”，OpenReader 整名当书名。M1–M7 must-fix，M8（EPUB/UMD 封面图片）另起切片，A1–A5 acceptable-change。计划红测：
+engine 26 个文件名×两种来源与 6 个 EPUB 作者（Java 实测夹具），localbook 四种格式元数据，api 直接/书仓/占位回填，前端确认框与工作流。
+状态 contract-only。
+记录（2026-10-29，取代上段的状态）：骨架 `d87bb2d`、红测 `4aadc03`、实现 `d2b4f68`、`aeaccf0`、浏览器合同 `936f672`；夹具扩到 28 个文件名，全部与 Java 一致；三视口直接导入用户的书得到 `前浪(校对加料版全本 1-425)` / `刀一耕` 与自动规则；导入与书仓/WebDAV 浏览器合同、存储 HTTP 合同、后端全量/vet/race、前端 827/827 与 build 通过。状态 implementation-complete / regression-validated，待可信 Actions；M8 另起。
+发布（2026-10-29）：main 快进到 b3164e3，run 40834553001 全部成功，b3164e3/latest index `sha256:39d3d1cc…0ea1`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
+
+## 2026-10-29 当前切片：Reader 日间/夜间按设备跟随系统与内置夜间配色（P1，N1–N4、P1–P6）
+
+见[`reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md`](reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md)。
+自动切换结果写入账号并广播，其它设备被带着切换、每次打开都写一次设置（用户确认遇到）；上游日/夜只在本设备。N1–N4 must-fix：自动套用只改本设备、
+收到账号设置后按本机系统复核、启动即按系统套用。用户决定内置夜间改回上游暗纹理 + `#666` 正文（P1–P5），旧默认白字在设置版本 15 规范化（P6）；
+N5–N7 acceptable-change；自定义方案、隐藏 `black`、日间主题、夜间控件色不变。计划红测：store 自动套用不写服务端、收到账号设置后按系统复核、
+启动顺序源码合同、内置夜间配色与 P6 迁移；改写与新决定冲突的纯黑断言。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：红测 `1feb7da` → `07f4752`；补充红测 `d1188ce` → `02cefe7`（本设备手动选择保持到刷新/系统变色/重新打开自动切换）；浏览器合同 `936f672`。三视口夜间纹理与 `#666`、双上下文互不带动且打开/刷新不写设置，EPUB/移动端/书架浏览器合同、前端 827/827 与 build、后端全量/vet/race 通过。状态 implementation-complete / regression-validated，待可信 Actions；夜间控件色未改。
+发布（2026-10-29）：main 快进到 b3164e3，run 40834553001 全部成功，b3164e3/latest index `sha256:39d3d1cc…0ea1`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
+
 ## 2026-10-25 当前切片：文本编码识别——日文/韩文与单字节编码（P1，E4/E8）
 
 见[`txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md`](txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md)。

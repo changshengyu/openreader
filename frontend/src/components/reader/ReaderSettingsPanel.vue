@@ -733,6 +733,7 @@ function resetReaderSettings() {
 <style scoped>
 .settings-body {
   min-width: 0;
+  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
   text-align: left;
   user-select: none;
 }
@@ -871,13 +872,13 @@ function resetReaderSettings() {
 }
 
 .setting-label {
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   font-size: 13px;
 }
 
 .setting-help {
   flex-basis: 100%;
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-settings-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -890,7 +891,7 @@ function resetReaderSettings() {
   width: 34px;
   height: 34px;
   color: var(--reader-accent, #ed4259);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--reader-control-border);
   border-radius: 100%;
   cursor: pointer;
   display: inline-block;
@@ -900,7 +901,7 @@ function resetReaderSettings() {
 }
 
 .theme-item.active {
-  border-color: var(--reader-accent, #ed4259);
+  border-color: var(--reader-theme-selected-border, var(--reader-accent, #ed4259));
 }
 
 .theme-check {
@@ -913,7 +914,7 @@ function resetReaderSettings() {
 }
 
 .moon-icon {
-  color: rgba(255, 255, 255, 0.2);
+  color: var(--reader-moon-icon, rgba(255, 255, 255, 0.2));
   font-style: normal;
 }
 
@@ -1029,7 +1030,7 @@ function resetReaderSettings() {
   width: 78px;
   height: 34px;
   padding: 0;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
   background: var(--reader-control-bg);
   border: 1px solid var(--reader-control-border);
   border-radius: 2px;
@@ -1074,7 +1075,7 @@ function resetReaderSettings() {
   width: 20px;
   height: 20px;
   padding: 0;
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-settings-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -1122,7 +1123,7 @@ function resetReaderSettings() {
 .font-size-preset {
   min-width: 0;
   min-height: 32px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
   background: var(--reader-control-bg);
   border: 1px solid var(--reader-control-border);
   border-radius: 6px;
