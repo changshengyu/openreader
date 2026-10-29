@@ -8,6 +8,7 @@
 控件、`#606266`/`#a6a6a6` 设置文字/数值、主题色块 `#666`、`#ed4259`、滑块 `#185798`）；C11–C14 acceptable-change；列表文字、
 朗读条、全局 Element 夜间覆盖另起。计划红测：`readerStyle` 夜间变量组与日间对照、各组件变量与日间回退源码合同；浏览器三视口 + iPad
 computed style。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：合同 `795d914`、红测 `a47bc03`（6 项断言失败，对照通过）、实现 `7d8a0b2`、浏览器合同 + 补充红测 `f84dbbc`、补充实现 `a44ea45`（夜间页码滑块按上游 `el-slider` 自绘，原生未读段在深色 accent 下会变白）。五个视口日间与 `c62c619` 完全相同、夜间为上游值；前端 834/834 与 build、后端全量/vet、advisory 门、移动/EPUB/设置位置浏览器合同通过；面板控件合同 C1 flip 偶发 harness 超时新旧构建都有。状态 implementation-complete / regression-validated，待可信 Actions。
 
 ## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
 

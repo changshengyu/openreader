@@ -10,6 +10,7 @@
 目录/书架/换源列表文字、朗读条、全局 Element 夜间覆盖另起切片。完整合同见
 [`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
+2026-10-29 记录（合同第 8 节）：合同 `795d914`、红测 `a47bc03`、实现 `7d8a0b2`、浏览器合同与补充红测 `f84dbbc`、补充实现 `a44ea45`。实现中发现原生 range 配深色 `accent-color` 时 Chromium 把未读段画成浅色，C10 改为夜间按上游 `el-slider` 自绘（`#185798` 已读段、`#282828` 未读段与滑块）。真实账号对照 `c62c619` 构建：五个视口日间工具栏与设置面板 computed style 完全相同，夜间逐项为上游值；移动/EPUB/设置位置浏览器合同、前端 834/834 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
 
 ## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
 

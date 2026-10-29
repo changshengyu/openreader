@@ -1,6 +1,6 @@
 # Reader 夜间工具栏与设置控件配色合同（P1）
 
-状态：**contract-only**（用户 2026-10-29 确认第 5 节：全部改回上游）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
+状态：**implementation-complete / regression-validated**（记录见第 8 节；用户 2026-10-29 确认第 5 节：全部改回上游）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
 
 ## 1. 来源与范围
 
@@ -92,7 +92,7 @@
 | C7 | 桌面右侧圆钮、移动浮动按钮（上游 `.float-btn`） | 图标 `#666`；无边框 | 白色图标；白圈 0.7/0.72 | **must-fix**：图标 `#666`，夜间边框透明（保留 36/38px 盒子） |
 | C8 | 桌面进度/章节按钮与缓存条（上游 `.read-bar .tools .tool-icon`、`.cache-content-zone`） | `#666`；格线 `#444` | 白色；棕色半透明线 | **must-fix** |
 | C9 | 移动顶栏按钮、上一章/下一章/阅读进度、页码提示（上游 mini `.tool-icon`、`.progress-tip`） | `#666` | 白色（提示 76%） | **must-fix** |
-| C10 | 移动页码滑块 | 已读段与滑块 `#185798`；未读段 `#282828` | `accent-color: #409eff` | **must-fix**：夜间 `accent-color: #185798`。未读段由浏览器原生 range 绘制（`color-scheme: dark` 下为深灰），**acceptable-change**：不为一个颜色重写原生滑块 |
+| C10 | 移动页码滑块 | 已读段 `#185798`，未读段 `#282828`（6px、圆角 3px），滑块 16px `#282828` + `2px solid #185798` | `accent-color: #409eff` | **must-fix**：夜间按上游画出已读段/未读段/滑块；日间保持原生 `#409eff`（实现中修订，见第 8 节：原生 range 配深色 `accent-color` 时 Chromium 把未读段画成浅色，原先“未读段交给原生”的 `acceptable-change` 不成立） |
 | C11 | 悬停与“开启”高亮（左栏悬停、圆钮悬停/开启、移动浮动按钮开启、左栏当前面板） | 上游没有这些状态 | 悬停变亮；开启 `#7ed8d4`；当前面板为强调色 | **acceptable-change**：保留这些 OpenReader 状态与 `#7ed8d4`（无上游颜色可对齐，见 D2）；当前面板随 C1 变为 `#ed4259` |
 | C12 | 移动顶栏/底栏分隔线与阴影、桌面工具栏半透明 + 模糊 | 无分隔线；不透明 `#121212` | 日夜相同的棕色细线/阴影；64–96% 浮窗色 | **acceptable-change**：日夜共用的结构差异，夜间在 `#121212` 上与上游几乎无差别，不重开 |
 | C13 | 设置分隔线（上游 `el-divider`） | Element 默认 `#DCDFE6`（日夜相同） | `--reader-control-border` | **acceptable-change**：继续跟随控件边框，夜间随 C2 变为 `#666` |
@@ -132,14 +132,17 @@
    | `--reader-chrome-text` | `#666` | `.tool-icon`、`.icon-text`、`.float-*-btn-zone`、`.progress-tip`、`.cache-content-zone`、`.setting-item-title` | 桌面左栏/圆钮/进度/章节、缓存条、移动顶栏/浮动按钮/底栏/页码提示、设置标签 |
    | `--reader-chrome-border` | `#444` | `.tool-icon` 边框 | 桌面左栏与进度栏的格线和外框 |
    | `--reader-float-border` | `transparent` | `.float-btn` 无边框 | 桌面右侧圆钮、移动浮动按钮 |
-   | `--reader-slider-accent` | `#185798` | `.el-slider__bar`/`__button` | 移动页码滑块 `accent-color` |
+   | `--reader-slider-accent` | `#185798` | `.el-slider__bar`/`__button` 边框 | 移动页码滑块已读段与滑块边框（日间 `accent-color` 回退 `#409eff`） |
+   | `--reader-slider-runway` | `#282828` | `.el-slider__runway`/`__button` 底色 | 移动页码滑块未读段与滑块底色 |
    | `--reader-settings-text` | `#606266` | `.el-popover` 继承色 | 设置面板正文、选项、提示、上传字体图标、字号预设、步进器 |
    | `--reader-settings-value-text` | `#a6a6a6` | `.setting-input .el-input__inner`、`.lang` | 步进器中间数值 |
    | `--reader-theme-selected-border` | `#666` | `.night .selected` | 选中的主题色块边框 |
    | `--reader-moon-icon` | `#ed4259` | `.night .moon-icon` | 内置夜间色块上的月亮 |
 
-2. 组件只把颜色改为“新变量，回退到现有表达式”，不改尺寸、布局、交互与 DOM。主题色块边框改用 `--reader-control-border`
+2. 组件只把颜色改为“新变量，回退到现有表达式”，不改尺寸、布局与交互。主题色块边框改用 `--reader-control-border`
    （日间正好是现在的 `rgba(0, 0, 0, 0.1)`，夜间 `#666`）。步进器禁用色按设置文字的 48% 计算，避免夜间禁用比可用更亮。
+   唯一的 DOM 变化：移动页码滑块在夜间加 `night-slider` 类并带 `--page-slider-progress`（当前页占比，拖动时跟随草稿值），
+   夜间用 `appearance: none` 画上游 `el-slider`；盒子仍为 16px 高、位置不变。
 3. `--reader-popup-text`、`--reader-text` 与阅读面计算不变（目录/书架/换源面板的列表文字因此不变）。
 
 ## 7. 计划测试（先红）
@@ -158,3 +161,36 @@
 内置夜间读取左栏/圆钮/进度/移动工具与设置控件的 computed style（`rgb(102, 102, 102)`、`rgb(68, 68, 68)`、
 `rgba(45, 45, 45, 0.5)`、`rgb(237, 66, 89)`、`rgb(96, 98, 102)`、`rgb(166, 166, 166)`、滑块 `rgb(24, 87, 152)`），日间同一批
 元素与改动前一致；`reader-mobile-contract.mjs` 自定义夜间上传/删除色改为 `rgb(237, 66, 89)`。
+
+## 8. 记录（2026-10-29）
+
+提交（分支 `claude/reader-night-chrome-palette`）：合同 `795d914`；红测 `a47bc03`；实现 `7d8a0b2`；浏览器合同 + 补充红测 `f84dbbc`；
+补充实现 `a44ea45`。
+
+- 红测：`a47bc03` 在 `c62c619` 上 6 项断言失败（夜间变量组、夜间控件/强调色、桌面工具、移动工具、设置/步进器 5 项新测，以及按新决定
+  改写的 `readerThemeContrast` 夜间控件测试）；日间回退对照与原有 11 项对比度/阅读面测试通过。`7d8a0b2` 后同一断言全部转绿。
+- 实现中修订 C10（`f84dbbc` 红 → `a44ea45`）：真实浏览器里夜间滑块的未读段变成白色——原生 range 配深色 `accent-color: #185798`
+  时 Chromium 会把未读段画成浅色（旧的 `#409eff` 仍是深灰），“未读段交给原生”的 `acceptable-change` 不成立。现在夜间滑块加
+  `night-slider` 类，按上游 `el-slider` 画 `#185798` 已读段、`#282828` 未读段与 16px `#282828` 滑块 + `2px solid #185798` 圈，
+  已读比例 `--page-slider-progress` 跟随拖动草稿值；变量组加 `--reader-slider-runway: #282828`。补充红测在 `7d8a0b2` 上 2 项单元
+  断言与浏览器滑块断言（`390: night chrome slider appearance expected none, got auto`）失败，`a44ea45` 后通过。
+- 测试：frontend 834/834 与 build；backend `go test ./...` 29 个包与 `go vet ./...`（后端未改动）；advisory 门自测 109/109，
+  Go 与前端公告扫描 exit 0。
+- 真实浏览器（本地 Go 服务 + 新构建与 `c62c619` 构建各一份，新数据目录）：
+  - `reader-mobile-contract.mjs`（模拟接口）全量通过：内置夜间在 1440×900、390×844、360×800 与 iPad 1024×1366 / 1366×1024
+    （自适应场景）逐项读到上游值，切回日间后工具栏 computed style 与切换前逐项相同；自定义夜间上传/删除色 `rgb(237, 66, 89)`。
+    同一脚本在 `c62c619` 构建上于第一项失败：`1440: night chrome rail border-left-color expected rgb(68, 68, 68), got rgba(148, 132, 87, 0.26)`。
+  - 真实账号 + 导入的 TXT，两份构建对照五个视口：日间工具栏与设置面板的 computed style 与 `c62c619` **完全相同**；夜间为
+    工具/标签 `rgb(102, 102, 102)`、格线 `rgb(68, 68, 68)`、圆钮与浮动按钮边框 `rgba(0, 0, 0, 0)`、设置文字 `rgb(96, 98, 102)`、
+    选项/字体/字号预设/步进器 `rgba(45, 45, 45, 0.5)` + `rgb(102, 102, 102)`、数值 `rgb(166, 166, 166)`、选中与重置/月亮
+    `rgb(237, 66, 89)`、主题色块（含选中）`rgb(102, 102, 102)`、分隔线 `rgb(102, 102, 102)`、正文仍 `rgb(102, 102, 102)`；旧构建夜间为
+    白字（标签/选项 `rgb(255, 255, 255)`、左栏 72%）、`rgb(48, 48, 48)`/`rgb(86, 86, 86)` 控件、`rgb(255, 117, 137)` 强调色、白圈。
+    无控制台错误、页面错误或 5xx。390×844 滑块日夜都是 16px 高、位置相同（top 768），拖到第 5/18 页时已读比例 23.5%。
+  - `reader-epub-contract.mjs`（三视口）、`reader-settings-position-contract.mjs` 通过。`reader-desktop-panel-controls-contract.mjs`
+    的 C2–C4（84 组）通过；C1 flip 设置有偶发 harness 超时：失败组在开始处等待 `.reader-chapter-end` 出现 10 秒超时（还没打开面板），
+    哪几组失败每次不同。只跑 C1 flip（12 组）各两次：新构建 12/12、10/12，`c62c619` 构建 9/12、10/12，与本切片无关（日间渲染相同），
+    未修改该脚本。
+- 观察到但未改动：手机模式的 iPad 点月亮后变为自适应布局——内置“黑夜默认”方案带 `pageMode: '自适应'`，与上游 `setNightTheme`
+  整包合并一致；设置里的字体预览框（OpenReader 新增，`#fffaf0` 底）日夜相同，夜间仍是浅色块，上游没有对应元素。
+
+状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
