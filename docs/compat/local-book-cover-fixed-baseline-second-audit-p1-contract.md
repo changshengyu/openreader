@@ -40,11 +40,14 @@
 | --- | --- | --- | --- |
 | C1 | EPUB 书架/详情/导入响应封面 | **must-fix** | 按 epublib 规则选出封面图路径（meta 先、guide 后；JPG/PNG/GIF），记入 `.epub-resources` 抽取标记（派生数据，可重建）；投影为现有 `/api/epub-resource` 能力地址，规则与 CBZ 相同（只在响应里、自定义封面优先、出错时为空） |
 | C2 | UMD 书架/详情/导入响应封面 | **must-fix** | 首次投影时从归档原文件取段 130 后的附加段，写入书目录 `.umd-resources/<fingerprint>/` 并记标记（无封面也记，避免反复扫描）；新增 `/api/umd-cover/<capability>`，按用户/书/指纹授权，`nosniff`、`same-origin`、`private` 缓存 |
-| C3 | 导入确认框封面 | **must-fix** | 预览（直接上传、书仓、WebDAV、token 重新解析）返回 `coverUrl`：EPUB/CBZ/UMD 的封面图在 2 MiB 以内时为 `data:` URL，否则省略 |
-| A1 | 封面图格式 | acceptable-change | EPUB 只认 JPG/PNG/GIF（同上游）；UMD/CBZ 按文件头识别 JPEG/PNG/GIF/BMP/WebP，其它字节不当封面（上游原样写 `.jpg` 交给浏览器猜） |
+| C3 | 导入确认框封面 | **must-fix** | 预览（直接上传、书仓、WebDAV、token 重新解析）返回 `coverUrl`：EPUB/CBZ/UMD 的封面图在 2 MiB 以内时为 `data:` URL，否则省略；一个预览响应里的内联封面合计不超过 8 MiB（A7）；只有确认框用的预览计算封面，导入落库与内部重新解析不计算 |
+| A1 | 封面图格式 | acceptable-change | EPUB 只认 JPG/PNG/GIF（同上游）；UMD 封面与确认框预览封面按文件头识别 JPEG/PNG/GIF/WebP，其它字节不当封面（上游原样写 `.jpg` 交给浏览器猜）；CBZ 书架封面规则不变 |
 | A2 | 预览封面大小 | acceptable-change | 超过 2 MiB 的封面只在确认框里显示默认封面，导入后书架照常显示 |
 | A3 | 封面存放 | technical-stack-equivalent | 不写 `/assets/.../covers`、不改 `Book.CoverURL`：封面是可重建的派生文件，能力地址只出现在响应里，备份/恢复格式不变 |
 | A4 | EPUB3 `cover-image` | 不采用 | 上游不认，只有该属性的 EPUB 仍无封面；若要改进需用户另行确认 |
+| A5 | 旧 EPUB 的封面时机 | acceptable-change | 列书架时不解包 EPUB，只用已有抽取：2026-07-18（`e24d5773`）之前导入、此后从未打开过的 EPUB 打开一次后才显示封面；其后导入的书抽取标记里没有封面信息时，首次显示时查一次并补记 |
+| A7 | 批量预览的封面总量 | acceptable-change（缓存加固） | 上游每本写封面文件并返回地址；OpenReader 内联 `data:` URL，书仓/WebDAV 一次最多预览 200 本，故一个预览响应的封面文本合计不超过 8 MiB，按顺序先到先得；超出的行在确认框显示默认封面，单本重新解析时按新的预算补回，导入后书架照常 |
+| A6 | UMD 首次扫描 | technical-stack-equivalent | 每个 UMD 版本只在首次投影时读一次原文件（256 MiB 以内，更大的不扫描、显示默认封面），结果连同“无封面”记入标记；原文件按大小与修改时间判断是否变化 |
 
 不重开：CBZ 封面（已对齐）、远程书封面代理、自定义封面上传与删除、书架布局。
 
@@ -56,4 +59,6 @@
    `/api/epub-resource/`、`/api/umd-cover/` 且能取回原图；库里 `cover_url` 为空；自定义封面优先；无封面时为空；旧格式抽取标记仍能补出封面；
    UMD 能力地址被篡改为 403、书删除后 404、不能跨用户。
 3. 前端：预览行带 `coverUrl`，确认框封面使用它。
+3a. 批量上限（A7）：书仓一次预览多本大封面 EPUB 时，响应里的封面文本合计 ≤ 8 MiB、首本有封面、超出的行没有封面，该行单本重新解析得到封面；
+    localbook `Prepare`（暂存确认与落库路径）不计算预览封面。
 4. 浏览器 1440×900、390×844、360×800：导入带封面的 EPUB 与 UMD，确认框与书架都显示封面图。
