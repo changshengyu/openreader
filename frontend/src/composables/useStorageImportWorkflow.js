@@ -316,9 +316,14 @@ function normalizePreviewRows(items) {
       key: String(item?.key || path || `import:${index}`),
       path,
       importToken: String(item?.importToken || book.importToken || ''),
-      title: String(book.title || item?.title || fileNameWithoutExtension(item?.path) || ''),
+      // Without a parsed book the server has not derived reader-dev's name and
+      // author yet; an empty title lets a retry derive them from the file name.
+      title: item?.book
+        ? String(book.title || item?.title || fileNameWithoutExtension(item?.path) || '')
+        : String(item?.title || ''),
       author: String(book.author || item?.author || ''),
       tocRule: String(item?.tocRule || (isEPUBLocalPath(item?.path) ? 'spin+toc' : '')),
+      detectedTocRule: String(book.tocRule || ''),
       chapterCount: Number(book.chapterCount || 0),
       chapters: Array.isArray(book.chapters) ? book.chapters : [],
       categoryIds: [],
@@ -340,6 +345,7 @@ function applyPreviewResult(row, result) {
   if (result?.book) {
     row.title = String(book.title || row.title)
     row.author = String(book.author || row.author)
+    row.detectedTocRule = String(book.tocRule || '')
     row.chapterCount = Number(book.chapterCount || 0)
     row.chapters = Array.isArray(book.chapters) ? book.chapters : []
   }

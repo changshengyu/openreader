@@ -36,6 +36,9 @@ type Metadata struct {
 	FileName  string    `json:"fileName"`
 	Extension string    `json:"extension"`
 	CreatedAt time.Time `json:"createdAt"`
+	// DirectUpload marks a browser upload; reader-dev derives its book name
+	// and author from a normalized file name (localbook.ImportRequest).
+	DirectUpload bool `json:"directUpload,omitempty"`
 }
 type Hook func(phase, directory, token, path string)
 type Limits struct {
@@ -109,6 +112,15 @@ func (s *Service) begin(ctx context.Context, user uint, token string, create boo
 }
 
 func (s *Service) Create(ctx context.Context, user uint, name, extension string, data []byte) (*Session, error) {
+	return s.create(ctx, user, name, extension, false, data)
+}
+
+// CreateDirectUpload stages a browser upload of the direct import dialog.
+func (s *Service) CreateDirectUpload(ctx context.Context, user uint, name, extension string, data []byte) (*Session, error) {
+	return s.create(ctx, user, name, extension, true, data)
+}
+
+func (s *Service) create(ctx context.Context, user uint, name, extension string, directUpload bool, data []byte) (*Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -154,7 +166,7 @@ func (s *Service) Create(ctx context.Context, user uint, name, extension string,
 		}
 		return nil, ErrStageWrite
 	}
-	x.Metadata = Metadata{FileName: filepath.Base(name), Extension: strings.ToLower(strings.TrimSpace(extension)), CreatedAt: time.Now().UTC()}
+	x.Metadata = Metadata{FileName: filepath.Base(name), Extension: strings.ToLower(strings.TrimSpace(extension)), CreatedAt: time.Now().UTC(), DirectUpload: directUpload}
 	encoded, err := json.Marshal(x.Metadata)
 	if err != nil || int64(len(encoded)) > MetadataLimit {
 		return nil, ErrStageWrite

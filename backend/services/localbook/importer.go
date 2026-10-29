@@ -23,7 +23,8 @@ var (
 	ErrPreparedImportMismatch = errors.New("prepared local book does not match staged input")
 )
 
-const PreparedImportVersion = 1
+// Version 2 adds the effective TOC rule, intro and kind to the snapshot.
+const PreparedImportVersion = 2
 const maxLocalBookTOCRuleBytes = engine.MaxTXTTocRuleBytes
 
 type Importer struct {
@@ -138,18 +139,34 @@ func (prepared PreparedImport) Matches(request ImportRequest) bool {
 	return prepared.SourceSHA256 == hex.EncodeToString(sourceHash[:])
 }
 
-func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewResult {
-	title := strings.TrimSpace(request.Title)
-	if title == "" {
-		title = strings.TrimSpace(parsedBook.Title)
+// localBookTitleAuthor applies reader-dev's precedence: the name/author typed
+// in the import dialog, then (when reattaching) the stored book, then format
+// metadata (EPUB/UMD/CBZ, Book.updateFromLocal), then the file name split by
+// LocalBook.analyzeNameAuthor (Book.initLocalBook).
+func localBookTitleAuthor(request ImportRequest, parsedBook engine.ParsedBook, existing *models.Book) (string, string) {
+	fileTitle, fileAuthor := engine.LocalBookNameAuthor(request.FileName, request.DirectUpload)
+	existingTitle, existingAuthor := "", ""
+	if existing != nil {
+		existingTitle, existingAuthor = existing.Title, existing.Author
 	}
+	title := firstNonBlank(request.Title, existingTitle, parsedBook.Title, fileTitle)
 	if title == "" {
 		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
 	}
-	author := strings.TrimSpace(request.Author)
-	if author == "" {
-		author = strings.TrimSpace(parsedBook.Author)
+	return title, firstNonBlank(request.Author, existingAuthor, parsedBook.Author, fileAuthor)
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
 	}
+	return ""
+}
+
+func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewResult {
+	title, author := localBookTitleAuthor(request, parsedBook, nil)
 
 	chapters := make([]PreviewChapter, 0, len(parsedBook.Chapters))
 	for index, chapter := range parsedBook.Chapters {
@@ -164,6 +181,7 @@ func previewResult(request ImportRequest, parsedBook engine.ParsedBook) PreviewR
 		Author:       author,
 		ChapterCount: len(chapters),
 		Chapters:     chapters,
+		TOCRule:      parsedBook.TOCRule,
 	}
 }
 
@@ -246,24 +264,7 @@ func (importer Importer) RestoreExisting(existing models.Book, request ImportReq
 		}
 		return models.Book{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
-	title := strings.TrimSpace(request.Title)
-	if title == "" {
-		title = strings.TrimSpace(existing.Title)
-	}
-	if title == "" {
-		title = strings.TrimSpace(parsedBook.Title)
-	}
-	if title == "" {
-		title = strings.TrimSuffix(request.FileName, filepath.Ext(request.FileName))
-	}
-	author := strings.TrimSpace(request.Author)
-	if author == "" {
-		author = strings.TrimSpace(existing.Author)
-	}
-	if author == "" {
-		author = strings.TrimSpace(parsedBook.Author)
-	}
-
+	title, author := localBookTitleAuthor(request, parsedBook, &existing)
 	return importer.restoreExistingParsedBook(existing, request, parsedBook, title, author)
 }
 
@@ -339,11 +340,7 @@ func parseUploadedBookWithLimits(ext string, data []byte, tocRule string, limits
 	case ".epub":
 		return engine.ParseEPUBWithLimits(data, tocRule, limits)
 	case ".txt", ".text", ".md":
-		chapters, err := engine.ParseTXTWithLimits(data, tocRule, limits)
-		if err != nil {
-			return engine.ParsedBook{}, err
-		}
-		return engine.ParsedBook{Chapters: chapters}, nil
+		return engine.ParseTXTBookWithLimits(data, tocRule, limits)
 	case ".pdf":
 		return engine.ParsePDFWithLimits(data, limits)
 	case ".umd":

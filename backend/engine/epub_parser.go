@@ -35,8 +35,9 @@ type epubContainer struct {
 
 type epubPackage struct {
 	Metadata struct {
-		Titles   []string `xml:"title"`
-		Creators []string `xml:"creator"`
+		Titles       []string `xml:"title"`
+		Creators     []string `xml:"creator"`
+		Descriptions []string `xml:"description"`
 	} `xml:"metadata"`
 	Manifest struct {
 		Items []epubManifestItem `xml:"item"`
@@ -116,8 +117,10 @@ func ParseEPUBCatalogWithLimits(data []byte, rule string, limits LocalBookParseL
 	}
 
 	book := ParsedBook{
-		Title:  firstNonEmpty(pkg.Metadata.Titles),
-		Author: firstNonEmpty(pkg.Metadata.Creators),
+		Title:   firstNonEmpty(pkg.Metadata.Titles),
+		Author:  readerDevEPUBAuthor(pkg.Metadata.Creators),
+		Intro:   readerDevEPUBIntro(pkg.Metadata.Descriptions),
+		TOCRule: normalizeEPUBRule(rule),
 	}
 	baseDir := path.Dir(opfPath)
 	if baseDir == "." {

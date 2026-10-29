@@ -43,6 +43,13 @@ type parsedLocalImportMultipart struct {
 	categoryIDs []uint
 }
 
+// directUpload reports whether the book bytes came from this browser upload
+// (now or when the referenced stage was created) rather than from a
+// LocalStore/WebDAV stage reused through its token.
+func (payload *parsedLocalImportMultipart) directUpload() bool {
+	return payload.stage == nil || payload.stage.Metadata.DirectUpload
+}
+
 func (s *Server) parseLocalImportMultipart(c *gin.Context, preview bool) (*parsedLocalImportMultipart, error) {
 	requestLimit := s.maxLocalImportBytes() + localImportMultipartEnvelopeBytes
 	if requestLimit < s.maxLocalImportBytes() {
@@ -269,7 +276,7 @@ func (s *Server) readLocalImportPayload(ctx context.Context, payload *parsedLoca
 	if !createStage {
 		return fileHeader.Filename, ext, data, "", nil
 	}
-	stage, err := s.localImportStages().Create(ctx, userID, fileHeader.Filename, ext, data)
+	stage, err := s.localImportStages().CreateDirectUpload(ctx, userID, fileHeader.Filename, ext, data)
 	if err != nil {
 		if isLocalImportStageCancellation(err) {
 			return "", "", nil, "", err

@@ -41,12 +41,13 @@ func (s *Server) previewTXTImport(c *gin.Context) {
 		return
 	}
 	request := localbook.ImportRequest{
-		FileName:  fileName,
-		Extension: ext,
-		Data:      data,
-		Title:     payload.title,
-		Author:    payload.author,
-		TOCRule:   payload.tocRule,
+		FileName:     fileName,
+		Extension:    ext,
+		Data:         data,
+		Title:        payload.title,
+		Author:       payload.author,
+		TOCRule:      payload.tocRule,
+		DirectUpload: payload.directUpload(),
 	}
 	preview, prepared, err := localbook.NewImporter(s.cfg, s.db).Prepare(request)
 	if err != nil {
@@ -112,16 +113,17 @@ func (s *Server) importTXT(c *gin.Context) {
 
 	importer := localbook.NewImporter(s.cfg, s.db).WithContext(c.Request.Context())
 	request := localbook.ImportRequest{
-		UserID:      userID,
-		UserName:    userName,
-		FileName:    fileName,
-		Extension:   ext,
-		Data:        data,
-		Title:       payload.title,
-		Author:      payload.author,
-		CategoryID:  categoryID,
-		CategoryIDs: categoryIDs,
-		TOCRule:     payload.tocRule,
+		UserID:       userID,
+		UserName:     userName,
+		FileName:     fileName,
+		Extension:    ext,
+		Data:         data,
+		Title:        payload.title,
+		Author:       payload.author,
+		CategoryID:   categoryID,
+		CategoryIDs:  categoryIDs,
+		TOCRule:      payload.tocRule,
+		DirectUpload: payload.directUpload(),
 	}
 	var result localbook.ImportedBook
 	if importToken != "" {

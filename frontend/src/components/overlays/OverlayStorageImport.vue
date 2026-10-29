@@ -92,35 +92,54 @@
     @update:model-value="handleSingleVisible"
   >
     <template v-if="currentRow">
-      <div class="storage-import-single-form">
-        <el-input v-model="currentRow.title" placeholder="书名" />
-        <el-input v-model="currentRow.author" placeholder="作者（可选）" />
-        <el-select v-model="currentRow.categoryIds" multiple clearable filterable placeholder="未分组">
-          <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="Number(category.id)" />
-        </el-select>
-        <div v-if="isRuleConfigurable(currentRow.path)" class="storage-import-rule-row">
-          <el-select
-            v-if="isTextLocalPath(currentRow.path)"
-            v-model="currentRow.tocRule"
-            allow-create
-            clearable
-            default-first-option
-            filterable
-            placeholder="TXT 目录规则（可选）"
-          >
-            <el-option v-for="rule in txtTocRuleOptions" :key="rule.id" :label="rule.name" :value="rule.rule" />
-          </el-select>
-          <el-select v-else v-model="currentRow.tocRule" placeholder="EPUB 目录规则">
-            <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
-          </el-select>
-          <el-button :loading="currentRow.reparsing" :disabled="!currentRow.importToken" @click="reparse(currentRow)">刷新目录</el-button>
+      <div class="storage-import-check-form">
+        <BookCover class="storage-import-cover" :book="importCoverBook(currentRow)" decorative />
+        <div class="storage-import-single-form">
+          <label class="storage-import-field">
+            <span class="storage-import-label">书名：</span>
+            <el-input v-model="currentRow.title" size="small" />
+          </label>
+          <label class="storage-import-field">
+            <span class="storage-import-label">作者：</span>
+            <el-input v-model="currentRow.author" size="small" />
+          </label>
+          <div class="storage-import-field">
+            <span class="storage-import-label">分组：</span>
+            <el-select v-model="currentRow.categoryIds" size="small" multiple clearable filterable placeholder="未分组">
+              <el-option v-for="category in bookshelf.categories" :key="category.id" :label="category.name" :value="Number(category.id)" />
+            </el-select>
+          </div>
+          <template v-if="isRuleConfigurable(currentRow.path)">
+            <div class="storage-import-field">
+              <span class="storage-import-label">规则：</span>
+              <div class="storage-import-rule-controls">
+                <el-select
+                  v-if="isTextLocalPath(currentRow.path)"
+                  v-model="currentRow.tocRule"
+                  size="small"
+                  allow-create
+                  clearable
+                  default-first-option
+                  filterable
+                  placeholder="内置规则"
+                >
+                  <el-option v-for="rule in txtTocRuleOptions" :key="rule.id" :label="rule.name" :value="rule.rule" />
+                </el-select>
+                <el-select v-else v-model="currentRow.tocRule" size="small" placeholder="内置规则">
+                  <el-option v-for="rule in epubTocRuleOptions" :key="rule.value" :label="rule.label" :value="rule.value" />
+                </el-select>
+                <el-button size="small" text type="primary" :loading="currentRow.reparsing" :disabled="!currentRow.importToken" @click="reparse(currentRow)">刷新目录</el-button>
+              </div>
+            </div>
+            <el-input type="textarea" :rows="2" v-model="currentRuleText" size="small" class="storage-import-rule-text" />
+          </template>
+          <p v-if="currentRow.chapterCount === 0" class="storage-import-empty-catalog">
+            未匹配到目录；可调整规则后刷新目录，或保留空目录继续导入。
+          </p>
+          <p v-if="currentRow.lastError" class="storage-import-error">{{ currentRow.lastError }}</p>
         </div>
-        <p v-if="currentRow.chapterCount === 0" class="storage-import-empty-catalog">
-          未匹配到目录；可调整规则后刷新目录，或保留空目录继续导入。
-        </p>
-        <p v-if="currentRow.lastError" class="storage-import-error">{{ currentRow.lastError }}</p>
       </div>
-      <div class="storage-import-chapter-title">章节列表（{{ currentRow.chapters.length }}）</div>
+      <div class="storage-import-chapter-title">章节列表({{ currentRow.chapters.length }})</div>
       <div class="storage-import-chapter-list">
         <p v-for="chapter in currentRow.chapters" :key="chapter.index">{{ Number(chapter.index) + 1 }}. {{ chapter.title }}</p>
       </div>
@@ -139,6 +158,7 @@ import { listTXTTocRules, previewDirectLocalBooks } from '../../api/books'
 import { importFromLocalStore, previewLocalStoreImport } from '../../api/localStore'
 import { importFromWebDAV, previewWebDAVImport } from '../../api/webdav'
 import { useStorageImportWorkflow } from '../../composables/useStorageImportWorkflow'
+import BookCover from '../BookCover.vue'
 import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useBookshelfStore } from '../../stores/bookshelf'
 import { useOverlayStore } from '../../stores/overlay'
@@ -203,6 +223,15 @@ const {
   busy,
 } = workflow
 
+// reader-dev shows the rule a reparse would use: the chosen rule, or the one
+// the server selected automatically (book.tocUrl). Editing it chooses a rule.
+const currentRuleText = computed({
+  get: () => currentRow.value?.tocRule || currentRow.value?.detectedTocRule || '',
+  set: value => {
+    if (currentRow.value) currentRow.value.tocRule = value
+  },
+})
+
 const sourceLabel = computed(() => {
   if (source.value === 'direct') return '本地文件'
   return source.value === 'webdav' ? 'WebDAV ' : '本地书仓'
@@ -240,6 +269,10 @@ function handleBatchGroupsVisible(visible) {
 
 function handleSingleVisible(visible) {
   if (!visible) workflow.skipCurrent()
+}
+
+function importCoverBook(row) {
+  return { title: row?.title || '', author: row?.author || '' }
 }
 
 function isRuleConfigurable(path) {
@@ -344,6 +377,37 @@ function readError(error, fallback) {
 .storage-import-groups-body {
   display: grid;
   gap: 10px;
+}
+
+.storage-import-check-form {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.storage-import-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.storage-import-label {
+  color: var(--app-text-muted);
+  white-space: nowrap;
+}
+
+.storage-import-rule-controls {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  align-items: center;
+}
+
+.storage-import-rule-controls > :first-child {
+  min-width: 0;
+  flex: 1;
 }
 
 .storage-import-chapter-title {
