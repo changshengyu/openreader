@@ -1,5 +1,14 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-29 P1 本地书封面：EPUB/UMD 书架封面与导入确认框封面（M8）
+
+上游导入 EPUB/UMD 时就写出封面：EPUB 按 epublib 取 `meta name="cover"`（清单 id 或 href）与 guide `type="cover"` 中的 JPG/PNG/GIF，UMD 取段 130
+后的附加段；书架、书籍信息与导入确认框都显示。OpenReader 只有 CBZ 有封面。C1（EPUB）、C2（UMD）、C3（确认框预览封面，2 MiB 内用
+`data:` URL）为 **`must-fix`**：EPUB 封面路径记入 `.epub-resources` 抽取标记并用现有 `/api/epub-resource` 能力地址投影，UMD 封面首次投影时
+抽到 `.umd-resources/<fingerprint>/` 并经新 `/api/umd-cover/<capability>` 提供，均只在响应里、自定义封面优先、不改库与备份格式。A1 图片格式、
+A2 预览上限为 acceptable-change，EPUB3 `cover-image` 不采用（上游不认）。完整合同见
+[`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。状态 **contract-only**。
+
 ## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
 
 日夜/导入切片回归时 Go 依赖公告门失败关闭：`unreviewed advisory GO-2026-6860`（CVE-2026-78661，2026-10-27 公开），

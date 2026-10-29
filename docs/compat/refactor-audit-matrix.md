@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-29 当前切片：本地书封面——EPUB/UMD 书架封面与导入确认框封面（P1，M8）
+
+见[`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。
+上游 EPUB（epublib meta/guide，JPG/PNG/GIF）与 UMD（段 130）都有封面，确认框也显示；OpenReader 只有 CBZ。C1–C3 must-fix：EPUB 封面路径进抽取
+标记、经 `/api/epub-resource` 投影；UMD 封面首次投影时抽到 `.umd-resources`、经新 `/api/umd-cover` 提供；预览返回 2 MiB 内的 `data:` 封面。
+计划红测：engine 封面规则与 UMD 段、api 导入响应/书架/详情/自定义优先/旧标记/能力安全、前端预览封面。状态 contract-only。
+
 ## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
 
 见[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。
