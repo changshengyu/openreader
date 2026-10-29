@@ -1,6 +1,6 @@
 # 本地书导入：书名/作者/简介/目录规则自动识别合同（P1）
 
-状态：**contract-only**。审查日期：2026-10-29。审查基线：`OpenReader@b4cf2be`。
+状态：**implementation-complete / regression-validated**（记录见第 7 节）。审查日期：2026-10-29。审查基线：`OpenReader@b4cf2be`。
 
 ## 1. 来源与结论
 
@@ -102,3 +102,26 @@ EPUB 作者：`天蚕土豆`→`天蚕土豆`，`John Smith`→`Smith, John`，`
    `Book.TOCRule` 为该规则；书仓同名文件得到相同结果；名称含 `.` 时两种来源不同；reader-dev 占位书 `前浪…`/`刀一耕` 被原地回填。
 4. 前端：确认框源码合同（标签、封面、规则文本框、`章节列表(`）与工作流把预览 `tocRule` 写入行数据但确认时仍提交用户选择的规则。
 5. 浏览器 1440×900、390×844、360×800：直接导入示例 TXT，确认框显示拆分后的书名/作者与规则文本，导入后书架显示同样书名/作者。
+
+## 7. 记录（2026-10-29）
+
+提交（分支 `claude/day-night-import-alignment`）：合同 `a2a3eb7`；行为不变的接口骨架 `d87bb2d`；红测 `4aadc03`；实现 `d2b4f68`；
+确认框默认封面文字 `aeaccf0`；浏览器合同选择器 `936f672`。上游实测夹具与 Java 移植源码在
+`backend/engine/testdata/upstream_local_book_name_author/`。
+
+- 红测（`d87bb2d` 上，均为断言失败）：engine 28 个文件名 × 两种来源与 Java 结果不一致、直接上传截断、4/6 个 EPUB 作者格式、EPUB 简介、
+  UMD 类型、TXT 生效规则；localbook 预览/导入/占位回填；api 直接上传、token 重新解析与书仓；前端工作流（自动规则、失败行书名）与
+  确认框源码合同。`d2b4f68` 后同一断言全部转绿；请求里填写的书名/作者/规则优先等对照始终通过。
+- 实现要点：`engine.LocalBookNameAuthor` 逐字移植 `analyzeNameAuthor` 与格式化函数（直接上传先删字符、截 50 个 UTF-16 单元且不拆代理对）；
+  暂存元数据记录 `directUpload`；书名/作者优先级为 对话框输入 → 回填占位 → 格式元数据 → 文件名；EPUB 作者为 epublib“姓, 名”，
+  第一个 `dc:description` 转纯文本存 `Intro`；UMD 第 7 段存 `Kind`（两者只填空值）；TXT/EPUB 返回生效规则，未指定规则时保存自动选中
+  的规则；预览快照版本 1→2（旧快照确认时重新解析）。
+- 测试：backend `go test ./...` 29 个包、`go vet ./...`、`go test -race`（engine、services/localbook、services/importstage，以及 api 1037 秒）在 `7a18346` 上通过（其后只改前端与冒烟脚本），未见 DATA RACE；frontend 827/827 与 build 通过；Go/前端公告门通过（`x/net` 升级见
+  [`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)）。
+- 真实浏览器（本地 Go 服务 + `aeaccf0` 构建）：1440×900、390×844、360×800 直接导入 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt`，
+  确认框显示书名 `前浪(校对加料版全本 1-425)`、作者 `刀一耕`、“内置规则”占位、规则文本框为自动选中的“目录(去空白)”正则、
+  `章节列表(2)` 与“暂无封面”，无横向溢出；导入后书架与 `/api/books` 为同一书名/作者，`tocRule` 为该正则。`local-book-import-contract`
+  （取消竞态、单本、批量、逐本）与 `workspace-storage-retry-contract`（书仓、WebDAV）三视口通过，存储 HTTP 合同通过。
+- 未做：M8（EPUB/UMD 封面图片）另起切片；已导入的书不重新解析，需重新导入或在书籍信息里修改书名/作者。
+
+状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。

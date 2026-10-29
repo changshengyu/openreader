@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本切片不涉及上游可见行为）。
 
 审查日期：2026-10-29。实施基线：`OpenReader@07f4752`（`claude/day-night-import-alignment`）；`origin/main` 为 `b4cf2be`。
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（记录见第 5 节）。
 
 前置合同：[`go-advisory-release-gate-contract.md`](go-advisory-release-gate-contract.md)、
 [`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)。
@@ -41,3 +41,11 @@ CI 在构建镜像前运行同一门，所以合入 main 的任何提交（包�
 2. 升级后同一门 exit 0，门测试、前端门不变。
 3. backend `go test ./...`、`go vet ./...`、`go test -race`（engine、localbook、importstage、api），frontend 全量与 build。
 4. 发布后由可信 Actions 的 Go 门与 OS/APK 门复核；本地不构建镜像。
+
+## 5. 记录（2026-10-29）
+
+合同 `53770f4`；升级 `7a18346`（`go.mod` 只改 `x/crypto v0.58.0`、`x/net v0.62.0`、`x/sys v0.49.0`、`x/text v0.43.0`，`go.sum` 8+/8-）。
+Go 公告门在 `07f4752` 上 exit 1（`unreviewed advisory GO-2026-6860`），`7a18346` 上 exit 0（249 条公告、1 个发现为已评审不适用的
+`GO-2026-5932`）；门测试 109/109；前端公告门 exit 0；`docker compose config` 通过。backend `go test ./...` 29 个包、`go vet ./...`、`go test -race`（engine、services/localbook、services/importstage，以及 api 1037 秒）在 `7a18346` 上通过（其后只改前端与冒烟脚本），未见 DATA RACE；frontend 827/827 与 build 通过。
+
+状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。

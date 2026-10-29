@@ -1,6 +1,6 @@
 # Reader 日间/夜间：按设备跟随系统与内置夜间配色合同（P1）
 
-状态：**contract-only**。审查日期：2026-10-29。审查基线：`OpenReader@b4cf2be`。
+状态：**implementation-complete / regression-validated**（记录见第 7 节）。审查日期：2026-10-29。审查基线：`OpenReader@b4cf2be`。
 
 ## 1. 来源与用户决定
 
@@ -106,3 +106,29 @@ N2 的复核只发生在“开着自动切换且浏览器能报告深浅色”�
 浏览器：1440×900、390×844、360×800 打开 TXT 与 EPUB，点月亮后读取 `.reader-shell`/`.reader-page`/段落/EPUB `body p`
 的 computed style，确认纹理、`#171717` 底色与 `rgb(102, 102, 102)` 正文；两个浏览器上下文登录同一账号、分别模拟深/浅色，
 一侧切换或刷新后另一侧日/夜不变。
+
+## 7. 记录（2026-10-29）
+
+提交（分支 `claude/day-night-import-alignment`）：合同 `a2a3eb7`；红测 `1feb7da`；实现 `07f4752`；补充红测 `d1188ce`；
+补充实现 `02cefe7`；浏览器合同改写 `936f672`。
+
+- 红测：`1feb7da` 在 `d87bb2d` 上 4 个文件中 9 项失败、43 项通过——N1（自动套用改了 `settingsUpdatedAt` 并写账号）、
+  N2（浅色设备收到“内置黑夜”后照单全收）、N4（启动先等服务端）、P1–P5（纯黑白配色与纯黑接管）、P6（`#ffffff` 不迁移）；
+  手动切换仍保存、关闭自动切换照常采用账号设置、自定义低对比度替换与纯黑接管、隐藏 `black`、版本 15 的白色与空值等对照通过。
+  与新决定冲突的三处纯黑断言按 CLAUDE.md 改写。`07f4752` 后同一断言全部转绿。
+- 实现中细化 N2（`d1188ce` 红 2 项 → `02cefe7`）：准备双设备浏览器检查时发现，开着自动切换在 A 上手动点月亮后，B 只要保存任何设置
+  （例如字号），A 收到广播复核时就按系统改回白天。上游的手动选择会一直保持到刷新、系统深浅色变化或重新打开自动切换
+  （`App.vue#autoSetTheme` 只在 `created`、`matchMedia change` 与 `autoTheme` watcher 触发）。现在本设备的手动选择只在本页会话内记住
+  （不持久、不同步），复核时优先使用；系统深浅色变化（`followSystemColorSchemeChange`）、重新打开自动切换、换账号或刷新后结束。
+- 测试：frontend 827/827 与 build 通过；同分支 backend `go test ./...` 29 个包、`go vet ./...`、`go test -race`（engine、services/localbook、services/importstage，以及 api 1037 秒）在 `7a18346` 上通过（其后只改前端与冒烟脚本），未见 DATA RACE。
+- 真实浏览器（本地 Go 服务 + `aeaccf0` 构建，新数据目录）：1440×900、390×844、360×800 打开 TXT，日间为 `content_0`/`rgb(38, 38, 38)`；
+  点月亮后 `.reader-shell` 为 `rgb(18, 18, 18)` + `body_6.png`、`.reader-page` 为 `rgb(23, 23, 23)` + `content_6.png`、正文
+  `rgb(102, 102, 102)`、桌面页边框 `rgb(68, 68, 68)`，没有 `black-night-surface`。同一账号两个浏览器上下文（A 浅色 1440×900、B 深色
+  390×844，账号设置已存在）：打开与刷新都不写阅读设置（A 0、B 0 次 PUT），A 白天、B 夜间互不影响；A 手动月亮写入 1 次、B 仍夜间；
+  B 手动太阳写入 1 次、A 保持手动夜间；A 刷新后回到跟随系统的白天，B 保持手动白天。改写后的 `reader-epub-contract`（三视口，
+  内置夜间 EPUB 根层 `#171717`/`#666`、出版物样式保留；自定义纯黑接管段不变）、`reader-mobile-contract`（桌面、手机、iPad 两种）
+  与 `bookshelf-visible-layout-contract` 通过，无页面错误、控制台错误或 5xx。
+- 仍保留的差异：N5–N7（见第 4.1 节）；Reader 工具栏/设置面板与首页的夜间控件色未改回上游（`#303030`/`#565656`/`#ff7589`/`#7ed8d4`），
+  如需一并对齐另起切片。
+
+状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
