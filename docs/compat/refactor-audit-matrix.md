@@ -1,5 +1,11 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
+
+见[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。
+`x/net/html` 文本节点合并 O(n²)，可经书源页面解析与 EPUB 简介解析到达；Go 公告门在 `07f4752` 与 main 上都失败关闭。
+must-fix：`x/net v0.62.0`（连带 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/text v0.43.0`），应用代码与门脚本不变。状态 contract-only。
+
 ## 2026-10-29 当前切片：本地书导入的书名/作者/简介/目录规则自动识别（P1，M1–M7）
 
 见[`local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md`](local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md)。

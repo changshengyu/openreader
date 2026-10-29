@@ -1,5 +1,13 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
+
+日夜/导入切片回归时 Go 依赖公告门失败关闭：`unreviewed advisory GO-2026-6860`（CVE-2026-78661，2026-10-27 公开），
+`x/net/html` 合并文本节点为 O(n²)，`v0.62.0` 修复。govulncheck 符号级可达：书源页面经 `goquery → html.Parse`（main 已有），
+EPUB 简介经新的 `html.ParseFragment`。CI 在构建镜像前跑同一门，main 当前也无法发布。裁决 **`must-fix`（发布阻塞）**：`x/net`
+精确升到 `v0.62.0`，随 MVS 带上 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/text v0.43.0`，不动工具链与门脚本。完整合同见
+[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。状态 **contract-only**。
+
 ## 2026-10-29 P1 本地书导入：书名/作者/简介/目录规则自动识别
 
 上游导入本地书时先按文件名用四个正则（`《书名》作者：X`、`X《书名》`、`书名 作者：X`、`书名 by X`，再退到删除“作者…/X 著”）拆出
