@@ -37,6 +37,7 @@ test('reader night chrome variables carry the reader-dev night palette for every
     '--reader-chrome-border': '#444',
     '--reader-float-border': 'transparent',
     '--reader-slider-accent': '#185798',
+    '--reader-slider-runway': '#282828',
     '--reader-settings-text': '#606266',
     '--reader-settings-value-text': '#a6a6a6',
     '--reader-theme-selected-border': '#666',
@@ -83,6 +84,29 @@ test('mobile chrome takes night text, float ring and slider color from the palet
   assert.match(rule(mobileChromeSource, '.mobile-progress-slider'), /accent-color: var\(--reader-slider-accent, #409eff\);/)
   assert.match(rule(mobileChromeSource, '.mobile-chapter-step'), chromeText)
   assert.match(rule(mobileChromeSource, '.mobile-chapter-progress span'), chromeText)
+})
+
+test('mobile page slider draws reader-dev el-slider night instead of a native light track', () => {
+  // A native range with the dark #185798 accent-color gets a light unfilled
+  // track in Chromium, so night draws reader-dev's #185798 bar on #282828.
+  const template = mobileChromeSource.slice(0, mobileChromeSource.indexOf('</template>'))
+  assert.match(template, /class="mobile-progress-slider"[\s\S]*?:class="\{ 'night-slider': isNight \}"/)
+  assert.match(template, /:style="\{ '--page-slider-progress': pageSliderProgress \}"/)
+  assert.match(mobileChromeSource, /const pageSliderProgress = computed\(/)
+  const slider = rule(mobileChromeSource, '.mobile-progress-slider.night-slider')
+  assert.match(slider, /-webkit-appearance: none;/)
+  assert.match(slider, /appearance: none;/)
+  assert.match(
+    rule(mobileChromeSource, '.mobile-progress-slider.night-slider::-webkit-slider-runnable-track'),
+    /background: linear-gradient\(to right, var\(--reader-slider-accent\) var\(--page-slider-progress, 0%\), var\(--reader-slider-runway\) var\(--page-slider-progress, 0%\)\);/,
+  )
+  for (const thumb of ['::-webkit-slider-thumb', '::-moz-range-thumb']) {
+    const body = rule(mobileChromeSource, `.mobile-progress-slider.night-slider${thumb}`)
+    assert.match(body, /background: var\(--reader-slider-runway\);/)
+    assert.match(body, /border: 2px solid var\(--reader-slider-accent\);/)
+  }
+  assert.match(rule(mobileChromeSource, '.mobile-progress-slider.night-slider::-moz-range-track'), /background: var\(--reader-slider-runway\);/)
+  assert.match(rule(mobileChromeSource, '.mobile-progress-slider.night-slider::-moz-range-progress'), /background: var\(--reader-slider-accent\);/)
 })
 
 test('settings text, swatches and stepper follow ReadSettings night', () => {

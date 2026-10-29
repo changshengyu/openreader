@@ -1452,10 +1452,128 @@ async function assertInlineDesktopCacheZone(page) {
 // 2026-10-29 user decision: the moon applies reader-dev's theme 6 — #121212 +
 // body_6 outside, #171717 + content_6 page, #666 text — without the pure-black
 // inline takeover, which stays for custom pure-black night (runCustomBlackNightViewport).
+// Computed chrome colors, keyed by element, for the reader-dev night palette contract.
+async function readerChromeSnapshot(page, { mobile, settings = false }) {
+  return page.evaluate(({ mobile, settings }) => {
+    const pick = (selector, properties) => {
+      const element = document.querySelector(selector)
+      if (!element) return null
+      const style = window.getComputedStyle(element)
+      return Object.fromEntries(properties.map(property => [property, style.getPropertyValue(property)]))
+    }
+    if (settings) {
+      return {
+        body: pick('.settings-body', ['color']),
+        resetButton: pick('.settings-title button', ['color']),
+        label: pick('.settings-body .setting-label', ['color']),
+        option: pick('.settings-body .selection-button:not(.active)', ['color', 'border-top-color', 'background-color']),
+        activeOption: pick('.settings-body .selection-button.active', ['color', 'border-top-color']),
+        help: pick('.settings-body .setting-help', ['color']),
+        fontOption: pick('.settings-body .font-family-option:not(.active)', ['color', 'border-top-color', 'background-color']),
+        stepper: pick('.settings-body .reader-setting-stepper', ['color', 'border-top-color', 'background-color']),
+        stepperDivider: pick('.settings-body .reader-setting-stepper button:first-child', ['border-right-color']),
+        stepperValue: pick('.settings-body .reader-setting-stepper-value', ['color']),
+        themeItem: pick('.settings-body .theme-item:not(.active)', ['border-top-color']),
+        activeThemeItem: pick('.settings-body .theme-item.active', ['border-top-color']),
+        moon: pick('.settings-body .moon-icon', ['color']),
+        divider: pick('.settings-body .setting-divider', ['background-color']),
+      }
+    }
+    if (mobile) {
+      return {
+        topTool: pick('.reader-mobile-top.visible .mobile-tool-button', ['color']),
+        floatTool: pick('.reader-mobile-float-left.visible button', ['color', 'border-top-color']),
+        chapterStep: pick('.reader-mobile-bottom.visible .mobile-chapter-step', ['color']),
+        progress: pick('.reader-mobile-bottom.visible .mobile-chapter-progress span', ['color']),
+        sliderRow: pick('.reader-mobile-bottom.visible .mobile-progress-slider-row', ['color']),
+        slider: pick('.reader-mobile-bottom.visible .mobile-progress-slider', ['accent-color', 'appearance', '--page-slider-progress']),
+      }
+    }
+    return {
+      rail: pick('.reader-left-rail', ['border-left-color', 'border-right-color']),
+      railItem: pick('.reader-left-rail .rail-item', ['color', 'border-bottom-color']),
+      railHome: pick('.reader-left-rail .rail-home', ['color']),
+      roundTool: pick('.reader-right-rail .round-tool', ['color', 'border-top-color']),
+      progressBar: pick('.reader-page-control', ['border-top-color']),
+      progressBox: pick('.reader-page-control .progress-box', ['color', 'border-bottom-color']),
+      chapterStep: pick('.reader-page-control .chapter-step', ['color']),
+    }
+  }, { mobile, settings })
+}
+
+function assertChromeSnapshot(viewport, scope, actual, expected) {
+  for (const [element, properties] of Object.entries(expected)) {
+    assert(actual[element], `${viewport.width}: ${scope} ${element} is missing`)
+    for (const [property, value] of Object.entries(properties)) {
+      assert(
+        actual[element][property] === value,
+        `${viewport.width}: ${scope} ${element} ${property} expected ${value}, got ${actual[element][property]}`,
+      )
+    }
+  }
+}
+
+// reader-dev Reader.vue/ReadSettings.vue `.night` chrome (user decision 2026-10-29).
+async function assertBuiltInNightChrome(page, viewport, { mobile }) {
+  const gray = 'rgb(102, 102, 102)'
+  const border = 'rgb(68, 68, 68)'
+  const transparent = 'rgba(0, 0, 0, 0)'
+  const accent = 'rgb(237, 66, 89)'
+  const settingsText = 'rgb(96, 98, 102)'
+  const control = 'rgba(45, 45, 45, 0.5)'
+  assertChromeSnapshot(viewport, 'night chrome', await readerChromeSnapshot(page, { mobile }), mobile
+    ? {
+        topTool: { color: gray },
+        floatTool: { color: gray, 'border-top-color': transparent },
+        chapterStep: { color: gray },
+        progress: { color: gray },
+        sliderRow: { color: gray },
+        slider: { 'accent-color': 'rgb(24, 87, 152)', appearance: 'none', '--page-slider-progress': '0%' },
+      }
+    : {
+        rail: { 'border-left-color': border, 'border-right-color': border },
+        railItem: { color: gray, 'border-bottom-color': border },
+        railHome: { color: gray },
+        roundTool: { color: gray, 'border-top-color': transparent },
+        progressBar: { 'border-top-color': border },
+        progressBox: { color: gray, 'border-bottom-color': border },
+        chapterStep: { color: gray },
+      })
+
+  const settingsTool = mobile
+    ? mobileTopTool(page, '设置')
+    : page.locator('.reader-left-rail button[title="设置"]')
+  await settingsTool.click()
+  await page.waitForSelector('.settings-body', { timeout: 10000 })
+  assertChromeSnapshot(viewport, 'night settings', await readerChromeSnapshot(page, { mobile, settings: true }), {
+    body: { color: settingsText },
+    resetButton: { color: accent },
+    label: { color: gray },
+    option: { color: settingsText, 'border-top-color': gray, 'background-color': control },
+    activeOption: { color: accent, 'border-top-color': accent },
+    help: { color: settingsText },
+    fontOption: { color: settingsText, 'border-top-color': gray, 'background-color': control },
+    stepper: { color: settingsText, 'border-top-color': gray, 'background-color': control },
+    stepperDivider: { 'border-right-color': gray },
+    stepperValue: { color: 'rgb(166, 166, 166)' },
+    themeItem: { 'border-top-color': gray },
+    activeThemeItem: { 'border-top-color': gray },
+    moon: { color: accent },
+    divider: { 'background-color': gray },
+  })
+  if (mobile) {
+    await settingsTool.click()
+  } else {
+    await page.locator('.reader-desktop-workspace-close').click()
+  }
+  await page.waitForSelector('.settings-body', { state: 'detached', timeout: 10000 })
+}
+
 async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   const markBackground = () => page.locator('.reader-body [data-reader-block] mark')
     .evaluate(element => window.getComputedStyle(element).backgroundColor)
   const dayMarkBackground = await markBackground()
+  const dayChrome = await readerChromeSnapshot(page, { mobile })
   const nightToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="夜间模式"]')
     : page.locator('.reader-right-rail button[title="夜间模式"]')
@@ -1490,6 +1608,7 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(state.shellImage.includes('body_6.png'), `${viewport.width}: built-in night body texture ${state.shellImage}`)
   assert(state.pageImage.includes('content_6.png'), `${viewport.width}: built-in night page texture ${state.pageImage}`)
   assert(await markBackground() === dayMarkBackground, `${viewport.width}: built-in night must not take over inline mark surfaces`)
+  await assertBuiltInNightChrome(page, viewport, { mobile })
 
   const dayToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
@@ -1498,6 +1617,11 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   await page.waitForFunction(() => !window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
   const restoredMarkBackground = await markBackground()
   assert(restoredMarkBackground === dayMarkBackground, `${viewport.width}: day mark surface must restore`)
+  const restoredDayChrome = await readerChromeSnapshot(page, { mobile })
+  assert(
+    JSON.stringify(restoredDayChrome) === JSON.stringify(dayChrome),
+    `${viewport.width}: day chrome must restore exactly: ${JSON.stringify(dayChrome)} -> ${JSON.stringify(restoredDayChrome)}`,
+  )
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
   if (mobile) {
@@ -1695,10 +1819,10 @@ async function assertSettingsBackgroundGeometry(page, viewport) {
   assert(geometry.uploadLeft !== null && geometry.previewRight !== null, `${viewport.width}: missing settings background upload geometry`)
   assert(geometry.uploadLeft >= geometry.previewRight, `${viewport.width}: settings background upload should follow preview inline`)
   assert(geometry.uploadTop >= geometry.previewTop - 1 && geometry.uploadTop <= geometry.previewBottom + 1, `${viewport.width}: settings background upload should stay on preview row`)
-  assert(geometry.uploadColor === 'rgb(255, 117, 137)', `${viewport.width}: settings background upload color ${geometry.uploadColor}`)
+  assert(geometry.uploadColor === 'rgb(237, 66, 89)', `${viewport.width}: settings background upload color ${geometry.uploadColor}`)
   assert(geometry.deleteTop === '-6px', `${viewport.width}: settings background delete top ${geometry.deleteTop}`)
   assert(geometry.deleteRight === '-6px', `${viewport.width}: settings background delete right ${geometry.deleteRight}`)
-  assert(geometry.deleteColor === 'rgb(255, 117, 137)', `${viewport.width}: settings background delete color ${geometry.deleteColor}`)
+  assert(geometry.deleteColor === 'rgb(237, 66, 89)', `${viewport.width}: settings background delete color ${geometry.deleteColor}`)
   assert(geometry.hasCardOverlay === false, `${viewport.width}: settings background should not keep card overlay classes`)
   assert(geometry.ownsBlackNightSurface === false, `${viewport.width}: custom image night must preserve its authored surface`)
   assert(geometry.pageBackgroundImage !== 'none', `${viewport.width}: custom image night must retain its selected background image`)
@@ -2120,6 +2244,7 @@ async function runIPadAdaptiveViewport(browser, viewport) {
   assert(initial.desktopProgress === 1, `${viewport.width}x${viewport.height}: adaptive iPad must mount desktop progress`)
   assert(initial.mobileChrome === 0, `${viewport.width}x${viewport.height}: adaptive iPad must not mount mobile chrome`)
   assert(initial.documentWidth <= viewport.width + 1, `${viewport.width}x${viewport.height}: adaptive iPad document overflow ${initial.documentWidth}`)
+  await assertBuiltInNightTextSurface(page, viewport, { mobile: false })
 
   for (const label of ['书架', '书源', '目录', '设置']) {
     const tool = page.locator(`.reader-left-rail button[title="${label}"]`)
