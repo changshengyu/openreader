@@ -13,6 +13,12 @@ import (
 // 0xde9a9b89 format instead of the historical OpenReader-only #TEXTNOV layout.
 func readerDevUMDFixture(t *testing.T, title, author string, chapters []umdFixtureChapter, chunkBytes int) []byte {
 	t.Helper()
+	return readerDevUMDFixtureWithKind(t, title, author, "", chapters, chunkBytes)
+}
+
+// readerDevUMDFixtureWithKind also writes UmdReader section 7, the book type.
+func readerDevUMDFixtureWithKind(t *testing.T, title, author, kind string, chapters []umdFixtureChapter, chunkBytes int) []byte {
+	t.Helper()
 	if chunkBytes <= 0 {
 		chunkBytes = 32 * 1024
 	}
@@ -55,6 +61,9 @@ func readerDevUMDFixture(t *testing.T, title, author string, chapters []umdFixtu
 	}
 	if author != "" {
 		writeSection(0x03, 0, umdUTF16LE(author))
+	}
+	if kind != "" {
+		writeSection(0x07, 0, umdUTF16LE(kind))
 	}
 
 	var contents bytes.Buffer

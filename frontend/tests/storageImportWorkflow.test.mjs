@@ -214,3 +214,81 @@ test('a new direct selection aborts the old preview generation without a late er
   assert.deepEqual(workflow.rows.value.map(row => row.path), ['second.txt'])
   assert.deepEqual(errors, [])
 })
+
+// reader-dev TextFile.getChapterList writes the automatically selected rule
+// back to book.tocUrl and Index.vue shows it in the rule textarea. The shown
+// rule is the server result; the confirmation keeps submitting the user's
+// own choice so the staged snapshot is reused.
+test('shows the automatically selected TOC rule without submitting it as the user choice', async () => {
+  const imported = []
+  const { workflow } = createWorkflow({
+    previewItems: [previewRow('前浪 作者：刀一耕.txt', 'a'.repeat(48), {
+      book: { title: '前浪', author: '刀一耕', tocRule: 'AUTO-RULE' },
+    })],
+    importItem: async (_source, item) => {
+      imported.push(item)
+      return { imported: [{ path: item.path, book: { id: 1, title: item.title } }] }
+    },
+  })
+
+  await workflow.start({ source: 'local-store', paths: ['前浪 作者：刀一耕.txt'] })
+  const row = workflow.currentRow.value
+  assert.equal(row.title, '前浪')
+  assert.equal(row.author, '刀一耕')
+  assert.equal(row.detectedTocRule, 'AUTO-RULE')
+  assert.equal(row.tocRule, '')
+
+  await workflow.confirmCurrent()
+  assert.equal(imported.length, 1)
+  assert.equal(imported[0].tocRule, '')
+  assert.equal(imported[0].title, '前浪')
+  assert.equal(imported[0].author, '刀一耕')
+})
+
+test('a reparse shows the TOC rule the server actually used', async () => {
+  let previews = 0
+  const { workflow } = createWorkflow({
+    preview: async (_source, payload) => {
+      previews += 1
+      if (previews === 1) {
+        return { items: [previewRow('one.txt', 'a'.repeat(48), { book: { tocRule: 'AUTO-RULE' } })] }
+      }
+      assert.equal(payload[0].tocRule, 'USER-RULE')
+      return { items: [previewRow('one.txt', 'a'.repeat(48), { book: { tocRule: 'USER-RULE', chapterCount: 2 } })] }
+    },
+  })
+
+  await workflow.start({ source: 'webdav', paths: ['one.txt'] })
+  const row = workflow.currentRow.value
+  row.tocRule = 'USER-RULE'
+  assert.equal(await workflow.reparse(row), true)
+  assert.equal(row.detectedTocRule, 'USER-RULE')
+  assert.equal(row.chapterCount, 2)
+})
+
+// A failed row has no server metadata yet: its title must stay empty so the
+// retry lets the server derive reader-dev's name and author from the file
+// name instead of freezing the raw file stem as an explicit title.
+test('a failed preview row retries without freezing the raw file stem as its title', async () => {
+  const fileName = '前浪(校对加料版全本 1-425) 作者：刀一耕.txt'
+  let previews = 0
+  const { workflow } = createWorkflow({
+    preview: async (_source, payload) => {
+      previews += 1
+      if (previews === 1) {
+        return { items: [{ path: fileName, importToken: 'f'.repeat(48), error: '无法识别编码' }] }
+      }
+      assert.equal(payload[0].title, '')
+      assert.equal(payload[0].author, '')
+      return { items: [previewRow(fileName, 'f'.repeat(48), { book: { title: '前浪(校对加料版全本 1-425)', author: '刀一耕' } })] }
+    },
+  })
+
+  await workflow.start({ source: 'local-store', paths: [fileName] })
+  assert.equal(workflow.phase.value, 'preflight')
+  const row = workflow.rows.value[0]
+  assert.equal(row.title, '')
+  assert.equal(await workflow.reparse(row), true)
+  assert.equal(row.title, '前浪(校对加料版全本 1-425)')
+  assert.equal(row.author, '刀一耕')
+})

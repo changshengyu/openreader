@@ -26,3 +26,17 @@ test('keeps file managers as source launchers instead of competing import dialog
     assert.doesNotMatch(source, /resultDialog\s*=\s*ref|importResultDialog\s*=\s*ref/, `${name} must not own an alternate import result flow`)
   }
 })
+
+// reader-dev Index.vue 895-1001: cover, labelled name/author/group/rule rows,
+// a "内置规则" rule select, the rule textarea and "章节列表(N)".
+test('the single-book confirmation mirrors the reader-dev import dialog fields', () => {
+  const single = overlay.slice(overlay.indexOf("phase === 'single'"))
+  assert.match(single, /<BookCover\b[^>]*:book="importCoverBook\(currentRow\)"/, 'the dialog shows the cover slot')
+  for (const label of ['书名：', '作者：', '分组：', '规则：']) {
+    assert.ok(single.includes(`<span class="storage-import-label">${label}</span>`), `missing ${label} label`)
+  }
+  assert.match(single, /placeholder="内置规则"/, 'the TXT rule select uses the upstream placeholder')
+  assert.match(single, /<el-input\s[^>]*type="textarea"[^>]*v-model="currentRuleText"/, 'the dialog shows the effective rule in a textarea')
+  assert.match(single, /章节列表\(\{\{ currentRow\.chapters\.length \}\}\)/, 'the chapter list title uses the upstream format')
+  assert.match(overlay, /const currentRuleText = computed\(\{[\s\S]*?get: \(\) => currentRow\.value\?\.tocRule \|\| currentRow\.value\?\.detectedTocRule \|\| ''/, 'the textarea shows the chosen or detected rule')
+})

@@ -1,0 +1,40 @@
+{
+  "fileNames": [
+    {"fileName": "前浪(校对加料版全本 1-425) 作者：刀一耕.txt", "localName": "前浪(校对加料版全本 1-425)", "localAuthor": "刀一耕", "directStoredName": "前浪(校对加料版全本 1-425) 作者：刀一耕.txt", "directName": "前浪(校对加料版全本 1-425)", "directAuthor": "刀一耕"},
+    {"fileName": "《斗破苍穹》作者：天蚕土豆.txt", "localName": "斗破苍穹", "localAuthor": "天蚕土豆", "directStoredName": "《斗破苍穹》作者：天蚕土豆.txt", "directName": "斗破苍穹", "directAuthor": "天蚕土豆"},
+    {"fileName": "天蚕土豆《斗破苍穹》.txt", "localName": "斗破苍穹", "localAuthor": "天蚕土豆", "directStoredName": "天蚕土豆《斗破苍穹》.txt", "directName": "斗破苍穹", "directAuthor": "天蚕土豆"},
+    {"fileName": "《斗破苍穹》（精校版）作者：天蚕土豆.txt", "localName": "斗破苍穹", "localAuthor": "天蚕土豆", "directStoredName": "《斗破苍穹》（精校版）作者：天蚕土豆.txt", "directName": "斗破苍穹", "directAuthor": "天蚕土豆"},
+    {"fileName": "【完结】《凡人修仙传》.txt", "localName": "凡人修仙传", "localAuthor": "【完结】", "directStoredName": "【完结】《凡人修仙传》.txt", "directName": "凡人修仙传", "directAuthor": "【完结】"},
+    {"fileName": "作者：张三 《书名》.txt", "localName": "书名", "localAuthor": "张三", "directStoredName": "作者：张三 《书名》.txt", "directName": "书名", "directAuthor": "张三"},
+    {"fileName": "《A》与《B》作者：C.txt", "localName": "A", "localAuthor": "C", "directStoredName": "《A》与《B》作者：C.txt", "directName": "A", "directAuthor": "C"},
+    {"fileName": "三体 作者：刘慈欣.txt", "localName": "三体", "localAuthor": "刘慈欣", "directStoredName": "三体 作者：刘慈欣.txt", "directName": "三体", "directAuthor": "刘慈欣"},
+    {"fileName": "三体 作者：刘慈欣 作者：大刘.txt", "localName": "三体 作者：刘慈欣", "localAuthor": "大刘", "directStoredName": "三体 作者：刘慈欣 作者：大刘.txt", "directName": "三体 作者：刘慈欣", "directAuthor": "大刘"},
+    {"fileName": "The Hobbit by J R R Tolkien.txt", "localName": "The Hobbit", "localAuthor": "J R R Tolkien", "directStoredName": "The Hobbit by J R R Tolkien.txt", "directName": "The Hobbit", "directAuthor": "J R R Tolkien"},
+    {"fileName": "书名 by 作者 by 另一个.txt", "localName": "书名 by 作者", "localAuthor": "另一个", "directStoredName": "书名 by 作者 by 另一个.txt", "directName": "书名 by 作者", "directAuthor": "另一个"},
+    {"fileName": "三体 刘慈欣 著.txt", "localName": "三体", "localAuthor": "刘慈欣", "directStoredName": "三体 刘慈欣 著.txt", "directName": "三体", "directAuthor": "刘慈欣"},
+    {"fileName": "斗罗大陆 唐家三少 著.epub", "localName": "斗罗大陆", "localAuthor": "唐家三少", "directStoredName": "斗罗大陆 唐家三少 著.epub", "directName": "斗罗大陆", "directAuthor": "唐家三少"},
+    {"fileName": "三体.第一部.txt", "localName": "三体.第一部", "localAuthor": "", "directStoredName": "三体第一部.txt", "directName": "三体第一部", "directAuthor": ""},
+    {"fileName": "诡秘之主.txt", "localName": "诡秘之主", "localAuthor": "", "directStoredName": "诡秘之主.txt", "directName": "诡秘之主", "directAuthor": ""},
+    {"fileName": "Some Book.txt", "localName": "Some Book", "localAuthor": "", "directStoredName": "Some Book.txt", "directName": "Some Book", "directAuthor": ""},
+    {"fileName": "书名 作者:张三.txt", "localName": "书名", "localAuthor": "张三", "directStoredName": "书名 作者张三.txt", "directName": "书名", "directAuthor": "作者张三"},
+    {"fileName": "书名 作者 张三.txt", "localName": "书名", "localAuthor": "张三", "directStoredName": "书名 作者 张三.txt", "directName": "书名", "directAuthor": "张三"},
+    {"fileName": "书名　作者：甲.txt", "localName": "书名　作者：甲", "localAuthor": "", "directStoredName": "书名　作者：甲.txt", "directName": "书名　作者：甲", "directAuthor": ""},
+    {"fileName": "《》作者：甲.txt", "localName": "《》作者：甲", "localAuthor": "", "directStoredName": "《》作者：甲.txt", "directName": "《》作者：甲", "directAuthor": ""},
+    {"fileName": "问号?书名*星号\"引号<尖>竖|线.txt", "localName": "问号?书名*星号\"引号<尖>竖|线", "localAuthor": "", "directStoredName": "问号书名星号引号尖竖线.", "directName": "问号书名星号引号尖竖线", "directAuthor": ""},
+    {"fileName": "  前后空格  .txt", "localName": "前后空格", "localAuthor": "", "directStoredName": "  前后空格  .txt", "directName": "前后空格", "directAuthor": ""},
+    {"fileName": "这是一个非常非常非常非常非常非常非常非常非常非常长的书名用于验证五十个字符截断规则是否一致 作者：某人.txt", "localName": "这是一个非常非常非常非常非常非常非常非常非常非常长的书名用于验证五十个字符截断规则是否一致", "localAuthor": "某人", "directStoredName": "这是一个非常非常非常非常非常非常非常非常非常非常长的书名用于验证五十个字符截断规则是否一致 作者：某.txt", "directName": "这是一个非常非常非常非常非常非常非常非常非常非常长的书名用于验证五十个字符截断规则是否一致", "directAuthor": "某"},
+    {"fileName": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 by Someone.txt", "localName": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", "localAuthor": "Someone", "directStoredName": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx.txt", "directName": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx", "directAuthor": ""},
+    {"fileName": "漫画《海贼王》第1卷.cbz", "localName": "海贼王", "localAuthor": "漫画第1卷", "directStoredName": "漫画《海贼王》第1卷.cbz", "directName": "海贼王", "directAuthor": "漫画第1卷"},
+    {"fileName": "UMD小说 作者：甲.umd", "localName": "UMD小说", "localAuthor": "甲", "directStoredName": "UMD小说 作者：甲.umd", "directName": "UMD小说", "directAuthor": "甲"},
+    {"fileName": "三体.第一部 作者：刘慈欣.txt", "localName": "三体.第一部", "localAuthor": "刘慈欣", "directStoredName": "三体第一部 作者：刘慈欣.txt", "directName": "三体第一部", "directAuthor": "刘慈欣"},
+    {"fileName": "规则示例 作者：测试者.txt", "localName": "规则示例", "localAuthor": "测试者", "directStoredName": "规则示例 作者：测试者.txt", "directName": "规则示例", "directAuthor": "测试者"}
+  ],
+  "epubCreators": [
+    {"creator": "天蚕土豆", "author": "天蚕土豆"},
+    {"creator": "John Smith", "author": "Smith, John"},
+    {"creator": "J. K. Rowling", "author": "Rowling, J. K."},
+    {"creator": "刘 慈欣", "author": "慈欣, 刘"},
+    {"creator": "  Jane   Doe  ", "author": "Doe, Jane  "},
+    {"creator": "Single", "author": "Single"}
+  ]
+}
