@@ -9,10 +9,15 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/korean"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 	unicodeencoding "golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/encoding/unicode/utf32"
+	"golang.org/x/text/transform"
 
 	"openreader/backend/models"
 )
@@ -437,6 +442,367 @@ func TestParseTXTNoTocFallbackPreservesLegacyEncodingContent(t *testing.T) {
 	if len(chapters) != 1 || chapters[0].Title != "第1章(1)" || chapters[0].Content != string(input) {
 		t.Fatalf("legacy no-TOC fallback = %+v", chapters)
 	}
+}
+
+func TestParseTXTDetectsEncodingWhereverTheCharsetProbeEnds(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		titles   [2]string
+		line     string
+		marker   string
+		// splitsCharacter accepts how many bytes of a character the probe
+		// keeps when it cuts that character off.
+		splitsCharacter func(int) bool
+	}{
+		{
+			name:            "GBK double-byte",
+			encoding:        simplifiedchinese.GBK,
+			titles:          [2]string{"第1章 开端", "第2章 尾声"},
+			line:            "前浪推后浪，他们在雨里说了很多话。\n",
+			marker:          "探测边界之后的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 1 },
+		},
+		{
+			name:            "GB18030 four-byte",
+			encoding:        simplifiedchinese.GB18030,
+			titles:          [2]string{"第1章 开端", "第2章 尾声"},
+			line:            "前浪推后浪，𠀀𠀁𠀂他们在雨里说了很多话。\n",
+			marker:          "探测边界之后的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 2 },
+		},
+		{
+			name:            "Big5",
+			encoding:        traditionalchinese.Big5,
+			titles:          [2]string{"第1章 開端", "第2章 尾聲"},
+			line:            "前浪推後浪，他們在雨裡說了很多話。\n",
+			marker:          "探測邊界之後的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 1 },
+		},
+		{
+			name:            "UTF-8",
+			encoding:        unicodeencoding.UTF8,
+			titles:          [2]string{"第1章 开端", "第2章 尾声"},
+			line:            "前浪推后浪，他们在雨里说了很多话。\n",
+			marker:          "探测边界之后的正文仍然完整。",
+			splitsCharacter: func(kept int) bool { return kept >= 1 },
+		},
+	}
+	for _, test := range tests {
+		boundaries := []struct {
+			name   string
+			accept func(int) bool
+		}{
+			{name: "probe ends inside a character", accept: test.splitsCharacter},
+			{name: "probe ends on a character boundary", accept: func(kept int) bool { return kept == 0 }},
+		}
+		for _, boundary := range boundaries {
+			t.Run(test.name+"/"+boundary.name, func(t *testing.T) {
+				data, firstContent, kept := encodeTXTAtCharsetProbeBoundary(t, test.encoding, test.titles, test.line, test.marker, boundary.accept)
+				chapters, err := ParseTXT(data)
+				if err != nil {
+					t.Fatalf("ParseTXT with the charset probe keeping %d byte(s) of its last character: %v", kept, err)
+				}
+				if len(chapters) != 2 || chapters[0].Title != test.titles[0] || chapters[1].Title != test.titles[1] {
+					t.Fatalf("chapters = %d %q, want titles %q", len(chapters), txtChapterTitles(chapters), test.titles)
+				}
+				if chapters[0].Content != firstContent {
+					t.Fatalf("first chapter, which spans the probe end, decoded to %d bytes, want %d", len(chapters[0].Content), len(firstContent))
+				}
+				if chapters[1].Content != test.marker {
+					t.Fatalf("chapter after the probe = %q, want %q", chapters[1].Content, test.marker)
+				}
+			})
+		}
+	}
+}
+
+// encodeTXTAtCharsetProbeBoundary encodes a two-chapter book that is larger
+// than the charset probe, shifting the first chapter with leading spaces until
+// accept holds for the number of bytes of a cut-off character the probe keeps
+// (0 when the probe ends on a character boundary). It returns the encoded book,
+// the expected content of the first chapter and that kept byte count.
+func encodeTXTAtCharsetProbeBoundary(t *testing.T, textEncoding encoding.Encoding, titles [2]string, line string, marker string, accept func(int) bool) ([]byte, string, int) {
+	t.Helper()
+	encodedLine, err := textEncoding.NewEncoder().Bytes([]byte(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat(line, txtDetectionProbeBytes/len(encodedLine)+64)
+	for padding := 0; padding < 8; padding++ {
+		first := strings.Repeat(" ", padding) + body
+		data, err := textEncoding.NewEncoder().Bytes([]byte(titles[0] + "\n" + first + titles[1] + "\n" + marker + "\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		probe := data[:txtDetectionProbeBytes]
+		_, consumed, err := textEncoding.NewDecoder().Transform(make([]byte, 4*len(probe)), probe, false)
+		if err != nil && !errors.Is(err, transform.ErrShortSrc) {
+			t.Fatalf("measure the charset probe boundary: %v", err)
+		}
+		if kept := len(probe) - consumed; accept(kept) {
+			return data, strings.TrimSpace(first), kept
+		}
+	}
+	t.Fatal("no padding gives the wanted charset probe boundary")
+	return nil, "", 0
+}
+
+const (
+	malformedTestSimplifiedLine  = "前浪推后浪，他们在雨里说了很多话。彭向明站在窗前，看着楼下来来往往的人群，心里想着明天的事情。这是一段用来测试编码探测的正文。\n"
+	malformedTestTraditionalLine = "前浪推後浪，他們在雨裡說了很多話。彭向明站在窗前，看著樓下來來往往的人群，心裡想著明天的事情。這是一段用來測試編碼探測的正文。\n"
+)
+
+// txtSegment is part of a test book: text is encoded with the book's charset,
+// while raw bytes are written as is and decode to decoded.
+type txtSegment struct {
+	text    string
+	raw     string
+	decoded string
+}
+
+func encodeTXTSegments(t *testing.T, textEncoding encoding.Encoding, segments []txtSegment) ([]byte, string) {
+	t.Helper()
+	var data []byte
+	var want strings.Builder
+	for _, segment := range segments {
+		if segment.text == "" {
+			data = append(data, segment.raw...)
+			want.WriteString(segment.decoded)
+			continue
+		}
+		encoded := []byte(segment.text)
+		if textEncoding != nil {
+			var err error
+			if encoded, err = textEncoding.NewEncoder().Bytes(encoded); err != nil {
+				t.Fatal(err)
+			}
+		}
+		data = append(data, encoded...)
+		want.WriteString(segment.text)
+	}
+	return data, want.String()
+}
+
+func TestParseTXTToleratesSparseMalformedBytesLikeUpstream(t *testing.T) {
+	simplified := func(lines int) txtSegment {
+		return txtSegment{text: strings.Repeat(malformedTestSimplifiedLine, lines)}
+	}
+	traditional := func(lines int) txtSegment {
+		return txtSegment{text: strings.Repeat(malformedTestTraditionalLine, lines)}
+	}
+	replaced := func(raw string) txtSegment { return txtSegment{raw: raw, decoded: "�"} }
+	kept := func(raw string) txtSegment { return txtSegment{raw: raw, decoded: raw} }
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		segments []txtSegment
+	}{
+		{
+			name:     "GBK with one stray byte",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{simplified(10), replaced("\xff"), simplified(10)},
+		},
+		{
+			name:     "GBK longer than the probe with stray bytes inside it",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{simplified(500), replaced("\xff"), simplified(500), replaced("\xff"), simplified(500), replaced("\xff"), simplified(3000)},
+		},
+		{
+			name:     "GBK with lead bytes cut off before newlines",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{
+				simplified(20), {text: strings.TrimSuffix(malformedTestSimplifiedLine, "\n")}, replaced("\xd6"), {text: "\n"},
+				simplified(20), {text: strings.TrimSuffix(malformedTestSimplifiedLine, "\n")}, replaced("\xd6"), {text: "\n"},
+				simplified(20),
+			},
+		},
+		{
+			name:     "Big5 longer than the probe with stray bytes inside it",
+			encoding: traditionalchinese.Big5,
+			segments: []txtSegment{traditional(500), replaced("\xff"), traditional(500), replaced("\xff"), traditional(500), replaced("\xff"), traditional(3000)},
+		},
+		{
+			name:     "UTF-8 with BOM and a stray byte",
+			segments: []txtSegment{{raw: "\xef\xbb\xbf"}, simplified(10), kept("\xff"), simplified(10)},
+		},
+		{
+			name:     "UTF-8 cut inside its last character",
+			segments: []txtSegment{simplified(20), kept("\xe6\x9c")},
+		},
+		{
+			name:     "UTF-8 without BOM and a stray byte",
+			segments: []txtSegment{simplified(10), kept("\xff"), simplified(10)},
+		},
+		{
+			name:     "UTF-8 longer than the probe with Latin-1 bytes inside it",
+			segments: []txtSegment{simplified(500), kept("caf\xe9 "), simplified(500), kept("caf\xe9 "), simplified(500), kept("caf\xe9 "), simplified(2500)},
+		},
+		{
+			name:     "GBK without malformed bytes",
+			encoding: simplifiedchinese.GBK,
+			segments: []txtSegment{simplified(20)},
+		},
+		{
+			name:     "Big5 without malformed bytes",
+			encoding: traditionalchinese.Big5,
+			segments: []txtSegment{traditional(20)},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, want := encodeTXTSegments(t, test.encoding, test.segments)
+			chapters, err := ParseTXT(data)
+			if err != nil {
+				t.Fatalf("ParseTXT(%d bytes): %v", len(data), err)
+			}
+			if got := joinTXTChapterContents(chapters); got != want {
+				t.Fatalf("decoded text differs from the original apart from the malformed bytes: got %d bytes starting %q, want %d bytes starting %q",
+					len(got), firstRunes(got, 12), len(want), firstRunes(want, 12))
+			}
+		})
+	}
+}
+
+func TestParseTXTStillRejectsInputBeyondUpstreamMalformedTolerance(t *testing.T) {
+	gbk, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(strings.Repeat(malformedTestSimplifiedLine, 20)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < len(gbk); index += 12 {
+		gbk[index] = 0xFF
+	}
+	utf8Text := []byte(strings.Repeat(malformedTestSimplifiedLine, 20))
+	for index := 0; index < len(utf8Text); index += 20 {
+		utf8Text[index] = 0xFF
+	}
+	random := make([]byte, 20000)
+	state := uint32(7)
+	for index := range random {
+		state = state*1664525 + 1013904223
+		random[index] = byte(state >> 24)
+	}
+	for name, data := range map[string][]byte{"GBK with every 12th byte broken": gbk, "UTF-8 with every 20th byte broken": utf8Text, "random bytes": random} {
+		t.Run(name, func(t *testing.T) {
+			if chapters, err := ParseTXT(data); err == nil || !strings.Contains(err.Error(), "unable to detect text encoding") {
+				t.Fatalf("ParseTXT = %d chapters, err %v; want unable to detect text encoding", len(chapters), err)
+			}
+		})
+	}
+}
+
+const (
+	recognitionTestJapanese = "今日はとても良い天気ですね。私は朝から公園を散歩して、友達と一緒に昼ご飯を食べました。午後は図書館で本を読みながら、明日の予定について考えていました。夕方になると、駅の近くの小さな店でコーヒーを飲みました。\n"
+	recognitionTestKorean   = "오늘은 날씨가 정말 좋습니다. 저는 아침부터 공원을 산책하고 친구와 함께 점심을 먹었습니다. 오후에는 도서관에서 책을 읽으면서 내일 계획에 대해 생각했습니다. 저녁에는 역 근처의 작은 가게에서 커피를 마셨습니다.\n"
+	recognitionTestEnglish  = "The weather was lovely this morning, so I walked through the park and had lunch with a friend at the café. In the afternoon I read a book at the library — “a quiet one” — and thought about my plans for tomorrow. It’s a good day.\n"
+	recognitionTestFrench   = "Ce matin, il faisait très beau. J'ai marché dans le parc et j'ai déjeuné avec un ami. L'après-midi, j'ai lu un livre à la bibliothèque en pensant à mes projets pour demain. Le soir, nous avons pris un café près de la gare.\n"
+	recognitionTestGerman   = "Heute Morgen war das Wetter sehr schön. Ich bin durch den Park gegangen und habe mit einem Freund zu Mittag gegessen. Am Nachmittag habe ich in der Bibliothek ein Buch gelesen und über meine Pläne für morgen nachgedacht. Abends trinken wir große Tassen Kaffee.\n"
+	recognitionTestPolish   = "Dziś rano była piękna pogoda. Spacerowałem po parku i zjadłem obiad z przyjacielem. Po południu czytałem książkę w bibliotece i myślałem o planach na jutro. Wieczorem piliśmy kawę w małej kawiarni.\n"
+	recognitionTestRussian  = "Сегодня утром была прекрасная погода. Я гулял по парку и обедал с другом. Днём я читал книгу в библиотеке и думал о своих планах на завтра.\n"
+	recognitionTestGreek    = "Σήμερα το πρωί ο καιρός ήταν υπέροχος. Περπάτησα στο πάρκο και έφαγα μεσημεριανό με έναν φίλο. Το απόγευμα διάβασα ένα βιβλίο στη βιβλιοθήκη.\n"
+	recognitionTestTurkish  = "Bu sabah hava çok güzeldi. Parkta yürüyüş yaptım ve bir arkadaşımla öğle yemeği yedim. Öğleden sonra kütüphanede kitap okudum ve yarın için planlarımı düşündüm. Akşam istasyonun yakınında kahve içtik.\n"
+	recognitionTestHebrew   = "הבוקר מזג האוויר היה נפלא. טיילתי בפארק ואכלתי ארוחת צהריים עם חבר. אחר הצהריים קראתי ספר בספרייה וחשבתי על התוכניות שלי למחר.\n"
+	recognitionTestArabic   = "كان الطقس جميلا جدا هذا الصباح. مشيت في الحديقة وتناولت الغداء مع صديق. في فترة ما بعد الظهر قرأت كتابا في المكتبة وفكرت في خططي للغد.\n"
+)
+
+func TestParseTXTRecognizesJapaneseKoreanAndSingleByteTextLikeUpstream(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		text     string
+	}{
+		{name: "Japanese Shift_JIS", encoding: japanese.ShiftJIS, text: recognitionTestJapanese},
+		{name: "Japanese EUC-JP", encoding: japanese.EUCJP, text: recognitionTestJapanese},
+		{name: "Japanese ISO-2022-JP", encoding: japanese.ISO2022JP, text: recognitionTestJapanese},
+		{name: "Korean EUC-KR", encoding: korean.EUCKR, text: recognitionTestKorean},
+		{name: "English windows-1252", encoding: charmap.Windows1252, text: recognitionTestEnglish},
+		{name: "French ISO-8859-1", encoding: charmap.ISO8859_1, text: recognitionTestFrench},
+		{name: "German ISO-8859-1", encoding: charmap.ISO8859_1, text: recognitionTestGerman},
+		{name: "Polish ISO-8859-2", encoding: charmap.ISO8859_2, text: recognitionTestPolish},
+		{name: "Russian windows-1251", encoding: charmap.Windows1251, text: recognitionTestRussian},
+		{name: "Russian KOI8-R", encoding: charmap.KOI8R, text: recognitionTestRussian},
+		{name: "Greek ISO-8859-7", encoding: charmap.ISO8859_7, text: recognitionTestGreek},
+		{name: "Turkish ISO-8859-9", encoding: charmap.ISO8859_9, text: recognitionTestTurkish},
+		{name: "Hebrew ISO-8859-8", encoding: charmap.ISO8859_8, text: recognitionTestHebrew},
+		{name: "Arabic windows-1256", encoding: charmap.Windows1256, text: recognitionTestArabic},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			text := strings.Repeat(test.text, 3000/len(test.text)+1)
+			data, err := test.encoding.NewEncoder().Bytes([]byte(text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			chapters, err := ParseTXT(data)
+			if err != nil {
+				t.Fatalf("ParseTXT(%d bytes): %v", len(data), err)
+			}
+			if got := joinTXTChapterContents(chapters); got != text {
+				t.Fatalf("decoded as %q..., want %q...", firstRunes(got, 16), firstRunes(text, 16))
+			}
+		})
+	}
+}
+
+func TestParseTXTRecognizesAParagraphOfGermanAsLatin1(t *testing.T) {
+	// Each of the paragraph's five umlauts is followed by a letter, so GBK reads
+	// them as five clean double-byte characters among about 250 ASCII ones.
+	data, err := charmap.ISO8859_1.NewEncoder().Bytes([]byte(recognitionTestGerman))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chapters, err := ParseTXT(data)
+	if err != nil {
+		t.Fatalf("ParseTXT: %v", err)
+	}
+	if got := joinTXTChapterContents(chapters); got != recognitionTestGerman {
+		t.Fatalf("decoded as %q", got)
+	}
+}
+
+func TestParseTXTKeepsShortChineseTextOnItsCurrentCharset(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		text     string
+	}{
+		{name: "GBK four characters", encoding: simplifiedchinese.GBK, text: "前浪推后"},
+		{name: "GBK eight characters", encoding: simplifiedchinese.GBK, text: "前浪推后浪，他们"},
+		{name: "Big5 four characters", encoding: traditionalchinese.Big5, text: "前浪推後"},
+		{name: "Big5 eight characters", encoding: traditionalchinese.Big5, text: "前浪推後浪，他們"},
+		{name: "GB18030 tied with EUC-JP upstream", encoding: simplifiedchinese.GB18030, text: "无目录章节内容。\n第二段内容。"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := test.encoding.NewEncoder().Bytes([]byte(test.text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			chapters, err := ParseTXT(data)
+			if err != nil {
+				t.Fatalf("ParseTXT: %v", err)
+			}
+			if got := joinTXTChapterContents(chapters); got != test.text {
+				t.Fatalf("decoded as %q, want %q", got, test.text)
+			}
+		})
+	}
+}
+
+func firstRunes(value string, count int) string {
+	runes := []rune(value)
+	if len(runes) > count {
+		runes = runes[:count]
+	}
+	return string(runes)
+}
+
+func txtChapterTitles(chapters []TXTChapter) []string {
+	titles := make([]string, len(chapters))
+	for index, chapter := range chapters {
+		titles[index] = chapter.Title
+	}
+	return titles
 }
 
 func joinTXTChapterContents(chapters []TXTChapter) string {

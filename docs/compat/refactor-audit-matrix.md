@@ -1,6 +1,6 @@
 # OpenReader 全量上游复审矩阵
 
-## 2026-10-22 当前切片：实例签名密钥，不再用公开默认值签名（S2，P1 安全）
+## 2026-10-29 当前切片：实例签名密钥，不再用公开默认值签名（S2，P1 安全，合同 2026-10-22）
 
 见[`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](instance-signing-secret-fixed-baseline-second-audit-p1-contract.md)。
 P0 合同 F3 的后续切片。密钥未设置、空白或为公开默认值时，会话与资源 capability 都用公开值签名，capability 可被第三方
@@ -16,6 +16,89 @@ Docker 与二进制两种方式）上表达；历史卷门加 `JWT_SECRET_MODE=u
 旧格式拒绝、RegisterRoutes 守卫、main 提前准备、硬链接发布）各被对应用例拦下。Go full/vet/race、前端 810/810 与 build、advisory 门、
 Compose、存储 HTTP 合同、未设置密钥的真实会话合同通过。状态 implementation-complete / regression-validated；候选镜像 Docker 门在
 Actions。
+
+## 2026-10-25 当前切片：文本编码识别——日文/韩文与单字节编码（P1，E4/E8）
+
+见[`txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md`](txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md)。
+日文/韩文被评分判成 GB18030/Big5 乱码，ISO-2022-JP 被当成 UTF-8，西文/俄文/希腊文/土耳其文/希伯来文/阿拉伯文报错或乱码。上游 ICU
+实测：文本不太短时全部判对，用户小说片段全为 GB18030；短文本上游不可靠（短中文判成 Big5/ISO-8859-1，13 字测试文本判成 EUC-JP），
+希伯来文判成 Java 不认的 ISO-8859-8-I 而导入失败。E4/E8 must-fix：移植 ICU 多字节、ISO-2022、单字节识别器（与上游 Java 逐项比对
+置信度），多字节有证据且高于单字节时按置信度选（并列用现有评分），单字节大于 10 且不是短的干净多字节样本时用单字节，否则保持
+现有选择；ISO-8859-8-I 按 ISO-8859-8 解码。S1/S2/H1 intentional-redesign，J2（ISO-2022-KR/CN）unknown 不改，E5 不变。计划红测：
+engine 日文三种、韩文与十种单字节文本，`DecodeBody` 日文/俄文页面，api 上传日文与俄文书；对照：短中文、13 字测试文本、E1/E2
+全部、随机字节仍报错。状态 contract-only。
+
+记录（2026-10-25，取代上段的状态）：提交7a161c8/b45f75c/2521eca/c03827d/d84b837。红测在5a2fc7d上14种语言/编码、DecodeBody两页、
+api两本书与一段德文失败，短中文对照通过；c03827d移植上游ICU识别器（表格脚本转写、保留Unicode/ICU声明），Go对178个语料文件与31个
+比对夹具的结果与上游Java逐项一致。实现中第5步细化为“多字节字符须占一半以上”（否则德文段落被当成短中日韩文本）。日文/韩文/单字节
+夹具与上游同编码，希伯来文可解码，用户小说与短中文不变；六项变异各有测试捕获。backend全量/vet/race、frontend 815/815与build、advisory
+门与扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+发布（2026-10-25）：main快进到3ccab90，run 40185661590全部成功，3ccab90/latest index `sha256:9fd02a9c…5562`（amd64+arm64，revision
+标签核验）。状态aligned / Docker-published / awaiting-device-verification；生产未动。编码相关仍开放：J2（ISO-2022-KR/CN）、E5。
+
+## 2026-10-25 当前切片：文本编码探测的少量非法字节容错（P1，E2）
+
+见[`txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md`](txt-charset-malformed-tolerance-fixed-baseline-second-audit-p1-contract.md)。
+样本里一个坏字节就让 GBK/Big5/UTF-8 报 `unable to detect text encoding`。上游 ICU 源码实测：GBK/Big5 少量坏字节按 GB18030/Big5
+解码；UTF-8 带 BOM 或末尾截断判 UTF-8；不带 BOM 的损坏 UTF-8 被 Shift_JIS 压过成乱码。GB18030 在损坏的 UTF-8 上也满足多字节
+容错，所以先按 ICU UTF-8 计数（有效>10×无效）认 UTF-8，再选无坏字符的旧编码（结果不变），最后在“有效多字节≥20×坏字符”的
+旧编码里按现有评分选择；仍无候选照旧报错。T1/T2 must-fix，T3/T4 用户要求的 intentional-redesign，T5 technical-stack-equivalent，
+T7 书源 `DecodeBody` 同样适用。E5 不改，E8（单字节编码）must-fix 另起。勘误 E1：上游多字节/UTF 识别器读整个 512000 字节，E3
+实为 aligned。计划红测：engine GBK/Big5/UTF-8 坏字节、UTF-8 BOM、末尾截断与 `DecodeBody`，api 直接上传两本；对照：无坏字节
+夹具、E1 截断、超出容错仍报错。状态 contract-only。
+
+记录（2026-10-25，取代上段的状态）：提交3350984/5ca5684/9ce3d39。红测在83f7e48上engine八个容错用例、DecodeBody与api两次上传
+失败，对照通过；9ce3d39只改`text_encoding.go`（`mostlyUTF8`移植ICU UTF-8计数、旧编码20:1容错、无坏字符优先），全部转绿。
+变异M1/M2只红UTF-8用例，M3只红GBK/Big5用例，M4只红超出容错对照。上游实测夹具结果与上游一致（损坏UTF-8按用户要求判UTF-8）；
+用户小说不变，插入坏字节后GBK/UTF-8版都455章。backend全量29包/vet/race（engine/localbook/api）、frontend 815/815与build、advisory门131/131与两项
+扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+发布（2026-10-25）：main快进到7c447a5，run 40179627517全部成功，7c447a5/latest index `sha256:afe0290b…64ba`（amd64+arm64，revision
+标签核验）。状态aligned / Docker-published / awaiting-device-verification；生产未动。编码相关仍开放：E4、E5、E8。
+
+## 2026-10-25 当前切片：本地 TXT 旧编码探测边界（P1）
+
+见[`txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md`](txt-legacy-encoding-probe-boundary-fixed-baseline-second-audit-p1-contract.md)。
+用户的 GBK 小说（4,117,155 字节，严格解码无错）导入预检“待修复”、报 `unable to detect text encoding`，上游可导入。原因：512000 字节
+编码样本只对 UTF-8 对齐字符边界，截断拆开的末尾字符被 x/text 解码成 U+FFFD，旧编码候选见 U+FFFD 即落选。上游 ICU 只看前 8000
+字节且容许截断字符和约 5% 以内的坏字符，从不失败。E1（截断拆开字符）must-fix，本切片：截断样本上旧编码候选按未到末尾解码，
+残缺末尾字符不算错误；完整输入、UTF-8/BOM/UTF-16/32、评分、全量解码与章节结果不变。E2（样本内少量非法字节）must-fix，另起
+切片；E5（无候选时上游回退 UTF-8）unknown，随 E2 判定；E3 样本大小 acceptable-change；E4 Shift_JIS/EUC-KR 误判 unknown。计划红测：engine 三种中文旧编码
+截断拆字夹具（自检确实拆字）+ api 直接上传、LocalStore、WebDAV 预检→导入→缓存重建；对照：对齐截断、UTF-8 截断、既有编码测试。
+状态 contract-only；不改前端、数据与已导入书籍。
+
+记录（2026-10-25，取代上段的状态）：提交364aa82/8f001c8/f84398d。红测在1b8ef35上engine三项拆字（GBK保留1字节、GB18030四字节保留2、
+Big5保留1）与api三入口（直接上传400，LocalStore/WebDAV预检报错无book）失败，五项对照通过；f84398d只改engine：截取样本时旧编码
+候选按atEOF=false解码，同一六项转绿，改回atEOF=true的变异恰好重新变红。用户文件455章、全文与iconv逐字节一致；真实浏览器1440×900
+书仓导入直接进入“导入本地书籍”455章，Reader第056章（截断处）无U+FFFD。backend全量29包/vet、race（engine/localbook/api）、frontend 815/815与
+build、advisory门131/131与两项扫描、Compose、存储HTTP合同通过。状态implementation-complete / regression-validated，待可信Actions。
+发布（2026-10-25）：main快进到94c696f，run 40174734994全部成功，94c696f/latest index `sha256:50cd42f1…c62d`（amd64+arm64，revision
+标签核验）。状态aligned / Docker-published / awaiting-device-verification；生产未动。下一步候选：E2（样本内少量坏字节容错）另起切片。
+
+## 2026-10-23 当前切片：Reader 桌面工作区面板打开时的正文控件盘点
+
+见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)。
+固定fa22四个桌面面板是无遮罩的click popover：element-ui在document冒泡阶段关面板，正文eventHandler在面板打开时直接返回；按面板外
+控件时控件照常执行、面板随之关闭（加载下一章、右栏、进度、左栏），只有阻止冒泡的音频控件执行后不关；用vue 2.7.16与element-ui
+2.15.14搭的最小页面在真实浏览器里复现。当前关闭层z-index 3、面板4，章末加载下一章与R7之后的两个“重新加载”同为3且DOM更靠后。
+本地Go服务+生产前端两份基线（98f4ddb即R7前；0962dca与已发布238e3f3同树），1440×900鼠标、iPad 1366×1024与1024×1366触摸，逐面板
+实测：加载下一章执行、面板不关；内联重试R7前只关面板不重试，R7后重试不关面板；主错误块按钮被面板盖住；空白处只关闭；没有触发
+点击层或正文触摸判定。加载下一章与内联重试判must-fix（执行并关闭面板）；空白处、主错误块、右栏、面板切换aligned；进度块上一章/
+下一章同一规则判must-fix，但不在本切片，由协调方决定是否并入。实现走现有runWithDesktopWorkspaceClosed，不改关闭层、面板与R7
+层级，没有用户决定点。状态contract-only；下一步红测（源码合同+新浏览器合同），再实现；实现提交改frontend，合入main会触发发布，
+由用户决定。
+
+记录（2026-10-23，取代上段的状态）：合同3a0d507以20fb76d cherry-pick到main a7fd6aa之上（与ec67388树相同）。红测860b9ea（源码合同
+5条，新增`reader-desktop-panel-controls-contract.mjs`三视口×四面板×C1–C4共108组）在20fb76d（Reader源码=已发布238e3f3）上48/108失败，
+正好是C1、C2全部用例且只在“面板关闭”，C3、C4通过，单元只有新增3条失败→74da65c只改Reader.vue：@reload、@retry-block在绑定里经过
+runWithDesktopWorkspaceClosed，handleChapterEndNext两个分支放进同一函数（绑定由readerPageEndPrompt固定）；层级、DOM顺序、.stop不变。
+修复后108/108、frontend 815/815与build、末章探针12/12，R7错误面30/30、连续、移动、文字模式、openreader-smoke对照通过；M1只红C1、
+M2只红C2且都只在面板关闭，M3（“只关闭”做法）红C1/C2命中与动作及层级源码合同，M4只红源码锁定。进度块（第10节第1条）未获并入
+确认，没有C5。状态implementation-complete / regression-validated。本地未推送、未合入main；镜像未构建；生产未动。
+
+发布（2026-10-24，取代上段Git/镜像状态）：1b8ef35快进main（ls-remote核验）；发布前本地门见上段。可信Actions 40099542262成功
+（20m6s，全部门通过）；`1b8ef35` = index `04d5d7b4…f78905ea2`（amd64 `aae1a1f2…`、arm64 `4783e699…`），两平台revision为完整提交号，
+前端63个文件与本地同前端树build逐字节一致。`latest`已随之后的3ccab90发布前移，其间未改frontend。P3、P4 released /
+awaiting-device-verification；进度块（第10节第1条）仍开放；生产未操作，实际版本未知。
 
 ## 2026-10-22 当前切片：发布流程浏览器启动门（P1，O3）
 
@@ -66,8 +149,9 @@ O2仍开放。
 而不重载；只有窄视口+鼠标能重试。已签收的内联错误块按钮桌面下带被盖住、触摸附带翻页或切换工具层；连续模式目标章失败时后一章
 不显示；目录失败后重试显示第0章、不重新请求目录；移动页码沿用上一章`第 1/9 页`。工具栏“重新载入章节”三视口正常。标题、标签、
 提示、stale文案、按钮遮挡与触摸穿透（P0）、内联按钮、连续目标章、目录失败、页码判must-fix；正文内按钮沿用连续合同理由判
-acceptable-change；原因取脱敏消息、纯文本渲染判acceptable-change；英文原因是否中文化判unknown（D1）。运行标题、标签页标题、
-点击翻页区设计、章末入口、加载器与API不重开。状态contract-only；下一步在运行标题/桌面计数/标签页标题切片之上红测（源码合同、
+acceptable-change；原因取脱敏消息、纯文本渲染判acceptable-change；英文原因中文化原判unknown（D1），用户当天定(b)：
+按code/HTTP状态映射中文短句、未知用中文兜底，改判must-fix。运行标题、标签页标题、点击翻页区设计、章末入口、加载器与API不重开。
+状态contract-only；下一步在运行标题/桌面计数/标签页标题切片之上红测（源码合同、
 触摸判定、目录重试、连续窗口、错误面浏览器合同），再分四个提交实现（按钮可达P0优先）。实现提交改frontend，合入main会触发
 发布，由用户决定。
 
@@ -79,7 +163,7 @@ acceptable-change；原因取脱敏消息、纯文本渲染判acceptable-change�
 audio/epub/reauthentication/openreader-smoke对照通过；七项临时变异：去掉定位、或同时去掉.stop与触摸判断时浏览器按预期变红，
 只去掉一层时浏览器不变、由源码合同或单元变红。附带：手机触摸音频播放键不再切换工具层（靠拢上游）；桌面面板打开时露出的
 重新加载与章末入口一样点中按钮不关面板，另行裁决（合同第10节第4条）。R7状态implementation-complete / regression-validated；
-R1–R6、R8仍contract-only，D1待用户决定。本地未推送、未合入main；镜像未构建；生产未动。
+R1–R6、R8仍contract-only，D1已于2026-10-17定为(b)。本地未推送、未合入main；镜像未构建；生产未动。
 
 发布（2026-10-18，取代上段Git/镜像状态）：自动推送要求下合并为238e3f3并快进main；发布前frontend 810/810与build、
 本地Go服务+生产前端9个浏览器合同（含错误面30例）通过。可信Actions 39125862052成功；`238e3f3`/`latest` = index

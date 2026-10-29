@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
 
@@ -127,6 +131,62 @@ func TestDecodeBodyDetectsHTMLMetaCharsetWhenUnspecified(t *testing.T) {
 	}
 	if decoded != html {
 		t.Fatalf("auto-detected HTML response decoded as %q", decoded)
+	}
+}
+
+func TestDecodeBodyAutoCharsetToleratesSparseMalformedBytes(t *testing.T) {
+	paragraph := "前浪推后浪，他们在雨里说了很多话。彭向明站在窗前，看着楼下来来往往的人群，心里想着明天的事情。"
+	utf8Body := "<html><body><p>" + paragraph + "\xff" + paragraph + "</p></body></html>"
+	decoded, err := DecodeBody([]byte(utf8Body), "")
+	if err != nil {
+		t.Fatalf("UTF-8 page with a stray byte: %v", err)
+	}
+	if decoded != utf8Body {
+		t.Fatalf("UTF-8 page with a stray byte decoded as %q", decoded)
+	}
+
+	head, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("<html><body><p>" + paragraph))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(paragraph + "</p></body></html>"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gbkBody := append(append(head, 0xFF), tail...)
+	decoded, err = DecodeBody(gbkBody, "")
+	if err != nil {
+		t.Fatalf("GBK page with a stray byte: %v", err)
+	}
+	if want := "<html><body><p>" + paragraph + "�" + paragraph + "</p></body></html>"; decoded != want {
+		t.Fatalf("GBK page with a stray byte decoded as %q", decoded)
+	}
+}
+
+func TestDecodeBodyAutoCharsetRecognizesJapaneseAndCyrillicPages(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding encoding.Encoding
+		text     string
+	}{
+		{name: "Shift_JIS", encoding: japanese.ShiftJIS, text: recognitionTestJapanese},
+		{name: "windows-1251", encoding: charmap.Windows1251, text: recognitionTestRussian},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page := "<html><body><p>" + strings.Repeat(test.text, 4) + "</p></body></html>"
+			body, err := test.encoding.NewEncoder().Bytes([]byte(page))
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := DecodeBody(body, "")
+			if err != nil {
+				t.Fatalf("DecodeBody: %v", err)
+			}
+			if decoded != page {
+				t.Fatalf("page without a charset decoded as %q...", firstRunes(decoded, 24))
+			}
+		})
 	}
 }
 

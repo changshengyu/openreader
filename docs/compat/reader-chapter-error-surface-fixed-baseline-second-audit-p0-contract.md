@@ -1,7 +1,7 @@
 # Reader 正文加载失败错误面盘点（P0）
 
 状态：R7 **implementation-complete / regression-validated**（红测 `e497358`、实现 `a6af2d6`，见第 11 节）；R1–R6、R8 仍为
-**contract-only**，D1 仍待用户决定。盘点提交 `0427dd4` 只写文档；第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，
+**contract-only**；D1 已于 2026-10-17 由用户决定为 (b)（第 7 节）。盘点提交 `0427dd4` 只写文档；第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，
 没有入库，其中第 4.2、4.3、4.5 节的按钮命中与真实指针部分已由入库的 `scripts/smoke/reader-error-surface-contract.mjs` 承接。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
@@ -270,7 +270,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | 当前章失败的错误页标题（四种文本模式、EPUB/音频/CBZ 主加载失败、EPUB 资源失败） | `<h3>` 目标章目录标题 | 没有标题（4.2、4.8） | **`must-fix`** |
 | 2 | 错误页第一行 | `获取章节内容失败！` | 直接显示原因：英文服务端消息或中文兜底（4.2、4.6） | **`must-fix`** |
-| 3 | 原因行来源 | 服务端原始 `errorMsg` 或 axios `error.toString()` | 后端脱敏后的稳定消息，无响应时中文兜底 | 来源 `acceptable-change`（安全加固：不回传书源异常原文）；英文稳定消息是否改为中文 **`unknown`，待用户决定 D1** |
+| 3 | 原因行来源 | 服务端原始 `errorMsg` 或 axios `error.toString()` | 后端脱敏后的稳定消息，无响应时中文兜底 | 来源 `acceptable-change`（安全加固：不回传书源异常原文）；英文稳定消息原记 `unknown`（D1），用户 2026-10-17 决定 (b)：按后端 code/HTTP 状态映射成中文短句、未知时用中文兜底，改判 **`must-fix`**（第 7 节 D1 映射表） |
 | 4 | 自动重取后仍 stale | —（上游没有 409） | 显示通用兜底（4.6） | **`must-fix`**：请求生命周期合同第 9 节第 5 条已签收 `章节状态已更新，请重试`，现状不符 |
 | 5 | 错误文字的渲染 | `domPropsInnerHTML` | 文本插值 | `acceptable-change`（安全：不把服务端文字当 HTML） |
 | 6 | 失败提示 | 每次当前章失败弹一次（2.5） | 从不提示（4.2、4.6–4.8） | **`must-fix`**：正文 `获取章节内容失败 <原因>`，目录 `获取书籍目录列表 <原因>`；预载、相邻章失败、被取代或中止的请求不提示（上游请求出错分支对相邻章同样不提示，预载是运行时适配） |
@@ -315,8 +315,9 @@ R1. 错误章节页的标题：当前章主加载失败（四种文本模式的�
 R2. 失败文字：标题之后依次是第一行 `获取章节内容失败！`（目录失败时为 `获取章节目录失败！`）和第二行原因（R3）。连续模式的内联
   错误块同样是“标题 + 两行文字”。文字以纯文本渲染，不用 `v-html`。错误块的居中排版可以保留。
 
-R3. 原因：来源不变（服务端 `error` 字段；没有响应时用现有中文兜底），只改一处：stale 409 自动重取后仍冲突时显示
-  `章节状态已更新，请重试`。英文稳定消息是否改成中文由 D1 决定，决定之前保持原样；无论结果如何，不回传书源原始异常文字。
+R3. 原因（D1 已决定为 (b)）：原因行和失败提示里的原因一律按下文 D1 映射表取中文短句，按表中顺序判定；未知的 code/状态和没有
+  响应时用中文兜底。任何情况下都不显示后端英文消息，也不回传书源原始异常文字。stale 409 自动重取后仍冲突时为
+  `章节状态已更新，请重试`（已签收）。映射只在前端做，后端 API、状态码和消息都不改。
 
 R4. 失败提示：每次当前章主加载失败（属于当前事务，不是中止或被取代）弹一次 `ElMessage.error`：正文 `获取章节内容失败 <原因>`，
   目录 `获取书籍目录列表 <原因>`。重试再次失败时再弹一次。预载失败、连续模式相邻章失败、被取代或中止的请求不弹。
@@ -341,9 +342,35 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
 
 决定点：
 
-- **D1（unknown）**：原因行和提示里的原因是否把后端英文稳定消息改成中文。可选：(a) 保持原样；(b) 按后端 `code`/HTTP 状态映射成
-  中文短句，未知时用中文兜底；(c) 只显示中文兜底，不显示服务端消息。建议 (b)：后端 `code` 本来就是为稳定的客户端合同设计的
-  （`source_errors.go:17–20` 注释），也与 stale 文案的已签收做法一致。D1 不阻塞 R1、R2、R4–R8 的红测与实现。
+- **D1（已决定，2026-10-17）**：原因行和提示里的原因是否把后端英文稳定消息改成中文。当时的选项：(a) 保持原样；(b) 按后端
+  `code`/HTTP 状态映射成中文短句，未知时用中文兜底；(c) 只显示中文兜底，不显示服务端消息。用户选 **(b)**（也是本文的建议：后端
+  `code` 本来就是为稳定的客户端合同设计的，见 `source_errors.go:17–20` 注释，也与 stale 文案的已签收做法一致）。
+
+  Reader 能收到的失败信封有三种：书源失败 `{"error":"failed to load chapter content","code":…,"stage":"content"}`（`code` 取
+  `source_request_failed`、`source_rule_invalid`、`source_rule_unsupported`、`content_unavailable`）；`errResp` 帮手
+  `{"error":{"code":"NOT_FOUND"|"INTERNAL_ERROR"|…,"message":…}}`（`helpers.go:26–48`，如 `ensureBook` 的 `book not found`）；其余是
+  `{"error":"<英文>"}` 加状态码（正文 400/404/500，目录 500，本地 EPUB/CBZ/音频准备失败 400/403/404/415/422/500，见 `epub.go`、
+  `cbz.go`、`audio.go` 的 `write*Error`）。初版映射表（文案可在实现前微调，判定顺序和兜底规则不变）：
+
+  | 顺序 | 条件 | 原因 |
+  | --- | --- | --- |
+  | 1 | stale 冲突自动重取后仍冲突（`ChapterStaleConflictError`，或 409 且 `error` 为 `chapter content changed; retry`） | `章节状态已更新，请重试` |
+  | 2 | 顶层 `code` = `source_request_failed` | `请求书源失败，请检查网络或稍后重试` |
+  | 2 | 顶层 `code` = `source_rule_invalid` | `书源规则有误，请检查书源` |
+  | 2 | 顶层 `code` = `source_rule_unsupported` | `书源规则暂不支持` |
+  | 2 | 顶层 `code` = `content_unavailable` | `书源没有返回可用正文` |
+  | 3 | HTTP 404（含 `error.code` = `NOT_FOUND`） | `章节或书籍不存在，请刷新目录后重试` |
+  | 3 | HTTP 400 | `请求参数无效，请刷新后重试` |
+  | 3 | HTTP 401 | `登录已失效，请重新登录` |
+  | 3 | HTTP 403 | `访问被拒绝，请重新打开书籍后重试` |
+  | 3 | HTTP 415、422 | `文件格式无法解析` |
+  | 3 | HTTP 429 | `请求过于频繁，请稍后重试` |
+  | 3 | 其他 HTTP 5xx | `服务器处理失败，请稍后重试` |
+  | 4 | 没有响应（网络错误、超时） | 正文 `章节加载失败，请检查书源或网络后重试`（现有兜底）；目录 `目录加载失败，请检查书源或网络后重试` |
+  | 5 | 以上都不匹配（未知 code、其他状态） | 同顺序 4 的中文兜底 |
+  | — | EPUB 资源加载失败（`handleEpubError`） | `EPUB 正文加载失败，请重试`（不再显示资源错误的原始 message） |
+
+  按顺序取第一个匹配项：顺序 2 优先于顺序 3（书源失败本身是 502）。页面第一行标签（R2）和提示前缀（R4）不变，只替换原因部分。
 
 ## 8. 测试计划（后续阶段执行，本切片不写测试）
 
@@ -357,7 +384,9 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
    - 两处都不使用 `v-html` 渲染错误文字。
 2. `frontend/tests/readerChapterErrorText.test.mjs`（新增纯函数，例如 `frontend/src/utils/readerChapterError.js`）：服务端 `error`
    字符串、`error.message` 嵌套、无响应兜底、`ChapterStaleConflictError` → `章节状态已更新，请重试`、目录类型的标签与提示前缀；
-   D1 决定后再补映射表用例。
+   D1 映射表逐行用例：四个书源 `code`、404（含 `{"error":{"code":"NOT_FOUND"}}` 信封）/400/401/403/415/422/429/其他 5xx、无响应、
+   未知 code 与未知状态走中文兜底、顶层 `code` 优先于状态、EPUB 资源失败固定文案；每个用例都断言结果里不含后端英文消息
+   （如 `failed to load chapter content`、`failed to list chapters`、`book not found`）。
 3. `frontend/tests/readerChapterLoader.test.mjs`：失败时调用一次 `notifyError`（或等价回调），文字为 `获取章节内容失败 <原因>`；
    `AbortError` 和被取代的请求不调用；失败后调用一次 `updateLayout`（R8）。
 4. `frontend/tests/readerPointer.test.mjs`：`handleTouchEnd` 收到目标在 `button`（或带拦截标记的元素）内的短按时，不调用
@@ -383,13 +412,17 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
    - E5 连续模式：目标章失败时 `.chapter-content[data-index="5"] .chapter-inline-error` 含标题和两行文字，`data-index="6"` 有正文；
      相邻章失败时把内联按钮放到视口 12%/50%/88% 处，命中都是按钮；88% 处按下（源仍失败）只多一个请求、滚动位置和工具层不变；
      恢复后在 50% 处按下替换成功、工具层不变。
-   - E6 文案：网络失败显示中文兜底；两次 stale 409 显示 `章节状态已更新，请重试`。
-   - E7 目录失败：`?chapter=2` 进入，目录 500：`获取章节目录失败！`、没有章节标题文字、提示 `获取书籍目录列表`；恢复后真实指针按
-     按钮：目录重新请求，`?chapter=2` 下显示 `第三章 平稳`。
+   - E6 文案（D1 映射表）：网络失败显示 `章节加载失败，请检查书源或网络后重试`；两次 stale 409 显示 `章节状态已更新，请重试`；
+     后端真实失败体（502 + `content_unavailable`）显示 `书源没有返回可用正文`，502 + `source_request_failed` 显示
+     `请求书源失败，请检查网络或稍后重试`，404 显示 `章节或书籍不存在，请刷新目录后重试`；页面和提示里都不出现
+     `failed to load chapter content`。
+   - E7 目录失败：`?chapter=2` 进入，目录 500：`获取章节目录失败！` 加 `服务器处理失败，请稍后重试`、没有章节标题文字、提示
+     `获取书籍目录列表 服务器处理失败，请稍后重试`；恢复后真实指针按按钮：目录重新请求，`?chapter=2` 下显示 `第三章 平稳`。
    - 预期红点（按第 4 节实测）：E1 在 12 组都失败（没有 `<h3>`、没有标签、没有提示，移动 `第 1/9 页`）；E2 在 1440×900 命中
      `tap-upper`；E3 在 1440×900 与触摸 page/flip 得到 `?chapter=4&offset=-1` 和 `PUT 4:第五章 前邻`，触摸 scroll/scroll2 没有请求且
      `PUT 5:第一章 起点`；E5 目标章失败是主错误块、没有第 6 行，88% 处 1440×900 命中 `tap-lower`、触摸下翻不重试；E6 stale 显示通用
-     兜底；E7 目录没有重新请求、显示第一章。逐视口、逐模式记录精确失败点。
+     兜底，502 显示英文 `failed to load chapter content`；E7 显示英文 `failed to list chapters`、目录没有重新请求、显示第一章。
+     逐视口、逐模式记录精确失败点。
 2. `scripts/smoke/reader-epub-contract.mjs`（真实服务，3 视口）：增加两个独立上下文的失败步骤——第 1 行内链到第 2 行失败、直接打开
    第 2 行失败；断言错误页标题 `第二章` 与标签，真实指针（桌面鼠标、移动触摸）按按钮后重新加载第 2 行、路由与工具层不变、不跳到
    `第一章（下）`。当前预期：触摸两种场景和桌面首次失败都跳到 `?chapter=1&offset=-1`。
@@ -408,9 +441,10 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
   - M5：`reloadChapter` 在目录失败时改回 `loadChapter(currentIndex)` → E7 失败；
   - M6：stale 错误文字改回通用兜底 → E6 失败；
   - M7：连续模式目标章失败改回主错误块 → E5 失败；
-  - M8：失败后不重算布局 → E1 移动页码断言失败。
-- 跳过并写明原因：Go `test`/`vet`/`race`（后端不改）；依赖 advisory、Compose 和卷门（依赖、Dockerfile、数据格式都不改）。D1 若
-  选择在后端改消息，则另行补后端合同与测试。
+  - M8：失败后不重算布局 → E1 移动页码断言失败；
+  - M9：原因退回显示服务端 `error` 字段 → 8.1 第 2 项与 E6、E7 的映射断言失败。
+- 跳过并写明原因：Go `test`/`vet`/`race`（后端不改）；依赖 advisory、Compose 和卷门（依赖、Dockerfile、数据格式都不改）。D1 选的是
+  (b)，只在前端映射，后端不改。
 - 会话沙箱禁止 loopback 监听，服务和 Playwright 需要在沙箱外运行。
 
 ## 9. 阶段
@@ -423,13 +457,13 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
 4. **实现**：按风险拆成可独立验证的提交，每个都让对应断言转绿：
    - `fix: keep reader retry buttons above tap zones and touch handling`（R7，P0，最小改动；已完成：红测 `e497358`、实现
      `a6af2d6`，见第 11 节）；
-   - `fix: render upstream chapter error page with title, label and toast`（R1–R4、R8）；
+   - `fix: render upstream chapter error page with title, label and toast`（R1–R4、R8，含 D1 映射表）；
    - `fix: retry the catalog when the reader book load failed`（R5）；
    - `fix: keep failed target chapters in the continuous window`（R6）。
 5. **回归**：按 8.3 执行，包括临时变异。
 6. **记录**：提交号、各视口/模式/输入的结果、变异结果和状态标签写回本文件、gap analysis 与 matrix。
-7. **发布**：实现提交改动 `frontend/**`，命中 `docker-publish.yml` 的路径过滤，合入 main 会触发镜像发布；是否合入由用户决定。D1 由
-   用户决定，不阻塞前面各步。
+7. **发布**：实现提交改动 `frontend/**`，命中 `docker-publish.yml` 的路径过滤，合入 main 会触发镜像发布；是否合入由用户决定。D1 已于
+   2026-10-17 由用户决定为 (b)。
 
 ## 10. 观察（不在本切片）
 
@@ -446,6 +480,8 @@ R9. 不变：第 6 节列出的已签收项；`加载下一章` 在错误时隐�
    两个“重新加载”都是 `z-index: 3` 且在 DOM 中更靠后，露在面板下方时点中的是按钮：执行按钮动作，面板不关。上游四个桌面面板是
    `el-popover trigger="click"`（`Reader.vue` L9–55），没有遮罩：点面板外的控件时控件照常执行，面板也随之关闭；正文的点击分区在
    面板打开时由 `eventHandler` 直接返回。需要另行裁决这类控件在面板打开时应该怎样响应。
+   2026-10-23 补记：已在[桌面面板正文控件合同](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)
+   逐面板实测并裁决：两个“重新加载”与 `加载下一章` 判 `must-fix`，目标是执行动作并关闭面板，不改 R7 的按钮层级（contract-only）。
 
 ## 11. R7 实施与验证（2026-10-18）
 
@@ -556,4 +592,4 @@ portable 通过）。`ghcr.io/changshengyu/openreader:238e3f3` 与 `latest` 指�
 `sha256:79086bcd96c3e5447c379199e2805744864778ab92142cc6eaf0114c4644f77e`）。按 digest 独立核验两平台：`/app/public`
 63 个文件与本地同一提交的 build 逐字节一致；zlib 1.3.2-r1、SQLite 3.51.3 与完整 revision 标签保持。
 
-状态：R7 **released / awaiting-device-verification**；R1–R6、R8 仍 contract-only，D1 待用户决定。生产未访问，实际运行版本未知。
+状态：R7 **released / awaiting-device-verification**；R1–R6、R8 仍 contract-only，D1 已决定为 (b)（第 7 节）。生产未访问，实际运行版本未知。

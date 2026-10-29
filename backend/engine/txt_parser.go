@@ -516,7 +516,7 @@ func decodeTXTForCatalog(data []byte) (string, string, error) {
 			}
 		}
 	}
-	probe, encodingName, err := detectAndDecodeText(probeData)
+	probe, encodingName, err := detectAndDecodeTextSample(probeData, len(probeData) == len(data))
 	if err != nil {
 		return "", "", err
 	}
