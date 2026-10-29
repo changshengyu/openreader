@@ -40,3 +40,10 @@ test('the single-book confirmation mirrors the reader-dev import dialog fields',
   assert.match(single, /章节列表\(\{\{ currentRow\.chapters\.length \}\}\)/, 'the chapter list title uses the upstream format')
   assert.match(overlay, /const currentRuleText = computed\(\{[\s\S]*?get: \(\) => currentRow\.value\?\.tocRule \|\| currentRow\.value\?\.detectedTocRule \|\| ''/, 'the textarea shows the chosen or detected rule')
 })
+
+test('the confirmation cover uses the preview cover', () => {
+  assert.match(
+    overlay,
+    /function importCoverBook\(row\) \{\s*return \{ title: row\?\.title \|\| '', author: row\?\.author \|\| '', coverUrl: row\?\.coverUrl \|\| '' \}\s*\}/,
+  )
+})
