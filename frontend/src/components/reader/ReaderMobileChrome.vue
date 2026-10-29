@@ -68,6 +68,8 @@
     <label v-if="pageSliderVisible" class="mobile-progress-slider-row" title="拖动定位当前页码">
       <input
         class="mobile-progress-slider"
+        :class="{ 'night-slider': isNight }"
+        :style="{ '--page-slider-progress': pageSliderProgress }"
         type="range"
         min="1"
         :max="pageSliderMax"
@@ -120,9 +122,10 @@ import {
   Sunny,
   View,
 } from '@element-plus/icons-vue'
+import { computed } from 'vue'
 import ReaderCachePanel from './ReaderCachePanel.vue'
 
-defineProps({
+const props = defineProps({
   visible: {
     type: Boolean,
     default: false,
@@ -190,6 +193,11 @@ defineProps({
 })
 
 defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', 'cache-cancel'])
+
+const pageSliderProgress = computed(() => {
+  const span = props.pageSliderMax - 1
+  return span > 0 ? `${((props.pageSliderValue - 1) / span) * 100}%` : '0%'
+})
 </script>
 
 <style scoped>
@@ -309,6 +317,54 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   width: 100%;
   min-width: 0;
   accent-color: var(--reader-slider-accent, #409eff);
+}
+
+/* reader-dev el-slider at night. A native range with this dark accent-color
+   gets a light track, so night draws the #185798 bar on the #282828 runway. */
+.mobile-progress-slider.night-slider {
+  height: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.mobile-progress-slider.night-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--reader-slider-accent) var(--page-slider-progress, 0%), var(--reader-slider-runway) var(--page-slider-progress, 0%));
+}
+
+.mobile-progress-slider.night-slider::-webkit-slider-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--reader-slider-runway);
+  border: 2px solid var(--reader-slider-accent);
+  border-radius: 50%;
+}
+
+.mobile-progress-slider.night-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--reader-slider-runway);
+}
+
+.mobile-progress-slider.night-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--reader-slider-accent);
+}
+
+.mobile-progress-slider.night-slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  background: var(--reader-slider-runway);
+  border: 2px solid var(--reader-slider-accent);
+  border-radius: 50%;
 }
 
 .mobile-cache-zone {

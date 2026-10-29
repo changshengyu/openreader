@@ -1280,6 +1280,7 @@ const NIGHT_CHROME_STYLE = Object.freeze({
   '--reader-chrome-border': '#444',
   '--reader-float-border': 'transparent',
   '--reader-slider-accent': '#185798',
+  '--reader-slider-runway': '#282828',
   '--reader-settings-text': '#606266',
   '--reader-settings-value-text': '#a6a6a6',
   '--reader-theme-selected-border': '#666',
