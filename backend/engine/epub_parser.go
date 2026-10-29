@@ -20,6 +20,9 @@ import (
 type ParsedBook struct {
 	Title             string       `json:"title"`
 	Author            string       `json:"author"`
+	Intro             string       `json:"intro,omitempty"`
+	Kind              string       `json:"kind,omitempty"`
+	TOCRule           string       `json:"tocRule,omitempty"`
 	CoverResourcePath string       `json:"coverResourcePath,omitempty"`
 	Chapters          []TXTChapter `json:"chapters"`
 }

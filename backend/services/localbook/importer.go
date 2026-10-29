@@ -54,6 +54,9 @@ type ImportRequest struct {
 	// It is an internal callback, never decoded from an HTTP/backup payload.
 	BeforeCommit func() error
 	TOCRule      string
+	// DirectUpload marks a browser upload, whose file name reader-dev
+	// normalizes before deriving the book name and author.
+	DirectUpload bool
 }
 
 type PreviewChapter struct {
@@ -66,6 +69,7 @@ type PreviewResult struct {
 	Author       string           `json:"author"`
 	ChapterCount int              `json:"chapterCount"`
 	Chapters     []PreviewChapter `json:"chapters"`
+	TOCRule      string           `json:"tocRule,omitempty"`
 	ImportToken  string           `json:"importToken,omitempty"`
 }
 
