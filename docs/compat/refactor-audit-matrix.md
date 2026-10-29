@@ -6,6 +6,7 @@
 `x/net/html` 文本节点合并 O(n²)，可经书源页面解析与 EPUB 简介解析到达；Go 公告门在 `07f4752` 与 main 上都失败关闭。
 must-fix：`x/net v0.62.0`（连带 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/text v0.43.0`），应用代码与门脚本不变。状态 contract-only。
 记录（2026-10-29，取代上段的状态）：升级 `7a18346`，Go 公告门 exit 1→0，后端全量/vet/race、前端 827/827 与 build 通过。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-10-29）：main 快进到 b3164e3，run 40834553001 全部成功，b3164e3/latest index `sha256:39d3d1cc…0ea1`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-10-29 当前切片：本地书导入的书名/作者/简介/目录规则自动识别（P1，M1–M7）
 
@@ -16,6 +17,7 @@ must-fix：`x/net v0.62.0`（连带 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/te
 engine 26 个文件名×两种来源与 6 个 EPUB 作者（Java 实测夹具），localbook 四种格式元数据，api 直接/书仓/占位回填，前端确认框与工作流。
 状态 contract-only。
 记录（2026-10-29，取代上段的状态）：骨架 `d87bb2d`、红测 `4aadc03`、实现 `d2b4f68`、`aeaccf0`、浏览器合同 `936f672`；夹具扩到 28 个文件名，全部与 Java 一致；三视口直接导入用户的书得到 `前浪(校对加料版全本 1-425)` / `刀一耕` 与自动规则；导入与书仓/WebDAV 浏览器合同、存储 HTTP 合同、后端全量/vet/race、前端 827/827 与 build 通过。状态 implementation-complete / regression-validated，待可信 Actions；M8 另起。
+发布（2026-10-29）：main 快进到 b3164e3，run 40834553001 全部成功，b3164e3/latest index `sha256:39d3d1cc…0ea1`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-10-29 当前切片：Reader 日间/夜间按设备跟随系统与内置夜间配色（P1，N1–N4、P1–P6）
 
@@ -25,6 +27,7 @@ engine 26 个文件名×两种来源与 6 个 EPUB 作者（Java 实测夹具）
 N5–N7 acceptable-change；自定义方案、隐藏 `black`、日间主题、夜间控件色不变。计划红测：store 自动套用不写服务端、收到账号设置后按系统复核、
 启动顺序源码合同、内置夜间配色与 P6 迁移；改写与新决定冲突的纯黑断言。状态 contract-only。
 记录（2026-10-29，取代上段的状态）：红测 `1feb7da` → `07f4752`；补充红测 `d1188ce` → `02cefe7`（本设备手动选择保持到刷新/系统变色/重新打开自动切换）；浏览器合同 `936f672`。三视口夜间纹理与 `#666`、双上下文互不带动且打开/刷新不写设置，EPUB/移动端/书架浏览器合同、前端 827/827 与 build、后端全量/vet/race 通过。状态 implementation-complete / regression-validated，待可信 Actions；夜间控件色未改。
+发布（2026-10-29）：main 快进到 b3164e3，run 40834553001 全部成功，b3164e3/latest index `sha256:39d3d1cc…0ea1`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-10-25 当前切片：文本编码识别——日文/韩文与单字节编码（P1，E4/E8）
 

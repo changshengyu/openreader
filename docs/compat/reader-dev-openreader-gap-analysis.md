@@ -8,6 +8,7 @@ EPUB 简介经新的 `html.ParseFragment`。CI 在构建镜像前跑同一门，
 精确升到 `v0.62.0`，随 MVS 带上 `x/crypto v0.58.0`、`x/sys v0.49.0`、`x/text v0.43.0`，不动工具链与门脚本。完整合同见
 [`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。状态 **contract-only**。
 2026-10-29 记录（合同第 5 节）：合同 `53770f4`，升级 `7a18346`；Go 公告门由 exit 1 变为 exit 0（只剩已评审的 `GO-2026-5932`），后端全量/vet/race 与前端 827/827、build 通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `b3164e3`，可信 Actions run `40834553001` 全部成功；`b3164e3`/`latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-29 P1 本地书导入：书名/作者/简介/目录规则自动识别
 
@@ -20,6 +21,7 @@ OpenReader 没有文件名解析：用户的 `前浪(校对加料版全本 1-425
 [`local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md`](local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 2026-10-29 记录（合同第 7 节）：骨架 `d87bb2d`、红测 `4aadc03`（engine/localbook/api/前端均为断言失败）、实现 `d2b4f68`、默认封面文字 `aeaccf0`、浏览器合同 `936f672`。Go 移植对 28 个文件名 × 两种来源与 6 个 EPUB 作者和 Java 结果逐项一致；三视口直接导入用户的书，确认框与书架均为`前浪(校对加料版全本 1-425)` / `刀一耕`，`tocRule` 为自动选中的“目录(去空白)”。状态 **implementation-complete / regression-validated**，待可信 Actions；M8 封面另起切片。
+2026-10-29 发布：`main` 快进到 `b3164e3`，可信 Actions run `40834553001` 全部成功；`b3164e3`/`latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-29 P1 Reader 日间/夜间：按设备跟随系统与内置夜间配色
 
@@ -32,6 +34,7 @@ N1–N4 为 **`must-fix`**：自动套用只在本设备生效，收到账号设
 [`reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md`](reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 2026-10-29 记录（合同第 7 节）：红测 `1feb7da`（9 项）→ 实现 `07f4752`；双设备检查前发现手动选择会被另一设备的保存改回，补红测 `d1188ce` → `02cefe7`（本设备手动选择保持到刷新、系统变色或重新打开自动切换，与上游一致）；浏览器合同 `936f672`。三视口夜间为 `body_6`/`content_6` 纹理、`#171717` 页面、`#666` 正文；两个上下文（浅色/深色）打开、刷新均不写设置，互不带动。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `b3164e3`，可信 Actions run `40834553001` 全部成功；`b3164e3`/`latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-25 P1 文本编码识别：日文/韩文与单字节编码（E4/E8）
 

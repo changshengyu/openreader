@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本切片不涉及上游可见行为）。
 
 审查日期：2026-10-29。实施基线：`OpenReader@07f4752`（`claude/day-night-import-alignment`）；`origin/main` 为 `b4cf2be`。
-状态：**implementation-complete / regression-validated**（记录见第 5 节）。
+状态：**aligned / Docker-published / awaiting-device-verification**（发布见文末；记录见第 5 节）。
 
 前置合同：[`go-advisory-release-gate-contract.md`](go-advisory-release-gate-contract.md)、
 [`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)。
@@ -49,3 +49,7 @@ Go 公告门在 `07f4752` 上 exit 1（`unreviewed advisory GO-2026-6860`），`
 `GO-2026-5932`）；门测试 109/109；前端公告门 exit 0；`docker compose config` 通过。backend `go test ./...` 29 个包、`go vet ./...`、`go test -race`（engine、services/localbook、services/importstage，以及 api 1037 秒）在 `7a18346` 上通过（其后只改前端与冒烟脚本），未见 DATA RACE；frontend 827/827 与 build 通过。
 
 状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
+
+## 发布（2026-10-29）
+
+main 快进到 `b3164e3`（ls-remote 核验，未强推）；可信 Actions run `40834553001` 全部成功（07:18–07:43Z）。`ghcr.io/changshengyu/openreader:b3164e3` 与 `latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（linux/amd64 `sha256:a8ed9027…`、linux/arm64 `sha256:46a98c99…`），两平台 `org.opencontainers.image.revision` 均为 `b3164e3d91888714d3748a95c9b7264c2f2c79a3`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认。

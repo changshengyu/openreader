@@ -1,6 +1,6 @@
 # Reader 日间/夜间：按设备跟随系统与内置夜间配色合同（P1）
 
-状态：**implementation-complete / regression-validated**（记录见第 7 节）。审查日期：2026-10-29。审查基线：`OpenReader@b4cf2be`。
+状态：**aligned / Docker-published / awaiting-device-verification**（发布见文末；记录见第 7 节）。审查日期：2026-10-29。审查基线：`OpenReader@b4cf2be`。
 
 ## 1. 来源与用户决定
 
@@ -132,3 +132,7 @@ N2 的复核只发生在“开着自动切换且浏览器能报告深浅色”�
   如需一并对齐另起切片。
 
 状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
+
+## 发布（2026-10-29）
+
+main 快进到 `b3164e3`（ls-remote 核验，未强推）；可信 Actions run `40834553001` 全部成功（07:18–07:43Z）。`ghcr.io/changshengyu/openreader:b3164e3` 与 `latest` 为 OCI index `sha256:39d3d1cc3c9b55171fbe2aeef53270d37f65c55b6eed370a52e1831e31da0ea1`（linux/amd64 `sha256:a8ed9027…`、linux/arm64 `sha256:46a98c99…`），两平台 `org.opencontainers.image.revision` 均为 `b3164e3d91888714d3748a95c9b7264c2f2c79a3`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认。
