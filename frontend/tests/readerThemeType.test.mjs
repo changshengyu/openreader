@@ -35,7 +35,7 @@ test('reader store persists themeType through settings and custom-config contrac
   assert.match(storeSource, /setThemeType\(themeType\)/, 'reader store must expose an explicit custom theme type action')
   assert.match(storeSource, /this\.themeType\s*=\s*themeTypeForTheme\(theme,\s*this\.themeType\)/, 'theme selection must apply the upstream preset/custom transition')
   assert.match(storeSource, /themeType:\s*'night'[\s\S]*?name:\s*'内置黑夜'/, 'built-in night config must persist its semantic type')
-  assert.match(storeSource, /setNightTheme\(isNight\)/, 'reader store must own the complete day/night scheme transition')
+  assert.match(storeSource, /setNightTheme\(isNight(?:, options = \{\})?\) \{/, 'reader store must own the complete day/night scheme transition')
 })
 
 test('reader rendering and shared shell use semantic themeType night state', () => {

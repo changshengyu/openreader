@@ -90,10 +90,13 @@ test('night settings controls use semantic surfaces instead of translucent day c
   assert.ok(readerColorContrast('#ff7589', '#303030') >= 4.5)
 })
 
-test('built-in night resolves to a texture-free black page and white default text', () => {
+test('built-in night keeps the reader-dev textured surface while black stays the pure-black alias', () => {
+  // 2026-10-29 user decision: the built-in night (reader-dev theme 6) uses the
+  // upstream body_6/content_6 textures and #666 text; the hidden legacy black
+  // preset keeps the pure black/white surface.
   assert.match(
     readerStoreSource,
-    /dark:\s*\{[^}]*bg:\s*'#000000'[^}]*text:\s*'#ffffff'[^}]*body:\s*'#000000'/,
+    /dark:\s*\{[^}]*bg:\s*'#171717'[^}]*text:\s*'#666666'[^}]*body:\s*'#121212'[^}]*popup:\s*'#121212'/,
   )
   assert.match(
     readerStoreSource,
@@ -103,15 +106,38 @@ test('built-in night resolves to a texture-free black page and white default tex
   assert.deepEqual(resolveReaderSurface({
     theme: 'dark',
     themeType: 'night',
-    themeBackground: '#2d2d2d',
+    themeBackground: '#171717',
     themeBody: '#121212',
-    themePopup: '#171717',
+    themePopup: '#121212',
+    themeBodyImage: '/themes/body_6.png',
+    themePageImage: '/themes/content_6.png',
+    themePopupImage: 'none',
+    themePageBorder: '#444',
+  }), {
+    bodyColor: '#121212',
+    bodyImage: 'url("/themes/body_6.png")',
+    pageColor: '#171717',
+    pageImage: 'url("/themes/content_6.png")',
+    popupColor: '#121212',
+    popupImage: 'none',
+    pageBorder: '#444',
+    pageShadow: 'none',
+  })
+  assert.deepEqual(resolveReaderSurface({
+    theme: 'black',
+    themeType: 'night',
+    themeBackground: '#000000',
+    themeBody: '#000000',
+    themePopup: '#121212',
+    themeBodyImage: 'none',
+    themePageImage: 'none',
+    themePopupImage: 'none',
   }), {
     bodyColor: '#000000',
     bodyImage: 'none',
     pageColor: '#000000',
     pageImage: 'none',
-    popupColor: '#171717',
+    popupColor: '#121212',
     popupImage: 'none',
     pageBorder: 'transparent',
     pageShadow: 'none',
