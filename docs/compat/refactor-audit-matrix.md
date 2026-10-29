@@ -10,6 +10,15 @@
 computed style。状态 contract-only。
 记录（2026-10-29，取代上段的状态）：合同 `795d914`、红测 `a47bc03`（6 项断言失败，对照通过）、实现 `7d8a0b2`、浏览器合同 + 补充红测 `f84dbbc`、补充实现 `a44ea45`（夜间页码滑块按上游 `el-slider` 自绘，原生未读段在深色 accent 下会变白）。五个视口日间与 `c62c619` 完全相同、夜间为上游值；前端 834/834 与 build、后端全量/vet、advisory 门、移动/EPUB/设置位置浏览器合同通过；面板控件合同 C1 flip 偶发 harness 超时新旧构建都有。状态 implementation-complete / regression-validated，待可信 Actions。
 
+## 2026-10-29 当前切片：本地书封面——EPUB/UMD 书架封面与导入确认框封面（P1，M8）
+
+见[`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。
+上游 EPUB（epublib meta/guide，JPG/PNG/GIF）与 UMD（段 130）都有封面，确认框也显示；OpenReader 只有 CBZ。C1–C3 must-fix：EPUB 封面路径进抽取
+标记、经 `/api/epub-resource` 投影；UMD 封面首次投影时抽到 `.umd-resources`、经新 `/api/umd-cover` 提供；预览返回 2 MiB 内的 `data:` 封面。
+计划红测：engine 封面规则与 UMD 段、api 导入响应/书架/详情/自定义优先/旧标记/能力安全、前端预览封面。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：实现 `7901e1f`/`b5db7d6`（红测 `5ac9d00`/`7105dbf`/`e24def9` 转绿，测试修正 `0007fe2`），浏览器合同 `ad74f13`，服务测试 `8fb8f88`；A7 预览响应封面合计 ≤ 8 MiB。三视口确认框/书架/书籍信息封面、后端全量/vet/race、前端 829/829 与 build、公告门、存储与导入合同通过。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-10-29）：main 快进到 21f749d，run 40880848625 全部成功，21f749d/latest index `sha256:fad32918…97a7`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
+
 ## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
 
 见[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。

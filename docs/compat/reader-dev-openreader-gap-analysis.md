@@ -12,6 +12,17 @@
 状态 **contract-only**。
 2026-10-29 记录（合同第 8 节）：合同 `795d914`、红测 `a47bc03`、实现 `7d8a0b2`、浏览器合同与补充红测 `f84dbbc`、补充实现 `a44ea45`。实现中发现原生 range 配深色 `accent-color` 时 Chromium 把未读段画成浅色，C10 改为夜间按上游 `el-slider` 自绘（`#185798` 已读段、`#282828` 未读段与滑块）。真实账号对照 `c62c619` 构建：五个视口日间工具栏与设置面板 computed style 完全相同，夜间逐项为上游值；移动/EPUB/设置位置浏览器合同、前端 834/834 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
 
+## 2026-10-29 P1 本地书封面：EPUB/UMD 书架封面与导入确认框封面（M8）
+
+上游导入 EPUB/UMD 时就写出封面：EPUB 按 epublib 取 `meta name="cover"`（清单 id 或 href）与 guide `type="cover"` 中的 JPG/PNG/GIF，UMD 取段 130
+后的附加段；书架、书籍信息与导入确认框都显示。OpenReader 只有 CBZ 有封面。C1（EPUB）、C2（UMD）、C3（确认框预览封面，2 MiB 内用
+`data:` URL）为 **`must-fix`**：EPUB 封面路径记入 `.epub-resources` 抽取标记并用现有 `/api/epub-resource` 能力地址投影，UMD 封面首次投影时
+抽到 `.umd-resources/<fingerprint>/` 并经新 `/api/umd-cover/<capability>` 提供，均只在响应里、自定义封面优先、不改库与备份格式。A1 图片格式、
+A2 预览上限为 acceptable-change，EPUB3 `cover-image` 不采用（上游不认）。完整合同见
+[`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。状态 **contract-only**。
+2026-10-29 记录（合同第 6 节）：骨架 `4dd84e0`，红测 `5ac9d00`/`7105dbf`/`e24def9`，测试修正 `0007fe2`，实现 `7901e1f`/`b5db7d6`，浏览器合同 `ad74f13`，服务测试 `8fb8f88`；补充 A7：一个预览响应的内联封面合计 ≤ 8 MiB，只有确认框预览计算封面。三视口导入 EPUB/UMD，确认框、书架、书籍信息都显示原图；后端全量/vet/race、前端 829/829 与 build、公告门、存储合同与导入浏览器合同通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `21f749d`，可信 Actions run `40880848625` 全部成功；`21f749d`/`latest` 为 OCI index `sha256:fad3291832efb6ffba3866725069fce47ba1a5f96c05836ee829742396dd97a7`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
+
 ## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
 
 日夜/导入切片回归时 Go 依赖公告门失败关闭：`unreviewed advisory GO-2026-6860`（CVE-2026-78661，2026-10-27 公开），

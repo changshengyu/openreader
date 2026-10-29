@@ -19,6 +19,13 @@ func readerDevUMDFixture(t *testing.T, title, author string, chapters []umdFixtu
 // readerDevUMDFixtureWithKind also writes UmdReader section 7, the book type.
 func readerDevUMDFixtureWithKind(t *testing.T, title, author, kind string, chapters []umdFixtureChapter, chunkBytes int) []byte {
 	t.Helper()
+	return readerDevUMDFixtureWithCover(t, title, author, kind, nil, chapters, chunkBytes)
+}
+
+// readerDevUMDFixtureWithCover also writes UmdReader segment 130 and the
+// additional section that carries the cover bytes.
+func readerDevUMDFixtureWithCover(t *testing.T, title, author, kind string, cover []byte, chapters []umdFixtureChapter, chunkBytes int) []byte {
+	t.Helper()
 	if chunkBytes <= 0 {
 		chunkBytes = 32 * 1024
 	}
@@ -64,6 +71,11 @@ func readerDevUMDFixtureWithKind(t *testing.T, title, author, kind string, chapt
 	}
 	if kind != "" {
 		writeSection(0x07, 0, umdUTF16LE(kind))
+	}
+	if cover != nil {
+		const coverCheck uint32 = 0x0badcafe
+		writeSection(0x82, 0x10, append([]byte{0x01}, writeUint32(coverCheck)...))
+		writeAdditional(coverCheck, cover)
 	}
 
 	var contents bytes.Buffer

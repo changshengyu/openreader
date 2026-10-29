@@ -122,6 +122,9 @@ func ParseEPUBCatalogWithLimits(data []byte, rule string, limits LocalBookParseL
 		Intro:   readerDevEPUBIntro(pkg.Metadata.Descriptions),
 		TOCRule: normalizeEPUBRule(rule),
 	}
+	if coverPath, coverErr := epubCoverImagePath(reader, opfPath, opfBytes); coverErr == nil {
+		book.CoverResourcePath = coverPath
+	}
 	baseDir := path.Dir(opfPath)
 	if baseDir == "." {
 		baseDir = ""

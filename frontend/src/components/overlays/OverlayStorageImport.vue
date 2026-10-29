@@ -272,7 +272,7 @@ function handleSingleVisible(visible) {
 }
 
 function importCoverBook(row) {
-  return { title: row?.title || '', author: row?.author || '' }
+  return { title: row?.title || '', author: row?.author || '', coverUrl: row?.coverUrl || '' }
 }
 
 function isRuleConfigurable(path) {

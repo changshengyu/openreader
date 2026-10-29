@@ -488,9 +488,10 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 	}
 	defer plan.Close()
 	results := make([]gin.H, 0)
+	coverBudget := int64(maxPreviewCoverResponseBytes)
 	for _, target := range plan.targets {
 		if target.override.ImportToken != "" {
-			preview, importToken, err := s.reparseStagedStorageImport(c.Request.Context(), userID, target.override.ImportToken, target.override)
+			preview, importToken, err := s.reparseStagedStorageImport(c.Request.Context(), userID, target.override.ImportToken, target.override, coverBudget)
 			if err != nil {
 				if writeLocalImportStageCancellation(c, err, "") {
 					return
@@ -498,6 +499,7 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 				results = append(results, gin.H{"path": target.relativePath, "error": err.Error(), "importToken": importToken})
 				continue
 			}
+			coverBudget -= int64(len(preview.CoverURL))
 			results = append(results, gin.H{"path": target.relativePath, "book": preview, "importToken": importToken})
 			continue
 		}
@@ -521,6 +523,7 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 			file.extension,
 			data,
 			target.override,
+			coverBudget,
 		)
 		if err != nil {
 			if writeLocalImportStageCancellation(c, err, "") {
@@ -529,6 +532,7 @@ func (s *Server) previewLocalStoreImport(c *gin.Context) {
 			results = append(results, gin.H{"path": file.relativePath, "error": err.Error(), "importToken": importToken})
 			continue
 		}
+		coverBudget -= int64(len(preview.CoverURL))
 		results = append(results, gin.H{"path": file.relativePath, "book": preview, "importToken": importToken})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": results})

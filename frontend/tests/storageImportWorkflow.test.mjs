@@ -292,3 +292,25 @@ test('a failed preview row retries without freezing the raw file stem as its tit
   assert.equal(row.title, '前浪(校对加料版全本 1-425)')
   assert.equal(row.author, '刀一耕')
 })
+
+// reader-dev's import dialog shows the cover written during preview
+// (Index.vue getCover(getBookCoverUrl(importBookInfo))).
+test('keeps the preview cover on the row and refreshes it after a reparse', async () => {
+  let previews = 0
+  const { workflow } = createWorkflow({
+    preview: async () => {
+      previews += 1
+      return {
+        items: [previewRow('cover.epub', 'c'.repeat(48), {
+          book: { coverUrl: previews === 1 ? 'data:image/jpeg;base64,AAAA' : '' },
+        })],
+      }
+    },
+  })
+
+  await workflow.start({ source: 'local-store', paths: ['cover.epub'] })
+  const row = workflow.currentRow.value
+  assert.equal(row.coverUrl, 'data:image/jpeg;base64,AAAA')
+  assert.equal(await workflow.reparse(row), true)
+  assert.equal(row.coverUrl, '')
+})

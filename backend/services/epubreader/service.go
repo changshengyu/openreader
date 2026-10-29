@@ -1,6 +1,7 @@
 package epubreader
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -60,6 +61,10 @@ type extractionMarker struct {
 	Fingerprint string `json:"fingerprint"`
 	Size        int64  `json:"size"`
 	ModTimeNano int64  `json:"modTimeNano"`
+	// CoverPath is the cover image chosen by engine.EPUBCoverImagePathFromZip;
+	// CoverChecked records that the lookup ran, also when there is no cover.
+	CoverPath    string `json:"coverPath,omitempty"`
+	CoverChecked bool   `json:"coverChecked,omitempty"`
 }
 
 func New(cfg config.Config, database *gorm.DB) *Service {
@@ -102,6 +107,85 @@ func (s *Service) PrepareBookResources(book models.Book) error {
 
 func (s *Service) PrepareChapter(book models.Book, chapter *models.Chapter) (PreparedChapter, error) {
 	return s.prepareChapter(book, chapter, true)
+}
+
+// PrepareCover exposes reader-dev's EPUB cover image (EpubFile.updateCover)
+// through the existing same-origin resource capability. It only uses an
+// extraction that already exists, so listing a shelf never unpacks an
+// archive: a book imported before eager extraction shows its cover once it
+// has been opened. The URL is response data only and must not be saved.
+func (s *Service) PrepareCover(book models.Book) (PreparedChapter, error) {
+	if !IsLocalEPUB(book) {
+		return PreparedChapter{}, ErrNotEPUB
+	}
+	sourcePath, bookRoot, err := s.sourcePath(book)
+	if err != nil {
+		return PreparedChapter{}, err
+	}
+	fingerprint, extractionRoot, ok := s.reusableExtraction(sourcePath, bookRoot)
+	if !ok {
+		return PreparedChapter{}, ErrNotFound
+	}
+	coverPath, err := s.extractionCoverPath(sourcePath, extractionRoot)
+	if err != nil {
+		return PreparedChapter{}, err
+	}
+	if coverPath == "" {
+		return PreparedChapter{}, ErrNotFound
+	}
+	if _, err := s.resourceFile(extractionRoot, coverPath); err != nil {
+		return PreparedChapter{}, err
+	}
+	expiresAt := s.now().UTC().Add(resourceCapabilityTTL)
+	capability, err := signResourceCapability(s.cfg.JWTSecret, resourceClaims{
+		UserID:       book.UserID,
+		BookID:       book.ID,
+		Fingerprint:  fingerprint,
+		Purpose:      resourceCapabilityPurpose,
+		ExpiresAt:    expiresAt.Unix(),
+		DocumentPath: coverPath,
+	})
+	if err != nil {
+		return PreparedChapter{}, err
+	}
+	return PreparedChapter{
+		ResourceURL: "/api/epub-resource/" + url.PathEscape(capability) + "/" + escapeResourcePath(coverPath),
+		ExpiresAt:   expiresAt,
+	}, nil
+}
+
+// extractionCoverPath returns the cover recorded in the extraction marker,
+// looking it up once for markers written before covers were recorded.
+func (s *Service) extractionCoverPath(sourcePath, extractionRoot string) (string, error) {
+	markerPath := filepath.Join(extractionRoot, extractionMarkerName)
+	if marker, err := readExtractionMarker(markerPath); err == nil && marker.CoverChecked {
+		return marker.CoverPath, nil
+	}
+	lockValue, _ := s.extractLocks.LoadOrStore(sourcePath, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+	marker, err := readExtractionMarker(markerPath)
+	if err != nil {
+		return "", err
+	}
+	if marker.CoverChecked {
+		return marker.CoverPath, nil
+	}
+	archive, err := zip.OpenReader(sourcePath)
+	if err != nil {
+		return "", ErrInvalidArchive
+	}
+	defer archive.Close()
+	coverPath, err := engine.EPUBCoverImagePathFromZip(&archive.Reader, engine.DefaultLocalBookParseLimits())
+	if err != nil {
+		coverPath = ""
+	}
+	marker.CoverPath, marker.CoverChecked = coverPath, true
+	if err := writeExtractionMarkerValue(markerPath, marker); err != nil {
+		return "", err
+	}
+	return coverPath, nil
 }
 
 func (s *Service) prepareChapter(book models.Book, chapter *models.Chapter, persistRecoveredMetadata bool) (PreparedChapter, error) {
@@ -540,7 +624,7 @@ func (s *Service) ensureExtractionMode(sourcePath, bookRoot string, forceRebuild
 	if current, err := readExtractionMarker(marker); err == nil && current.Fingerprint == fingerprint {
 		if !forceRebuild {
 			if current.Size == 0 || current.ModTimeNano == 0 {
-				_ = writeExtractionMarker(marker, fingerprint, sourcePath)
+				_ = writeExtractionMarker(marker, fingerprint, sourcePath, current)
 			}
 			return fingerprint, finalRoot, nil
 		}
@@ -559,7 +643,7 @@ func (s *Service) ensureExtractionMode(sourcePath, bookRoot string, forceRebuild
 	if err := extractArchiveFile(sourcePath, staging, s.limits); err != nil {
 		return "", "", err
 	}
-	if err := writeExtractionMarker(filepath.Join(staging, extractionMarkerName), fingerprint, sourcePath); err != nil {
+	if err := writeExtractionMarker(filepath.Join(staging, extractionMarkerName), fingerprint, sourcePath, extractionMarker{}); err != nil {
 		return "", "", err
 	}
 	if err := os.Rename(staging, finalRoot); err != nil {
@@ -665,7 +749,7 @@ func (s *Service) validateExtractionSource(extractionRoot, fingerprint, sourcePa
 	if !strings.EqualFold(currentFingerprint, fingerprint) {
 		return ErrInvalidCapability
 	}
-	return writeExtractionMarker(markerPath, currentFingerprint, sourcePath)
+	return writeExtractionMarker(markerPath, currentFingerprint, sourcePath, marker)
 }
 
 func readExtractionMarker(markerPath string) (extractionMarker, error) {
@@ -687,16 +771,24 @@ func readExtractionMarker(markerPath string) (extractionMarker, error) {
 	return extractionMarker{}, ErrInvalidCapability
 }
 
-func writeExtractionMarker(markerPath, fingerprint, sourcePath string) error {
+// writeExtractionMarker records the source's current size and time; the cover
+// lookup of previous is kept because the extraction content is unchanged.
+func writeExtractionMarker(markerPath, fingerprint, sourcePath string, previous extractionMarker) error {
 	info, err := os.Stat(sourcePath)
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(extractionMarker{
-		Fingerprint: strings.ToLower(strings.TrimSpace(fingerprint)),
-		Size:        info.Size(),
-		ModTimeNano: info.ModTime().UnixNano(),
+	return writeExtractionMarkerValue(markerPath, extractionMarker{
+		Fingerprint:  strings.ToLower(strings.TrimSpace(fingerprint)),
+		Size:         info.Size(),
+		ModTimeNano:  info.ModTime().UnixNano(),
+		CoverPath:    previous.CoverPath,
+		CoverChecked: previous.CoverChecked,
 	})
+}
+
+func writeExtractionMarkerValue(markerPath string, marker extractionMarker) error {
+	data, err := json.Marshal(marker)
 	if err != nil {
 		return err
 	}

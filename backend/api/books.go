@@ -30,6 +30,7 @@ import (
 	"openreader/backend/services/chapterimage"
 	"openreader/backend/services/contentsearch"
 	"openreader/backend/services/epubreader"
+	"openreader/backend/services/umdcover"
 )
 
 type bookListItem struct {
@@ -125,11 +126,22 @@ func (s *Server) bookShelfListItems(userID uint, books []models.Book) []bookList
 }
 
 func (s *Server) projectBookShelfListItem(book models.Book, categoryIDs []uint, progress models.ReadingProgress, cachedChapterCount int64) bookListItem {
-	if strings.TrimSpace(book.CoverURL) == "" && strings.TrimSpace(book.CustomCoverURL) == "" && cbzreader.IsLocalCBZ(book) {
-		if prepared, err := s.cbzReader.PrepareCover(book); err == nil {
-			// This is an ephemeral, user/book/archive-scoped response projection.
-			// Do not save the capability into SQLite, archives, backups or events.
-			book.CoverURL = prepared.ResourceURL
+	if strings.TrimSpace(book.CoverURL) == "" && strings.TrimSpace(book.CustomCoverURL) == "" {
+		// These are ephemeral, user/book/archive-scoped response projections.
+		// Do not save the capabilities into SQLite, archives, backups or events.
+		switch {
+		case cbzreader.IsLocalCBZ(book):
+			if prepared, err := s.cbzReader.PrepareCover(book); err == nil {
+				book.CoverURL = prepared.ResourceURL
+			}
+		case epubreader.IsLocalEPUB(book):
+			if prepared, err := s.epubReader.PrepareCover(book); err == nil {
+				book.CoverURL = prepared.ResourceURL
+			}
+		case umdcover.IsLocalUMD(book):
+			if prepared, err := s.umdCovers.PrepareCover(book); err == nil {
+				book.CoverURL = prepared.ResourceURL
+			}
 		}
 	}
 	item := bookShelfListItem(book, categoryIDs, progress, cachedChapterCount)
