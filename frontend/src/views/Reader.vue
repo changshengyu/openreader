@@ -1273,6 +1273,19 @@ const effectiveReaderTextShadow = computed(() => readerTextShadow({
   hasBackgroundImage: Boolean(effectiveReaderBackgroundImage.value),
 }))
 
+// reader-dev Reader.vue / ReadSettings.vue `.night` chrome, keyed only on isNight.
+// Day leaves these unset so each component keeps its own day fallback.
+const NIGHT_CHROME_STYLE = Object.freeze({
+  '--reader-chrome-text': '#666',
+  '--reader-chrome-border': '#444',
+  '--reader-float-border': 'transparent',
+  '--reader-slider-accent': '#185798',
+  '--reader-settings-text': '#606266',
+  '--reader-settings-value-text': '#a6a6a6',
+  '--reader-theme-selected-border': '#666',
+  '--reader-moon-icon': '#ed4259',
+})
+
 const readerStyle = computed(() => ({
   '--reader-font-family': fontStack.value,
   '--reader-font-size': `${reader.fontSize}px`,
@@ -1288,10 +1301,11 @@ const readerStyle = computed(() => ({
   '--reader-text-shadow': effectiveReaderTextShadow.value,
   '--reader-page-border': effectiveReaderSurface.value.pageBorder,
   '--reader-page-shadow': effectiveReaderSurface.value.pageShadow,
-  '--reader-control-bg': reader.themeType === 'night' ? '#303030' : 'rgba(255, 255, 255, 0.5)',
-  '--reader-control-border': reader.themeType === 'night' ? '#565656' : 'rgba(0, 0, 0, 0.1)',
-  '--reader-accent': reader.themeType === 'night' ? '#ff7589' : '#ed4259',
+  '--reader-control-bg': reader.themeType === 'night' ? 'rgba(45, 45, 45, 0.5)' : 'rgba(255, 255, 255, 0.5)',
+  '--reader-control-border': reader.themeType === 'night' ? '#666' : 'rgba(0, 0, 0, 0.1)',
+  '--reader-accent': '#ed4259',
   '--reader-active-text': reader.themeType === 'night' ? '#7ed8d4' : '#0f5451',
+  ...(reader.themeType === 'night' ? NIGHT_CHROME_STYLE : {}),
   '--reader-font-weight': reader.fontWeight,
   '--reader-brightness': `${reader.brightness}%`,
   '--reader-dim-opacity': Math.max(0, 1 - reader.brightness / 100),

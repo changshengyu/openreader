@@ -44,7 +44,7 @@ defineEmits(['cache', 'cancel'])
   min-height: 44px;
   box-sizing: border-box;
   padding: 8px 14px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: inherit;
   border: 0;
   box-shadow: none;
@@ -66,7 +66,7 @@ defineEmits(['cache', 'cancel'])
 .reader-cache-status button {
   min-height: 30px;
   padding: 0 8px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: transparent;
   border: 0;
   cursor: pointer;

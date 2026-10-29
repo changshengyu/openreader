@@ -223,7 +223,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   align-content: center;
   gap: 2px;
   padding: 4px 2px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: transparent;
   border: 0;
   font-size: 12px;
@@ -258,9 +258,9 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   width: 38px;
   height: 38px;
   place-items: center;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: color-mix(in srgb, var(--reader-popup-bg) 96%, transparent);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--reader-float-border, rgba(255, 255, 255, 0.72));
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(73, 57, 27, 0.12);
 }
@@ -301,14 +301,14 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 76%, transparent);
+  color: var(--reader-chrome-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 76%, transparent));
   font-size: 12px;
 }
 
 .mobile-progress-slider {
   width: 100%;
   min-width: 0;
-  accent-color: #409eff;
+  accent-color: var(--reader-slider-accent, #409eff);
 }
 
 .mobile-cache-zone {
@@ -322,7 +322,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
   align-items: center;
   justify-content: center;
   gap: 2px;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   background: transparent;
   border: 0;
   font-size: 13px;
@@ -350,7 +350,7 @@ defineEmits(['action', 'page-progress-input', 'page-progress-change', 'cache', '
 }
 
 .mobile-chapter-progress span {
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
   font-size: 14px;
 }
 </style>
