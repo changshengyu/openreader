@@ -1,5 +1,14 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
+
+见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。
+内置夜间正文已是上游 `#666`，但工具与设置文字被 4.5:1 替换成纯白，强调色/控件面仍是可读性增强的 `#ff7589`/`#303030`/`#565656`。
+用户确认全部改回上游并对所有夜间方案生效：C1–C10 must-fix（`#666` 工具/标签、`#444` 格线、圆钮无边框、`#666` + `rgba(45, 45, 45, 0.5)`
+控件、`#606266`/`#a6a6a6` 设置文字/数值、主题色块 `#666`、`#ed4259`、滑块 `#185798`）；C11–C14 acceptable-change；列表文字、
+朗读条、全局 Element 夜间覆盖另起。计划红测：`readerStyle` 夜间变量组与日间对照、各组件变量与日间回退源码合同；浏览器三视口 + iPad
+computed style。状态 contract-only。
+
 ## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
 
 见[`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。

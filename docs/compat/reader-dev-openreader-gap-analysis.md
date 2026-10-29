@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
+
+日夜切片（`b3164e3`）把内置夜间阅读面改回上游后，工具按钮与设置面板仍是 2026-07 夜间对比度合同的可读性配色：强调色 `#ff7589`、
+控件面 `#303030`/`#565656`，而且弹层文字按 4.5:1 替换，内置夜间正文是 `#666`、工具与设置文字却是纯白。上游夜间控件只看 `isNight`：
+工具图标/文字 `#666`、工具格线 `#444`、圆钮无边框、设置选项与步进器 `#666` 边框 + `rgba(45, 45, 45, 0.5)`、设置文字 `#606266`、
+数值 `#a6a6a6`、主题色块 `#666`、强调色 `#ed4259`、滑块 `#185798`。用户确认全部改回上游、对所有夜间方案生效（C1–C10
+**`must-fix`**）；悬停/开启高亮（保留 `#7ed8d4`）、日夜共用的分隔线/半透明栏、原生滑块未读段、设置分隔线为 `acceptable-change`；
+目录/书架/换源列表文字、朗读条、全局 Element 夜间覆盖另起切片。完整合同见
+[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
 
 日夜/导入切片回归时 Go 依赖公告门失败关闭：`unreviewed advisory GO-2026-6860`（CVE-2026-78661，2026-10-27 公开），
