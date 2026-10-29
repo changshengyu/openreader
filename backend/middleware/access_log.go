@@ -13,6 +13,7 @@ var capabilityResourceLogPrefixes = []string{
 	"/api/audio-resource/",
 	"/api/chapter-image/",
 	"/api/cover/",
+	"/api/umd-cover/",
 }
 
 func AccessLogger() gin.HandlerFunc {

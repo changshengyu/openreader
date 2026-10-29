@@ -26,6 +26,7 @@ import (
 	"openreader/backend/services/scheduler"
 	"openreader/backend/services/sourcecandidates"
 	"openreader/backend/services/sourcefailure"
+	"openreader/backend/services/umdcover"
 	readersync "openreader/backend/sync"
 )
 
@@ -48,6 +49,7 @@ type Server struct {
 	sourceCandidates *sourcecandidates.Service
 	remoteReaders    *remotereader.Store
 	sessions         *authsession.Service
+	umdCovers        *umdcover.Service
 	assetStore       *assetservice.Store
 	registerMu       sync.Mutex
 	remoteCacheMu    sync.Mutex
@@ -79,6 +81,7 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 		sourceCandidates: sourcecandidates.New(database),
 		remoteReaders:    remotereader.NewStore(remotereader.DefaultLimits(), nil),
 		sessions:         authsession.New(database, cfg.JWTSecret),
+		umdCovers:        umdcover.New(cfg, database),
 		assetStore:       assetservice.NewStore(cfg.DataDir),
 		assetLocks:       make(map[uint]*userAssetGate),
 	}
@@ -97,6 +100,8 @@ func RegisterRoutes(router *gin.Engine, cfg config.Config, database *gorm.DB, hu
 	api.HEAD("/chapter-image/:capability", server.chapterImageResource)
 	api.GET("/cover/:capability", server.coverImageResource)
 	api.HEAD("/cover/:capability", server.coverImageResource)
+	api.GET("/umd-cover/:capability", server.umdCover)
+	api.HEAD("/umd-cover/:capability", server.umdCover)
 
 	auth := api.Group("/auth")
 	auth.POST("/register", server.register)

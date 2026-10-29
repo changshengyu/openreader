@@ -2,6 +2,7 @@ package localbook
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -116,7 +117,24 @@ func (importer Importer) Prepare(request ImportRequest) (PreviewResult, Prepared
 	}
 	prepared := NewPreparedImport(request, parsedBook)
 	prepared.EPUBCatalogOnly = normalizedLocalBookExtension(request.Extension) == ".epub"
-	return previewResult(request, parsedBook), prepared, nil
+	preview := previewResult(request, parsedBook)
+	preview.CoverURL = previewCoverURL(request, parsedBook, importer.parseLimits())
+	return preview, prepared, nil
+}
+
+// maxPreviewCoverBytes bounds the cover image inlined into an import preview;
+// a larger cover shows only after the import.
+const maxPreviewCoverBytes = 2 << 20
+
+// previewCoverURL is the cover reader-dev writes during preview
+// (Book.initLocalBook → updateFromLocal) and shows in the import dialog,
+// inlined as a data URL because the book does not exist yet.
+func previewCoverURL(request ImportRequest, parsedBook engine.ParsedBook, limits engine.LocalBookParseLimits) string {
+	contentType, image, ok := engine.LocalBookCoverImage(normalizedLocalBookExtension(request.Extension), request.Data, parsedBook, limits, maxPreviewCoverBytes)
+	if !ok {
+		return ""
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(image)
 }
 
 func NewPreparedImport(request ImportRequest, parsedBook engine.ParsedBook) PreparedImport {

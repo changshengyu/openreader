@@ -9,6 +9,7 @@ import (
 	"io"
 	"path/filepath"
 
+	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/rootedfs"
 )
@@ -48,7 +49,14 @@ func (s *Service) PrepareImportedResources(book models.Book, tree *rootedfs.Owne
 	if err := extractZipReaderOwned(reader, tree, prefix, s.limits); err != nil {
 		return err
 	}
-	marker, err := json.Marshal(extractionMarker{Fingerprint: fingerprint, Size: info.Size(), ModTimeNano: info.ModTime().UnixNano()})
+	coverPath, err := engine.EPUBCoverImagePathFromZip(reader, engine.DefaultLocalBookParseLimits())
+	if err != nil {
+		coverPath = ""
+	}
+	marker, err := json.Marshal(extractionMarker{
+		Fingerprint: fingerprint, Size: info.Size(), ModTimeNano: info.ModTime().UnixNano(),
+		CoverPath: coverPath, CoverChecked: true,
+	})
 	if err != nil {
 		return err
 	}

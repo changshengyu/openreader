@@ -322,6 +322,8 @@ function normalizePreviewRows(items) {
         ? String(book.title || item?.title || fileNameWithoutExtension(item?.path) || '')
         : String(item?.title || ''),
       author: String(book.author || item?.author || ''),
+      // reader-dev shows the cover written during preview in the import dialog.
+      coverUrl: String(book.coverUrl || ''),
       tocRule: String(item?.tocRule || (isEPUBLocalPath(item?.path) ? 'spin+toc' : '')),
       detectedTocRule: String(book.tocRule || ''),
       chapterCount: Number(book.chapterCount || 0),
@@ -345,6 +347,7 @@ function applyPreviewResult(row, result) {
   if (result?.book) {
     row.title = String(book.title || row.title)
     row.author = String(book.author || row.author)
+    row.coverUrl = String(book.coverUrl || '')
     row.detectedTocRule = String(book.tocRule || '')
     row.chapterCount = Number(book.chapterCount || 0)
     row.chapters = Array.isArray(book.chapters) ? book.chapters : []
