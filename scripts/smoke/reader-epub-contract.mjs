@@ -482,20 +482,18 @@ async function assertCurrentEpubParagraphBookmark(page, viewport) {
   }
 }
 
-async function assertBuiltInNightSurface(page, frame, viewport) {
-  const toggleSelector = viewport.width <= 750
-    ? '.reader-mobile-float-right.visible button[title="夜间模式"]'
-    : '.reader-right-rail button[title="夜间模式"]'
-  await page.locator(toggleSelector).click()
-  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
-  await frame.locator('html.openreader-built-in-night').waitFor({ timeout: 10_000 })
-
-  const parentState = await page.evaluate(() => {
+// 2026-10-29 user decision: the moon applies reader-dev's theme 6 — #121212 +
+// body_6 outside, #171717 + content_6 page, #666 text — and, like upstream,
+// leaves EPUB author surfaces alone. The pure-black takeover of author
+// surfaces stays for custom pure-black night (runCustomBlackNightViewport).
+async function readerSurfaceState(page) {
+  return page.evaluate(() => {
     const shell = document.querySelector('.reader-shell')
     const page = document.querySelector('.reader-page')
     const iframe = document.querySelector('iframe.epub-iframe')
     const style = element => window.getComputedStyle(element)
     return {
+      blackNightSurface: shell.classList.contains('black-night-surface'),
       shellBackground: style(shell).backgroundColor,
       shellImage: style(shell).backgroundImage,
       pageBackground: style(page).backgroundColor,
@@ -504,65 +502,18 @@ async function assertBuiltInNightSurface(page, frame, viewport) {
       iframeBackground: style(iframe).backgroundColor,
     }
   })
-  assert.deepEqual(parentState, {
-    shellBackground: 'rgb(0, 0, 0)',
-    shellImage: 'none',
-    pageBackground: 'rgb(0, 0, 0)',
-    pageImage: 'none',
-    pageColor: 'rgb(255, 255, 255)',
-    iframeBackground: 'rgb(0, 0, 0)',
-  }, `${viewport.width}: built-in night parent surfaces`)
+}
 
-  const frameState = await frame.locator('body').evaluate((body) => {
-    const nodes = {
-      html: document.documentElement,
-      body,
-      main: document.querySelector('#author-surface'),
-      card: document.querySelector('#author-card'),
-      text: document.querySelector('#author-text'),
-      table: document.querySelector('#author-table'),
-      cell: document.querySelector('#author-cell'),
-    }
-    const state = Object.fromEntries(Object.entries(nodes).map(([name, node]) => {
-      const style = getComputedStyle(node)
-      return [name, {
-        color: style.color,
-        backgroundColor: style.backgroundColor,
-        backgroundImage: style.backgroundImage,
-        boxShadow: style.boxShadow,
-      }]
-    }))
-    const bodyBefore = getComputedStyle(body, '::before')
-    state.bodyBefore = {
-      backgroundColor: bodyBefore.backgroundColor,
-      backgroundImage: bodyBefore.backgroundImage,
-    }
-    return state
-  })
-  for (const root of ['html', 'body']) {
-    assert.equal(frameState[root].color, 'rgb(255, 255, 255)', `${viewport.width}: EPUB ${root} text`)
-    assert.equal(frameState[root].backgroundColor, 'rgb(0, 0, 0)', `${viewport.width}: EPUB ${root} background`)
-    assert.equal(frameState[root].backgroundImage, 'none', `${viewport.width}: EPUB ${root} image`)
-  }
-  for (const descendant of ['main', 'card', 'text', 'table', 'cell']) {
-    assert.equal(frameState[descendant].color, 'rgb(255, 255, 255)', `${viewport.width}: EPUB ${descendant} text`)
-    assert.equal(frameState[descendant].backgroundColor, 'rgb(0, 0, 0)', `${viewport.width}: EPUB ${descendant} background`)
-    assert.equal(frameState[descendant].backgroundImage, 'none', `${viewport.width}: EPUB ${descendant} image`)
-    assert.equal(frameState[descendant].boxShadow, 'none', `${viewport.width}: EPUB ${descendant} shadow`)
-  }
-  assert.equal(frameState.bodyBefore.backgroundColor, 'rgba(0, 0, 0, 0)', `${viewport.width}: EPUB body pseudo background`)
-  assert.equal(frameState.bodyBefore.backgroundImage, 'none', `${viewport.width}: EPUB body pseudo image`)
-
-  const dayToggleSelector = viewport.width <= 750
-    ? '.reader-mobile-float-right.visible button[title="日间模式"]'
-    : '.reader-right-rail button[title="日间模式"]'
-  await page.locator(dayToggleSelector).click()
-  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
-  await frame.locator('html.openreader-built-in-night').waitFor({ state: 'detached', timeout: 10_000 })
-  const restored = await frame.locator('#author-surface').evaluate((main) => {
+async function epubAuthorSurfaceState(frame) {
+  return frame.locator('#author-surface').evaluate((main) => {
     const text = document.querySelector('#author-text')
     const bodyBefore = getComputedStyle(document.body, '::before')
     return {
+      htmlColor: getComputedStyle(document.documentElement).color,
+      htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
+      bodyColor: getComputedStyle(document.body).color,
+      bodyBackground: getComputedStyle(document.body).backgroundColor,
+      bodyImage: getComputedStyle(document.body).backgroundImage,
       mainBackground: getComputedStyle(main).backgroundColor,
       mainImage: getComputedStyle(main).backgroundImage,
       textBackground: getComputedStyle(text).backgroundColor,
@@ -571,12 +522,58 @@ async function assertBuiltInNightSurface(page, frame, viewport) {
       bodyBeforeImage: bodyBefore.backgroundImage,
     }
   })
-  assert.equal(restored.mainBackground, 'rgb(255, 255, 255)', `${viewport.width}: EPUB author main background must restore`)
-  assert.notEqual(restored.mainImage, 'none', `${viewport.width}: EPUB author gradient must restore`)
-  assert.equal(restored.textBackground, 'rgb(254, 254, 254)', `${viewport.width}: EPUB author inline background must restore`)
-  assert.equal(restored.textColor, 'rgb(17, 17, 17)', `${viewport.width}: EPUB author inline text must restore`)
-  assert.equal(restored.bodyBeforeBackground, 'rgb(255, 255, 255)', `${viewport.width}: EPUB author body pseudo background must restore`)
-  assert.notEqual(restored.bodyBeforeImage, 'none', `${viewport.width}: EPUB author body pseudo image must restore`)
+}
+
+async function waitForEPUBRootColor(frame, color, viewport) {
+  const deadline = Date.now() + 10_000
+  let state
+  while (Date.now() < deadline) {
+    state = await epubAuthorSurfaceState(frame)
+    if (state.htmlColor === color && state.bodyColor === color) return state
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  assert.fail(`${viewport.width}: EPUB root text never became ${color}: ${JSON.stringify(state)}`)
+}
+
+function assertEPUBAuthorSurfacesKept(state, viewport, label) {
+  assert.equal(state.mainBackground, 'rgb(255, 255, 255)', `${viewport.width}: ${label} EPUB author main background`)
+  assert.notEqual(state.mainImage, 'none', `${viewport.width}: ${label} EPUB author gradient`)
+  assert.equal(state.textBackground, 'rgb(254, 254, 254)', `${viewport.width}: ${label} EPUB author inline background`)
+  assert.equal(state.textColor, 'rgb(17, 17, 17)', `${viewport.width}: ${label} EPUB author inline text`)
+  assert.equal(state.bodyBeforeBackground, 'rgb(255, 255, 255)', `${viewport.width}: ${label} EPUB author body pseudo background`)
+  assert.notEqual(state.bodyBeforeImage, 'none', `${viewport.width}: ${label} EPUB author body pseudo image`)
+}
+
+async function assertBuiltInNightSurface(page, frame, viewport) {
+  const toggleSelector = viewport.width <= 750
+    ? '.reader-mobile-float-right.visible button[title="夜间模式"]'
+    : '.reader-right-rail button[title="夜间模式"]'
+  await page.locator(toggleSelector).click()
+  await page.waitForFunction(() => window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
+
+  const parentState = await readerSurfaceState(page)
+  assert.equal(parentState.blackNightSurface, false, `${viewport.width}: built-in night must not take over author surfaces`)
+  assert.equal(parentState.shellBackground, 'rgb(18, 18, 18)', `${viewport.width}: built-in night body color`)
+  assert.match(parentState.shellImage, /body_6\.png/, `${viewport.width}: built-in night body texture`)
+  assert.equal(parentState.pageBackground, 'rgb(23, 23, 23)', `${viewport.width}: built-in night page color`)
+  assert.match(parentState.pageImage, /content_6\.png/, `${viewport.width}: built-in night page texture`)
+  assert.equal(parentState.pageColor, 'rgb(102, 102, 102)', `${viewport.width}: built-in night text`)
+  assert.equal(parentState.iframeBackground, 'rgb(23, 23, 23)', `${viewport.width}: built-in night EPUB frame`)
+  assert.equal(await frame.locator('html.openreader-built-in-night').count(), 0, `${viewport.width}: built-in night EPUB takeover marker`)
+
+  const nightFrame = await waitForEPUBRootColor(frame, 'rgb(102, 102, 102)', viewport)
+  assert.equal(nightFrame.htmlBackground, 'rgb(23, 23, 23)', `${viewport.width}: EPUB html background`)
+  assert.equal(nightFrame.bodyBackground, 'rgb(23, 23, 23)', `${viewport.width}: EPUB body background`)
+  assert.equal(nightFrame.bodyImage, 'none', `${viewport.width}: EPUB body image`)
+  assertEPUBAuthorSurfacesKept(nightFrame, viewport, 'built-in night')
+
+  const dayToggleSelector = viewport.width <= 750
+    ? '.reader-mobile-float-right.visible button[title="日间模式"]'
+    : '.reader-right-rail button[title="日间模式"]'
+  await page.locator(dayToggleSelector).click()
+  await page.waitForFunction(() => !window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
+  const restored = await waitForEPUBRootColor(frame, 'rgb(38, 38, 38)', viewport)
+  assertEPUBAuthorSurfacesKept(restored, viewport, 'day')
 }
 
 async function assertFrameContract(page, viewport, resourceResponses) {

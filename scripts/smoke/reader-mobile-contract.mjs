@@ -1449,57 +1449,55 @@ async function assertInlineDesktopCacheZone(page) {
   assert(state.visibleDrawers === 0, 'desktop: cache must not use a drawer')
 }
 
+// 2026-10-29 user decision: the moon applies reader-dev's theme 6 — #121212 +
+// body_6 outside, #171717 + content_6 page, #666 text — without the pure-black
+// inline takeover, which stays for custom pure-black night (runCustomBlackNightViewport).
 async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
+  const markBackground = () => page.locator('.reader-body [data-reader-block] mark')
+    .evaluate(element => window.getComputedStyle(element).backgroundColor)
+  const dayMarkBackground = await markBackground()
   const nightToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="夜间模式"]')
     : page.locator('.reader-right-rail button[title="夜间模式"]')
   await nightToggle.click()
-  await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
+  await page.waitForFunction(() => window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
 
   const state = await page.evaluate(() => {
     const shell = document.querySelector('.reader-shell')
     const page = document.querySelector('.reader-page')
     const paragraph = document.querySelector('.reader-body [data-reader-block]')
-    const mark = paragraph?.querySelector('mark')
-    const span = paragraph?.querySelector('span')
     const style = element => window.getComputedStyle(element)
     return {
+      blackNightSurface: shell.classList.contains('black-night-surface'),
       shellBackground: style(shell).backgroundColor,
       shellImage: style(shell).backgroundImage,
       pageBackground: style(page).backgroundColor,
       pageImage: style(page).backgroundImage,
       paragraphColor: style(paragraph).color,
       paragraphBackground: style(paragraph).backgroundColor,
-      markColor: style(mark).color,
-      markBackground: style(mark).backgroundColor,
-      spanColor: style(span).color,
-      spanBackground: style(span).backgroundColor,
     }
   })
   const expected = {
-    shellBackground: 'rgb(0, 0, 0)',
-    shellImage: 'none',
-    pageBackground: 'rgb(0, 0, 0)',
-    pageImage: 'none',
-    paragraphColor: 'rgb(255, 255, 255)',
-    paragraphBackground: 'rgb(0, 0, 0)',
-    markColor: 'rgb(255, 255, 255)',
-    markBackground: 'rgb(0, 0, 0)',
-    spanColor: 'rgb(255, 255, 255)',
-    spanBackground: 'rgb(0, 0, 0)',
+    blackNightSurface: false,
+    shellBackground: 'rgb(18, 18, 18)',
+    pageBackground: 'rgb(23, 23, 23)',
+    paragraphColor: 'rgb(102, 102, 102)',
+    paragraphBackground: 'rgba(0, 0, 0, 0)',
   }
   for (const [key, value] of Object.entries(expected)) {
     assert(state[key] === value, `${viewport.width}: built-in night ${key} expected ${value}, got ${state[key]}`)
   }
+  assert(state.shellImage.includes('body_6.png'), `${viewport.width}: built-in night body texture ${state.shellImage}`)
+  assert(state.pageImage.includes('content_6.png'), `${viewport.width}: built-in night page texture ${state.pageImage}`)
+  assert(await markBackground() === dayMarkBackground, `${viewport.width}: built-in night must not take over inline mark surfaces`)
 
   const dayToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
     : page.locator('.reader-right-rail button[title="日间模式"]')
   await dayToggle.click()
-  await page.waitForFunction(() => !document.querySelector('.reader-shell')?.classList.contains('black-night-surface'))
-  const restoredMarkBackground = await page.locator('.reader-body [data-reader-block] mark')
-    .evaluate(element => window.getComputedStyle(element).backgroundColor)
-  assert(restoredMarkBackground !== 'rgba(0, 0, 0, 0)', `${viewport.width}: day mark surface must restore`)
+  await page.waitForFunction(() => !window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
+  const restoredMarkBackground = await markBackground()
+  assert(restoredMarkBackground === dayMarkBackground, `${viewport.width}: day mark surface must restore`)
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
   if (mobile) {

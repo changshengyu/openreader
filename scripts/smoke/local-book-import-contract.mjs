@@ -69,9 +69,18 @@ async function setDirectFiles(page, files) {
   await page.locator('.direct-import-picker-dialog').waitFor({ state: 'hidden' })
 }
 
+// The confirmation dialog mirrors reader-dev Index.vue: labelled 书名/作者/分组/规则 rows.
+function importField(dialog, label) {
+  return dialog.locator('.storage-import-field').filter({ hasText: label })
+}
+
+function titleInput(dialog) {
+  return importField(dialog, '书名：').locator('input')
+}
+
 async function selectCategory(page, dialogSelector) {
   const dialog = page.locator(dialogSelector)
-  await dialog.locator('.storage-import-single-form > .el-select').first().click()
+  await importField(dialog, '分组：').locator('.el-select').click()
   await page.getByText('导入组', { exact: true }).last().click()
   await page.keyboard.press('Escape')
 }
@@ -192,10 +201,10 @@ async function runViewport(browser, viewport) {
     }])
     const raceDialog = page.locator('.storage-import-single-dialog')
     await raceDialog.waitFor()
-    assert(await raceDialog.getByPlaceholder('书名').inputValue() === 'second-race', `${viewport.width}: replacement preview did not win`)
+    assert(await titleInput(raceDialog).inputValue() === 'second-race', `${viewport.width}: replacement preview did not win`)
     releaseFirstRaceResolve()
     await page.waitForTimeout(150)
-    assert(await raceDialog.getByPlaceholder('书名').inputValue() === 'second-race', `${viewport.width}: cancelled preview overwrote the new batch`)
+    assert(await titleInput(raceDialog).inputValue() === 'second-race', `${viewport.width}: cancelled preview overwrote the new batch`)
     await raceDialog.getByRole('button', { name: '取消', exact: true }).click()
     await raceDialog.waitFor({ state: 'hidden' })
 
@@ -209,12 +218,12 @@ async function runViewport(browser, viewport) {
     const singleDialog = page.locator('.storage-import-single-dialog')
     await singleDialog.waitFor()
     if (viewport.width <= 750) await assertFullscreen(page, '.storage-import-single-dialog', `${viewport.width} single`)
-    await singleDialog.locator('.storage-import-rule-row .el-select').click()
+    await singleDialog.locator('.storage-import-rule-controls .el-select').click()
     await page.getByText('数字(纯数字标题)', { exact: true }).last().click()
     await singleDialog.getByRole('button', { name: '刷新目录', exact: true }).click()
-    await singleDialog.getByText('章节列表（2）', { exact: true }).waitFor()
+    await singleDialog.getByText('章节列表(2)', { exact: true }).waitFor()
     const singleTitle = `单本导入-${viewport.width}`
-    await singleDialog.getByPlaceholder('书名').fill(singleTitle)
+    await titleInput(singleDialog).fill(singleTitle)
     await selectCategory(page, '.storage-import-single-dialog')
     await singleDialog.getByRole('button', { name: '确定导入', exact: true }).click()
     await singleDialog.waitFor({ state: 'hidden' })
@@ -260,7 +269,7 @@ async function runViewport(browser, viewport) {
     await singleDialog.getByRole('button', { name: '取消', exact: true }).click()
     await singleDialog.getByText('导入本地书籍（2/2）', { exact: true }).waitFor()
     const sequentialTitle = `逐本第二本-${viewport.width}`
-    await singleDialog.getByPlaceholder('书名').fill(sequentialTitle)
+    await titleInput(singleDialog).fill(sequentialTitle)
     await singleDialog.getByRole('button', { name: '确定导入', exact: true }).click()
     await singleDialog.waitFor({ state: 'hidden' })
     await page.getByText(sequentialTitle, { exact: true }).first().waitFor()
