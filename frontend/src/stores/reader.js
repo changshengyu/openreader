@@ -13,6 +13,11 @@ import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThem
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
 let readerSettingsSyncTimer
+// The moon/sun choice made on this device while automatic switching is on.
+// Like reader-dev's in-browser config it lasts until reload, a system
+// color-scheme change or automatic switching being turned on again; it is
+// neither persisted nor synced.
+let deviceManualNight = null
 let readerSettingsPendingRemoteUpdatedAt = ''
 let readerSettingsPendingRemoteUnknown = false
 const READER_CLIENT_ID = readerClientId()
@@ -178,6 +183,7 @@ export const useReaderStore = defineStore('reader', {
     },
     resetReaderSettingsState(scope = currentUserScope()) {
       clearTimeout(readerSettingsSyncTimer)
+      deviceManualNight = null
       readerSettingsPendingRemoteUpdatedAt = ''
       readerSettingsPendingRemoteUnknown = false
       readerSettingsOperations.reset()
@@ -240,6 +246,7 @@ export const useReaderStore = defineStore('reader', {
       return { ok: true }
     },
     setAutoTheme(autoTheme) {
+      if (autoTheme) deviceManualNight = null
       this.autoTheme = Boolean(autoTheme)
       this.markSettingsDirty({ skipCustomConfigSync: true })
     },
@@ -251,9 +258,13 @@ export const useReaderStore = defineStore('reader', {
     },
     followDeviceColorScheme() {
       if (!this.autoTheme) return false
-      const prefersDark = systemPrefersDarkColorScheme()
+      const prefersDark = deviceManualNight ?? systemPrefersDarkColorScheme()
       if (prefersDark === null) return false
       return this.applyAutoTheme(prefersDark)
+    },
+    followSystemColorSchemeChange() {
+      deviceManualNight = null
+      return this.followDeviceColorScheme()
     },
     setNightTheme(isNight, options = {}) {
       const type = isNight ? '黑夜默认' : '白天默认'
@@ -275,6 +286,7 @@ export const useReaderStore = defineStore('reader', {
       this.customConfigName = config.name
       this.normalizeSettings()
       this.markSettingsDirty({ skipCustomConfigSync: true, localOnly: options.deviceLocal === true })
+      if (options.deviceLocal !== true) deviceManualNight = Boolean(isNight)
       return true
     },
     setPageType(pageType) {

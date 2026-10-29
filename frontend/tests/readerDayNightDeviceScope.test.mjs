@@ -92,7 +92,8 @@ function freshReader({ dark = false } = {}) {
   storage.setItem('openreader_token', tokenFor(1))
   setActivePinia(createPinia())
   const reader = useReaderStore()
-  reader.ensureReaderSettingsScope()
+  // A fresh page session: default settings and no device-local manual choice.
+  reader.resetReaderSettingsState()
   return reader
 }
 

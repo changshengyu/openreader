@@ -97,9 +97,9 @@ onBeforeUnmount(() => {
   }
   if (!systemThemeMedia) return
   if (typeof systemThemeMedia.removeEventListener === 'function') {
-    systemThemeMedia.removeEventListener('change', applyAutoThemeFromSystem)
+    systemThemeMedia.removeEventListener('change', handleSystemThemeChange)
   } else if (typeof systemThemeMedia.removeListener === 'function') {
-    systemThemeMedia.removeListener(applyAutoThemeFromSystem)
+    systemThemeMedia.removeListener(handleSystemThemeChange)
   }
 })
 
@@ -142,10 +142,14 @@ function setupAutoThemeListener() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
   systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
   if (typeof systemThemeMedia.addEventListener === 'function') {
-    systemThemeMedia.addEventListener('change', applyAutoThemeFromSystem)
+    systemThemeMedia.addEventListener('change', handleSystemThemeChange)
   } else if (typeof systemThemeMedia.addListener === 'function') {
-    systemThemeMedia.addListener(applyAutoThemeFromSystem)
+    systemThemeMedia.addListener(handleSystemThemeChange)
   }
+}
+
+function handleSystemThemeChange() {
+  readerStore.followSystemColorSchemeChange()
 }
 
 function applyAutoThemeFromSystem() {
