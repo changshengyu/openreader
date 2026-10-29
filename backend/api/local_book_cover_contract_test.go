@@ -23,6 +23,11 @@ var localBookCoverJPEG = append([]byte{0xff, 0xd8, 0xff, 0xe0}, []byte("reader-d
 
 func localBookCoverEPUB(t *testing.T, withCover bool) []byte {
 	t.Helper()
+	return localBookCoverEPUBWithImage(t, withCover, localBookCoverJPEG)
+}
+
+func localBookCoverEPUBWithImage(t *testing.T, withCover bool, image []byte) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	write := func(name string, data []byte) {
@@ -43,7 +48,7 @@ func localBookCoverEPUB(t *testing.T, withCover bool) []byte {
 <manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/></manifest>
 <spine><itemref idref="c1"/></spine></package>`))
 	write("OEBPS/c1.xhtml", []byte(`<html><head><title>第一章</title></head><body><p>正文</p></body></html>`))
-	write("OEBPS/images/cover.jpg", localBookCoverJPEG)
+	write("OEBPS/images/cover.jpg", image)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -296,5 +301,86 @@ func TestUMDCoverCapabilityRejectsTamperingAndDeletedBooks(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("a deleted book's UMD cover: expected 404, got %d", response.Code)
+	}
+}
+
+// A LocalStore/WebDAV preview carries up to 200 books, so their inline covers
+// share one 8 MiB response budget (contract A7); a single-row reparse gets a
+// fresh budget.
+func TestBatchPreviewCoversShareOneResponseBudget(t *testing.T) {
+	router, server := setupTestServer(t)
+	auth := authHeader(t, router)
+	if err := os.MkdirAll(server.cfg.LocalStoreDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	largeCover := append(append([]byte(nil), localBookCoverJPEG...), bytes.Repeat([]byte{0x42}, 3<<19)...)
+	paths := make([]string, 0, 6)
+	for index := 0; index < 6; index++ {
+		name := "大封面" + strconv.Itoa(index) + ".epub"
+		if err := os.WriteFile(filepath.Join(server.cfg.LocalStoreDir, name), localBookCoverEPUBWithImage(t, true, largeCover), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, name)
+	}
+	type previewItems struct {
+		Items []struct {
+			Path        string `json:"path"`
+			Error       string `json:"error"`
+			ImportToken string `json:"importToken"`
+			Book        struct {
+				CoverURL string `json:"coverUrl"`
+			} `json:"book"`
+		} `json:"items"`
+	}
+	preview := func(body any) previewItems {
+		t.Helper()
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/local-store/import-preview", bytes.NewReader(encoded))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", auth)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("LocalStore preview: %d %s", response.Code, response.Body.String())
+		}
+		var result previewItems
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	batch := preview(map[string]any{"paths": paths})
+	if len(batch.Items) != len(paths) {
+		t.Fatalf("preview items = %d, want %d", len(batch.Items), len(paths))
+	}
+	total, coverless := 0, -1
+	for index, item := range batch.Items {
+		if item.Error != "" || item.ImportToken == "" {
+			t.Fatalf("item %d must still preview: %+v", index, item.Error)
+		}
+		total += len(item.Book.CoverURL)
+		if item.Book.CoverURL == "" && coverless < 0 {
+			coverless = index
+		}
+	}
+	if total > 8<<20 {
+		t.Fatalf("inline preview covers = %d bytes in one response, want at most 8 MiB", total)
+	}
+	if !strings.HasPrefix(batch.Items[0].Book.CoverURL, "data:image/jpeg;base64,") {
+		t.Fatal("the first row must keep its preview cover")
+	}
+	if coverless < 0 {
+		t.Fatal("rows beyond the response budget must fall back to the default cover")
+	}
+
+	reparse := preview(map[string]any{"items": []map[string]string{{
+		"path": batch.Items[coverless].Path, "importToken": batch.Items[coverless].ImportToken,
+	}}})
+	if len(reparse.Items) != 1 || !strings.HasPrefix(reparse.Items[0].Book.CoverURL, "data:image/jpeg;base64,") {
+		t.Fatalf("a single-row reparse must bring the cover back: %+v", reparse.Items)
 	}
 }
