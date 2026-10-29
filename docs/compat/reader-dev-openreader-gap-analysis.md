@@ -1,5 +1,27 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-29 P1 本地书导入：书名/作者/简介/目录规则自动识别
+
+上游导入本地书时先按文件名用四个正则（`《书名》作者：X`、`X《书名》`、`书名 作者：X`、`书名 by X`，再退到删除“作者…/X 著”）拆出
+书名和作者；直接上传先删 `\/:*?"<>|.` 并截到 50 个 UTF-16 单元，书仓/WebDAV 用原名。EPUB 再用第一个 `dc:title`、`dc:creator`
+（epublib“姓, 名”格式）和 `dc:description` 覆盖，UMD 读书名/作者/类型，TXT 把自动选中的目录规则写回 `tocUrl` 并显示在确认框的规则文本框里。
+OpenReader 没有文件名解析：用户的 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt` 在上游是书名 `前浪(校对加料版全本 1-425)`、作者
+`刀一耕`，在 OpenReader 整名当书名、作者为空，reader-dev 备份里的占位书也因此无法按书名+作者回填。用 `eclipse-temurin:21-jdk`
+离线移植上游逻辑实测 26 个文件名与 6 个 EPUB 作者作为夹具。M1–M7 为 **`must-fix`**；EPUB/UMD 封面图片（M8）另起切片。完整合同见
+[`local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md`](local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
+## 2026-10-29 P1 Reader 日间/夜间：按设备跟随系统与内置夜间配色
+
+上游日/夜只存在本浏览器，自动切换只看本机系统深浅色。OpenReader 的阅读设置是账号级并实时广播，自动切换的结果也会写入账号：
+一台设备启动或系统变色后，另一台设备被带着切换（用户确认遇到的就是这个），而且开着自动切换时每次打开页面都写一次设置。
+N1–N4 为 **`must-fix`**：自动套用只在本设备生效，收到账号设置后按本机系统复核，启动即按系统套用；手动切换写账号、自动切换开关账号级、
+缺少默认方案时回退内置方案为 `acceptable-change`。用户同时决定内置夜间配色改回上游：`body_6`/`content_6` 暗纹理、浮窗 `#121212`、
+正文 `#666`、不做对比度替换、页面边框 `#444`（P1–P5），旧默认 `#ffffff` 在设置版本 15 规范化为 `#666666`（P6）；自定义方案、隐藏
+`black` 主题、日间主题与夜间控件色不变。完整合同见
+[`reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md`](reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-10-25 P1 文本编码识别：日文/韩文与单字节编码（E4/E8）
 
 OpenReader 只有 `gb18030`、`big5`、`shift_jis`、`euc-kr` 四个旧编码候选，自写评分偏向“解出汉字多”的结果：Shift_JIS 日文、

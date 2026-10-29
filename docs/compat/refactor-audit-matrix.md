@@ -1,5 +1,22 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-29 当前切片：本地书导入的书名/作者/简介/目录规则自动识别（P1，M1–M7）
+
+见[`local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md`](local-book-import-metadata-recognition-fixed-baseline-second-audit-p1-contract.md)。
+上游按文件名四个正则拆书名/作者（直接上传先删 `\/:*?"<>|.` 并截 50 个 UTF-16 单元），EPUB 用 `dc:title`/`dc:creator`（“姓, 名”）/
+`dc:description` 覆盖，UMD 读类型，TXT 回显并保存自动选中的目录规则；OpenReader 都没有。用户 `前浪(校对加料版全本 1-425) 作者：刀一耕.txt`
+上游为书名+作者“刀一耕”，OpenReader 整名当书名。M1–M7 must-fix，M8（EPUB/UMD 封面图片）另起切片，A1–A5 acceptable-change。计划红测：
+engine 26 个文件名×两种来源与 6 个 EPUB 作者（Java 实测夹具），localbook 四种格式元数据，api 直接/书仓/占位回填，前端确认框与工作流。
+状态 contract-only。
+
+## 2026-10-29 当前切片：Reader 日间/夜间按设备跟随系统与内置夜间配色（P1，N1–N4、P1–P6）
+
+见[`reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md`](reader-day-night-device-scope-and-palette-fixed-baseline-second-audit-p1-contract.md)。
+自动切换结果写入账号并广播，其它设备被带着切换、每次打开都写一次设置（用户确认遇到）；上游日/夜只在本设备。N1–N4 must-fix：自动套用只改本设备、
+收到账号设置后按本机系统复核、启动即按系统套用。用户决定内置夜间改回上游暗纹理 + `#666` 正文（P1–P5），旧默认白字在设置版本 15 规范化（P6）；
+N5–N7 acceptable-change；自定义方案、隐藏 `black`、日间主题、夜间控件色不变。计划红测：store 自动套用不写服务端、收到账号设置后按系统复核、
+启动顺序源码合同、内置夜间配色与 P6 迁移；改写与新决定冲突的纯黑断言。状态 contract-only。
+
 ## 2026-10-25 当前切片：文本编码识别——日文/韩文与单字节编码（P1，E4/E8）
 
 见[`txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md`](txt-charset-cjk-single-byte-recognition-fixed-baseline-second-audit-p1-contract.md)。
