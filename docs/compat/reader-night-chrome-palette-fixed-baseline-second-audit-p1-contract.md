@@ -1,6 +1,6 @@
 # Reader 夜间工具栏与设置控件配色合同（P1）
 
-状态：**implementation-complete / regression-validated**（记录见第 8 节；用户 2026-10-29 确认第 5 节：全部改回上游）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
+状态：**aligned / Docker-published / awaiting-device-verification**（发布见文末；记录见第 8 节；用户 2026-10-29 确认第 5 节：全部改回上游）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
 
 ## 1. 来源与范围
 
@@ -194,3 +194,7 @@
   整包合并一致；设置里的字体预览框（OpenReader 新增，`#fffaf0` 底）日夜相同，夜间仍是浅色块，上游没有对应元素。
 
 状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
+
+## 发布（2026-10-29）
+
+main 快进到 `24511c0`（把本切片合并到 M8 封面发布 `0561dee` 之上，只有两份总账顶部冲突、两条都保留；ls-remote 核验，未强推）；可信 Actions run `40890726765` 全部成功（14:21–14:38Z）。`ghcr.io/changshengyu/openreader:24511c0` 与 `latest` 为 OCI index `sha256:62eee27d0174d6b4782fa54aaa54bb5d3d572ad778b65827fbb52585d14e192c`（linux/amd64 `sha256:b6a68cc9…`、linux/arm64 `sha256:2b9fcb0a…`），两平台 `org.opencontainers.image.revision` 均为 `24511c08e63f9e6a241fae116c09503e096694d0`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认。
