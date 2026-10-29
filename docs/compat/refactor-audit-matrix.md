@@ -6,6 +6,7 @@
 上游 EPUB（epublib meta/guide，JPG/PNG/GIF）与 UMD（段 130）都有封面，确认框也显示；OpenReader 只有 CBZ。C1–C3 must-fix：EPUB 封面路径进抽取
 标记、经 `/api/epub-resource` 投影；UMD 封面首次投影时抽到 `.umd-resources`、经新 `/api/umd-cover` 提供；预览返回 2 MiB 内的 `data:` 封面。
 计划红测：engine 封面规则与 UMD 段、api 导入响应/书架/详情/自定义优先/旧标记/能力安全、前端预览封面。状态 contract-only。
+记录（2026-10-29，取代上段的状态）：实现 `7901e1f`/`b5db7d6`（红测 `5ac9d00`/`7105dbf`/`e24def9` 转绿，测试修正 `0007fe2`），浏览器合同 `ad74f13`，服务测试 `8fb8f88`；A7 预览响应封面合计 ≤ 8 MiB。三视口确认框/书架/书籍信息封面、后端全量/vet/race、前端 829/829 与 build、公告门、存储与导入合同通过。状态 implementation-complete / regression-validated，待可信 Actions。
 
 ## 2026-10-29 当前切片：发布门新增依赖公告 GO-2026-6860（P1，发布阻塞）
 

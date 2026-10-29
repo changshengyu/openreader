@@ -1,6 +1,6 @@
 # 本地书封面：EPUB/UMD 书架封面与导入确认框封面合同（P1，M8）
 
-状态：**contract-only**。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
+状态：**implementation-complete / regression-validated**（记录见第 6 节）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
 
 ## 1. 来源与结论
 
@@ -62,3 +62,34 @@
 3a. 批量上限（A7）：书仓一次预览多本大封面 EPUB 时，响应里的封面文本合计 ≤ 8 MiB、首本有封面、超出的行没有封面，该行单本重新解析得到封面；
     localbook `Prepare`（暂存确认与落库路径）不计算预览封面。
 4. 浏览器 1440×900、390×844、360×800：导入带封面的 EPUB 与 UMD，确认框与书架都显示封面图。
+
+## 6. 记录（2026-10-29）
+
+提交（分支 `claude/day-night-import-alignment`）：合同 `6b1fe96`、A7 补充 `765a999`；行为不变的骨架 `4dd84e0`；红测 `5ac9d00`、`7105dbf`、`e24def9`；
+测试修正 `0007fe2`；实现 `7901e1f`、`b5db7d6`；浏览器合同 `ad74f13`；UMD 封面服务测试 `8fb8f88`。
+
+- 红测（均为断言失败）：`7105dbf` 上 engine EPUB meta/guide 规则 4 例、EPUB 封面字节、UMD 段 130，api 预览 `coverUrl`、旧抽取标记的书架封面、
+  UMD 能力地址，访问日志 `/api/umd-cover/` 未脱敏，前端确认框封面与预览行 `coverUrl`（无封面对照用例始终通过），`7901e1f` 后转绿；
+  `e24def9` 上（代码与 `7901e1f` 相同）书仓一次预览 6 本 1.5 MiB 封面 EPUB 的响应内联 12,583,266 字节封面、`Prepare`/`Preview` 也计算封面，`b5db7d6` 后转绿。
+  `0007fe2` 只改测试准备：改写旧标记时原先经 `float64` 丢了 `modTimeNano` 的纳秒，标记描述的已不是原文件；改为保留原始 JSON 值，断言不变。
+- 实现要点：
+  - EPUB：`engine.EPUBCoverImagePathFromZip` 按 epublib 取封面图（meta 先、guide 后，JPG/PNG/GIF，EPUB3 `cover-image` 不认）；导入时的抽取标记
+    记 `coverPath`/`coverChecked`，旧标记在首次显示时查一次并补记；书架只用已有抽取，不在列表请求里解包（A5）。
+  - UMD：新 `services/umdcover` 取段 130 后的附加段，按文件头识别 JPEG/PNG/GIF/WebP，写 `.umd-resources/<sha256>/cover.<ext>` 与标记
+    （无封面也记，A6）；原文件与派生文件都经 `webdavfs.NewScoped` 打开、不跟随符号链接；建目录用 `Mkdir`，不重建已删除的书目录；
+    `/api/umd-cover/<capability>` 为 HMAC 签名（用户/书/指纹，12 小时），按当前书行授权，原文件换了旧地址即失效；篡改 403、格式错 400、
+    书删除 404；`nosniff`、`same-origin`、`private, max-age=300`；访问日志脱敏。
+  - 预览：只有确认框用的预览（直接上传、书仓、WebDAV、token 重新解析）经 `Importer.PreparePreview` 计算封面，`Prepare`/`Preview`
+    （暂存确认、落库、可移植恢复）不再解码编码封面；单张 2 MiB 以内，一个响应合计不超过 8 MiB 的 `data:` URL（A7）；前端预览行保存
+    `coverUrl`，重新解析时刷新，确认框 `BookCover` 用它。
+  - 封面地址只在响应里：`books.cover_url` 不写，备份/恢复格式不变，自定义封面优先。
+- 测试：backend `go test ./...` 30 个包、`go vet ./...`、`go test -race -timeout 45m`（api 1049 秒，及 db、middleware、engine、services/umdcover、epubreader、localbook、importstage、cbzreader）在 `b5db7d6` 上通过，未见 DATA RACE（之前一次 race 漏设 `-timeout`，api 在默认 10 分钟处超时中止，不是竞态）；`services/umdcover` 7 个服务测试（含 `-race`）通过；frontend 829/829 与 build 通过（沙箱内 3 个依赖公告 worker 用例因禁止
+  监听本地端口失败，沙箱外全部通过）；公告门脚本测试 109/109，Go/前端公告门 exit 0；`docker compose config` 通过；
+  `store-read-list-lifecycle-contract` 在 `b5db7d6` 上通过。
+- 真实浏览器（本地 Go 服务 `b5db7d6` + 前端构建）：`local-book-cover-contract` 在 1440×900、390×844、360×800 直接导入脚本生成的 EPUB
+  （meta 封面）与 UMD（段 130 封面）：确认框封面为 `data:image/png` 且解码尺寸与原图一致，导入后书架与书籍信息分别经
+  `/api/epub-resource/`、`/api/umd-cover/` 显示同一张图，无封面相关 4xx/5xx、无页面错误、无横向溢出，截图人工查看布局正常；
+  `local-book-import-contract`（取消竞态、单本、批量、逐本）与 `workspace-storage-retry-contract`（书仓、WebDAV）三视口通过。
+- 未做：EPUB3 `cover-image`（A4，不采用）；2026-07-18 前导入且从未打开的 EPUB 打开一次后才有封面（A5）。
+
+状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
