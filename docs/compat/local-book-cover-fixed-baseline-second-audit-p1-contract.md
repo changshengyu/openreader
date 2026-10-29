@@ -1,6 +1,6 @@
 # 本地书封面：EPUB/UMD 书架封面与导入确认框封面合同（P1，M8）
 
-状态：**implementation-complete / regression-validated**（记录见第 6 节）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
+状态：**aligned / Docker-published / awaiting-device-verification**（发布见文末；记录见第 6 节）。审查日期：2026-10-29。审查基线：`OpenReader@c62c619`。
 
 ## 1. 来源与结论
 
@@ -93,3 +93,7 @@
 - 未做：EPUB3 `cover-image`（A4，不采用）；2026-07-18 前导入且从未打开的 EPUB 打开一次后才有封面（A5）。
 
 状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
+
+## 发布（2026-10-29）
+
+main 快进到 `21f749d`（ls-remote 核验，未强推；本机代理 127.0.0.1:20808 端口关闭，推送与查询改走直连）；可信 Actions run `40880848625` 全部成功（13:19–13:41Z）。`ghcr.io/changshengyu/openreader:21f749d` 与 `latest` 为 OCI index `sha256:fad3291832efb6ffba3866725069fce47ba1a5f96c05836ee829742396dd97a7`（linux/amd64 `sha256:3a3d433a…`、linux/arm64 `sha256:7c79a0c6…`），两平台 `org.opencontainers.image.revision` 均为 `21f749d31e12f00e370181d3bca9b755e683dd3c`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认（含已有 EPUB/UMD 书的书架封面）。

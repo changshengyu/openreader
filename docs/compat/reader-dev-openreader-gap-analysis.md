@@ -9,6 +9,7 @@
 A2 预览上限为 acceptable-change，EPUB3 `cover-image` 不采用（上游不认）。完整合同见
 [`local-book-cover-fixed-baseline-second-audit-p1-contract.md`](local-book-cover-fixed-baseline-second-audit-p1-contract.md)。状态 **contract-only**。
 2026-10-29 记录（合同第 6 节）：骨架 `4dd84e0`，红测 `5ac9d00`/`7105dbf`/`e24def9`，测试修正 `0007fe2`，实现 `7901e1f`/`b5db7d6`，浏览器合同 `ad74f13`，服务测试 `8fb8f88`；补充 A7：一个预览响应的内联封面合计 ≤ 8 MiB，只有确认框预览计算封面。三视口导入 EPUB/UMD，确认框、书架、书籍信息都显示原图；后端全量/vet/race、前端 829/829 与 build、公告门、存储合同与导入浏览器合同通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：`main` 快进到 `21f749d`，可信 Actions run `40880848625` 全部成功；`21f749d`/`latest` 为 OCI index `sha256:fad3291832efb6ffba3866725069fce47ba1a5f96c05836ee829742396dd97a7`（amd64 + arm64，revision 标签为完整提交号）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-29 P1 发布门新增依赖公告：`golang.org/x/net/html` 平方复杂度（GO-2026-6860）
 
