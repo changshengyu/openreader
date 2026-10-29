@@ -231,7 +231,9 @@ func TestEPUBCoverAppearsForAnExtractionMarkerWithoutCoverInfo(t *testing.T) {
 	if err != nil || len(markers) != 1 {
 		t.Fatalf("EPUB extraction markers = %v, %v", markers, err)
 	}
-	var marker map[string]any
+	// Raw values: decoding modTimeNano into float64 would lose nanoseconds and
+	// make the marker describe a different file.
+	var marker map[string]json.RawMessage
 	data, err := os.ReadFile(markers[0])
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +241,7 @@ func TestEPUBCoverAppearsForAnExtractionMarkerWithoutCoverInfo(t *testing.T) {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := json.Marshal(map[string]any{
+	legacy, err := json.Marshal(map[string]json.RawMessage{
 		"fingerprint": marker["fingerprint"],
 		"size":        marker["size"],
 		"modTimeNano": marker["modTimeNano"],
