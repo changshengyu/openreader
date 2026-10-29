@@ -46,6 +46,7 @@ const (
 	cbzCapabilityPurpose          = "openreader:cbz-resource:v1"
 	audioCapabilityPurpose        = "openreader:audio-resource:v1"
 	chapterImageCapabilityPurpose = "openreader:chapter-image:v1"
+	umdCoverCapabilityPurpose     = "openreader:umd-cover:v1"
 	coverCapabilityPurpose        = "openreader:cover-image:v1"
 )
 
@@ -406,6 +407,13 @@ func TestInstanceSecretSignsEveryResourceCapability(t *testing.T) {
 		t.Fatalf("chapter image mapping = %v", mapping)
 	}
 
+	umdAuth := "Bearer " + loginSessionContractUser(t, router, "testuser", "test1234").Token
+	umdPreview := previewLocalBookCover(t, router, umdAuth, "实例密钥封面.umd", localBookCoverUMD(t, localBookCoverJPEG))
+	umdBook, _ := importLocalBookCover(t, router, server, umdAuth, "实例密钥封面.umd", umdPreview.ImportToken)
+	if !strings.HasPrefix(umdBook.CoverURL, "/api/umd-cover/") {
+		t.Fatalf("UMD cover URL = %q", umdBook.CoverURL)
+	}
+
 	for _, resource := range []struct {
 		name, url, prefix, purpose string
 	}{
@@ -413,10 +421,11 @@ func TestInstanceSecretSignsEveryResourceCapability(t *testing.T) {
 		{"CBZ", cbzURL, "/api/cbz-resource/", cbzCapabilityPurpose},
 		{"audio", audio.ResourceURL, "/api/audio-resource/", audioCapabilityPurpose},
 		{"chapter image", imageResource, "/api/chapter-image/", chapterImageCapabilityPurpose},
+		{"UMD cover", umdBook.CoverURL, "/api/umd-cover/", umdCoverCapabilityPurpose},
 	} {
 		t.Run(resource.name, func(t *testing.T) {
 			var capability string
-			if resource.prefix == "/api/chapter-image/" {
+			if resource.prefix == "/api/chapter-image/" || resource.prefix == "/api/umd-cover/" {
 				unescaped, err := url.PathUnescape(strings.TrimPrefix(resource.url, resource.prefix))
 				if err != nil {
 					t.Fatal(err)
