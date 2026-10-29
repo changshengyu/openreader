@@ -333,3 +333,40 @@ test('settings saved before version 15 move the old built-in night white text to
   assert.equal(empty.customConfigList.find(item => item.name === '内置黑夜').fontColor, '')
   assert.equal(empty.fontColor, '')
 })
+
+// reader-dev's manual moon/sun stays in this browser until the page reloads,
+// the system scheme changes or automatic switching is turned on again
+// (App.vue#autoSetTheme only runs on created, matchMedia change and the
+// autoTheme watcher). Another device saving settings must not undo it.
+test('a manual switch on this device survives another device\'s settings until the system scheme changes', { concurrency: false }, async () => {
+  const reader = freshReader({ dark: false })
+  reader.applyAutoTheme(false)
+  await withAPI('put', async (_path, body) => ({ data: { value: body.value, updatedAt: '2026-10-29T00:00:10Z' }, headers: {} }), async () => {
+    assert.equal(reader.setNightTheme(true), true)
+    await delay(800)
+  })
+  assert.equal(reader.customConfigName, '内置黑夜')
+
+  const otherDeviceSave = accountSettings(reader, '内置白天', { fontSize: 24 })
+  await withAPI('get', async () => ({ data: { value: otherDeviceSave, updatedAt: '2026-10-29T00:00:11Z' } }), async () => {
+    await reader.reconcileReaderSettingsUpdate('2026-10-29T00:00:11Z')
+  })
+  assert.equal(reader.settingsSyncBaseUpdatedAt, '2026-10-29T00:00:11Z')
+  assert.equal(reader.customConfigName, '内置黑夜', 'another device\'s save must not undo this device\'s manual night')
+  assert.equal(reader.themeType, 'night')
+
+  assert.equal(reader.followSystemColorSchemeChange(), true)
+  assert.equal(reader.customConfigName, '内置白天', 'a system color-scheme change ends the manual choice')
+
+  assert.equal(reader.setNightTheme(true), true)
+  reader.setAutoTheme(false)
+  reader.setAutoTheme(true)
+  assert.equal(reader.followDeviceColorScheme(), true)
+  assert.equal(reader.customConfigName, '内置白天', 'turning automatic switching on again follows the system')
+})
+
+test('the system color-scheme listener ends a manual day/night choice', () => {
+  assert.match(appSource, /function handleSystemThemeChange\(\) \{\s*readerStore\.followSystemColorSchemeChange\(\)\s*\}/)
+  assert.match(appSource, /systemThemeMedia\.addEventListener\('change', handleSystemThemeChange\)/)
+  assert.match(appSource, /systemThemeMedia\.removeEventListener\('change', handleSystemThemeChange\)/)
+})
