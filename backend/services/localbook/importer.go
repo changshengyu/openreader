@@ -71,6 +71,7 @@ type PreviewResult struct {
 	ChapterCount int              `json:"chapterCount"`
 	Chapters     []PreviewChapter `json:"chapters"`
 	TOCRule      string           `json:"tocRule,omitempty"`
+	CoverURL     string           `json:"coverUrl,omitempty"`
 	ImportToken  string           `json:"importToken,omitempty"`
 }
 
