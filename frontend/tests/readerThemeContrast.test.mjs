@@ -78,16 +78,18 @@ test('ordinary content and EPUB share one effective reader text color', () => {
   )
 })
 
-test('night settings controls use semantic surfaces instead of translucent day controls', () => {
+test('night settings controls use the shared control variables and the reader-dev accent', () => {
+  // 2026-10-29 user decision: reader-dev's night chrome replaces the earlier
+  // readability colors (#ff7589 on #303030); exact values live in
+  // readerNightChromePaletteContract.test.mjs.
   assert.match(readerViewSource, /'--reader-control-bg':/)
   assert.match(readerViewSource, /'--reader-control-border':/)
-  assert.match(readerViewSource, /'--reader-accent':\s*reader\.themeType === 'night' \? '#ff7589'/)
+  assert.match(readerViewSource, /'--reader-accent': '#ed4259',/)
   assert.match(readerSettingsSource, /background:\s*var\(--reader-control-bg\)/)
   assert.match(readerSettingsSource, /border:\s*1px solid var\(--reader-control-border\)/)
   assert.match(readerSettingsSource, /color:\s*var\(--reader-accent,\s*#ed4259\)/)
   assert.match(readerStepperSource, /background:\s*var\(--reader-control-bg\)/)
   assert.match(readerStepperSource, /border:\s*1px solid var\(--reader-control-border\)/)
-  assert.ok(readerColorContrast('#ff7589', '#303030') >= 4.5)
 })
 
 test('built-in night keeps the reader-dev textured surface while black stays the pure-black alias', () => {
