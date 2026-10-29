@@ -98,9 +98,29 @@ func (importer Importer) Preview(request ImportRequest) (PreviewResult, error) {
 	return preview, err
 }
 
+// Prepare parses an import for staging or confirmation. Its preview has no
+// cover: only the import dialog needs one (see PreparePreview).
 func (importer Importer) Prepare(request ImportRequest) (PreviewResult, PreparedImport, error) {
+	preview, prepared, _, err := importer.prepare(request)
+	return preview, prepared, err
+}
+
+// PreparePreview is Prepare for the import dialog: the preview also carries
+// the cover reader-dev writes during preview, when its data URL fits both
+// maxPreviewCoverBytes and coverBudget (what is left of the response's
+// budget, in data URL bytes).
+func (importer Importer) PreparePreview(request ImportRequest, coverBudget int64) (PreviewResult, PreparedImport, error) {
+	preview, prepared, parsedBook, err := importer.prepare(request)
+	if err != nil {
+		return PreviewResult{}, PreparedImport{}, err
+	}
+	preview.CoverURL = previewCoverURL(request, parsedBook, importer.parseLimits(), coverBudget)
+	return preview, prepared, nil
+}
+
+func (importer Importer) prepare(request ImportRequest) (PreviewResult, PreparedImport, engine.ParsedBook, error) {
 	if len(strings.TrimSpace(request.TOCRule)) > maxLocalBookTOCRuleBytes {
-		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: local book TOC rule exceeds the limit", ErrParseFailed)
+		return PreviewResult{}, PreparedImport{}, engine.ParsedBook{}, fmt.Errorf("%w: local book TOC rule exceeds the limit", ErrParseFailed)
 	}
 	var parsedBook engine.ParsedBook
 	var err error
@@ -111,15 +131,13 @@ func (importer Importer) Prepare(request ImportRequest) (PreviewResult, Prepared
 	}
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedFormat) {
-			return PreviewResult{}, PreparedImport{}, err
+			return PreviewResult{}, PreparedImport{}, engine.ParsedBook{}, err
 		}
-		return PreviewResult{}, PreparedImport{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
+		return PreviewResult{}, PreparedImport{}, engine.ParsedBook{}, fmt.Errorf("%w: %w", ErrParseFailed, err)
 	}
 	prepared := NewPreparedImport(request, parsedBook)
 	prepared.EPUBCatalogOnly = normalizedLocalBookExtension(request.Extension) == ".epub"
-	preview := previewResult(request, parsedBook)
-	preview.CoverURL = previewCoverURL(request, parsedBook, importer.parseLimits())
-	return preview, prepared, nil
+	return previewResult(request, parsedBook), prepared, parsedBook, nil
 }
 
 // maxPreviewCoverBytes bounds the cover image inlined into an import preview;
@@ -128,13 +146,26 @@ const maxPreviewCoverBytes = 2 << 20
 
 // previewCoverURL is the cover reader-dev writes during preview
 // (Book.initLocalBook → updateFromLocal) and shows in the import dialog,
-// inlined as a data URL because the book does not exist yet.
-func previewCoverURL(request ImportRequest, parsedBook engine.ParsedBook, limits engine.LocalBookParseLimits) string {
-	contentType, image, ok := engine.LocalBookCoverImage(normalizedLocalBookExtension(request.Extension), request.Data, parsedBook, limits, maxPreviewCoverBytes)
+// inlined as a data URL because the book does not exist yet. It is empty
+// when the URL would exceed budget bytes.
+func previewCoverURL(request ImportRequest, parsedBook engine.ParsedBook, limits engine.LocalBookParseLimits, budget int64) string {
+	maxBytes := int64(maxPreviewCoverBytes)
+	// Base64 turns every 3 image bytes into 4; 32 bytes cover the prefix.
+	if fit := (budget - 32) / 4 * 3; fit < maxBytes {
+		maxBytes = fit
+	}
+	if maxBytes <= 0 {
+		return ""
+	}
+	contentType, image, ok := engine.LocalBookCoverImage(normalizedLocalBookExtension(request.Extension), request.Data, parsedBook, limits, maxBytes)
 	if !ok {
 		return ""
 	}
-	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(image)
+	coverURL := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(image)
+	if int64(len(coverURL)) > budget {
+		return ""
+	}
+	return coverURL
 }
 
 func NewPreparedImport(request ImportRequest, parsedBook engine.ParsedBook) PreparedImport {
