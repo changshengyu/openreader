@@ -1243,6 +1243,7 @@ const effectiveReaderSurface = computed(() => resolveReaderSurface({
   themeBodyImage: reader.currentTheme.bodyImage,
   themePageImage: reader.currentTheme.pageImage,
   themePopupImage: reader.currentTheme.popupImage,
+  themePageBorder: reader.currentTheme.pageBorder,
   customBackgroundImage: effectiveReaderBackgroundImage.value,
 }))
 const effectiveReaderBackgroundColor = computed(() => effectiveReaderSurface.value.pageColor)
@@ -1257,6 +1258,7 @@ const effectiveReaderTextColor = computed(() => resolveReaderTextColor({
   themeTextColor: reader.currentTheme.text,
   backgroundColor: effectiveReaderBackgroundColor.value,
   themeType: reader.themeType,
+  theme: reader.theme,
   hasBackgroundImage: Boolean(effectiveReaderBackgroundImage.value),
   builtInNight: usesBlackNightContentSurface.value,
 }))

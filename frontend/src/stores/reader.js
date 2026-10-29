@@ -8,6 +8,7 @@ import {
   reconcileAuthoritativeShelfProgress,
 } from '../utils/bookOrder'
 import { readOrCreateReaderClientId } from '../utils/readerProgressPersistence'
+import { systemPrefersDarkColorScheme } from '../utils/readerSystemTheme'
 import { normalizeReaderThemeType, themeTypeForTheme } from '../utils/readerThemeType'
 import { normalizeTTSPitch, normalizeTTSRate } from '../utils/readerTTS'
 
@@ -18,7 +19,10 @@ const READER_CLIENT_ID = readerClientId()
 const readerSettingsOperations = createAuthenticatedOperationGuard()
 const readerProgressOperations = createAuthenticatedOperationGuard()
 const READER_FONT_FAMILIES = ['system', 'hei', 'kai', 'serif', 'fangsong', 'mono']
-const READER_SETTINGS_VERSION = 14
+const READER_SETTINGS_VERSION = 15
+const BUILT_IN_NIGHT_SCHEME = '内置黑夜'
+const BUILT_IN_NIGHT_TEXT = '#666666'
+const LEGACY_BUILT_IN_NIGHT_TEXT = '#ffffff'
 const READER_SCHEME_FIELDS = Object.freeze([
   'mode',
   'pageMode',
@@ -57,7 +61,8 @@ export const themePresets = {
   blue:     { label: '浅蓝',   swatch: 'rgba(228, 241, 245, 0.8)', bg: '#e4f1f5', text: '#262626', bodyImage: '/themes/body_3.png', pageImage: '/themes/content_3.png', popupImage: '/themes/popup_3.png' },
   pink:     { label: '浅粉',   swatch: 'rgba(245, 228, 228, 0.8)', bg: '#f5e4e4', text: '#262626', body: '#ebcece', popup: '#faeceb', bodyImage: 'none', pageImage: 'none', popupImage: 'none' },
   gray:     { label: '浅灰',   swatch: 'rgba(224, 224, 224, 0.8)', bg: '#e0e0e0', text: '#262626', bodyImage: '/themes/body_5.png', pageImage: '/themes/content_5.png', popupImage: '/themes/popup_5.png' },
-  dark:     { label: '深色',   swatch: 'rgba(0, 0, 0, 0.5)', bg: '#000000', text: '#ffffff', body: '#000000', popup: '#171717', bodyImage: '/themes/body_6.png', pageImage: '/themes/content_6.png' },
+  // reader-dev theme 6 (defaultNightConfig): body_6/content_6 textures, #121212 popup, #666 text, #444 page border.
+  dark:     { label: '深色',   swatch: 'rgba(0, 0, 0, 0.5)', bg: '#171717', text: '#666666', body: '#121212', popup: '#121212', pageBorder: '#444', bodyImage: '/themes/body_6.png', pageImage: '/themes/content_6.png', popupImage: 'none' },
   white:    { label: '纯白',   swatch: 'rgba(255, 255, 255, 0.8)', bg: '#ffffff', text: '#262626', body: '#f7f7f7', popup: '#f7f7f7', bodyImage: 'none', pageImage: 'none', popupImage: 'none' },
   black:    { label: '纯黑',   bg: '#000000', text: '#ffffff', body: '#000000', popup: '#121212', bodyImage: 'none', pageImage: 'none', popupImage: 'none' },
 }
@@ -238,11 +243,19 @@ export const useReaderStore = defineStore('reader', {
       this.autoTheme = Boolean(autoTheme)
       this.markSettingsDirty({ skipCustomConfigSync: true })
     },
+    // reader-dev keeps day/night per browser (App.vue#autoSetTheme): an
+    // automatic switch only changes this device and is not saved to the account.
     applyAutoTheme(isNight) {
       if (!this.autoTheme) return false
-      return this.setNightTheme(isNight)
+      return this.setNightTheme(isNight, { deviceLocal: true })
     },
-    setNightTheme(isNight) {
+    followDeviceColorScheme() {
+      if (!this.autoTheme) return false
+      const prefersDark = systemPrefersDarkColorScheme()
+      if (prefersDark === null) return false
+      return this.applyAutoTheme(prefersDark)
+    },
+    setNightTheme(isNight, options = {}) {
       const type = isNight ? '黑夜默认' : '白天默认'
       const fallback = defaultCustomConfigList()[isNight ? 1 : 0]
       const current = Array.isArray(this.customConfigList) ? this.customConfigList : []
@@ -261,7 +274,7 @@ export const useReaderStore = defineStore('reader', {
       Object.assign(this, next)
       this.customConfigName = config.name
       this.normalizeSettings()
-      this.markSettingsDirty({ skipCustomConfigSync: true })
+      this.markSettingsDirty({ skipCustomConfigSync: true, localOnly: options.deviceLocal === true })
       return true
     },
     setPageType(pageType) {
@@ -481,6 +494,7 @@ export const useReaderStore = defineStore('reader', {
       this.kindlePageConfig = sanitizePageConfigSnapshot(this.kindlePageConfig)
       this.ttsRate = normalizeTTSRate(this.ttsRate)
       this.ttsPitch = normalizeTTSPitch(this.ttsPitch)
+      if ((this.settingsVersion || 0) < 15) migrateLegacyBuiltInNightText(this)
       if ((this.settingsVersion || 0) < 4) {
         this.fontSize = 18
         this.fontWeight = 400
@@ -529,6 +543,8 @@ export const useReaderStore = defineStore('reader', {
         this.settingsUpdatedAt = updatedAt
       }
       this.settingsSyncError = ''
+      // Another device's day/night does not replace this device's automatic one.
+      this.followDeviceColorScheme()
     },
     async loadReaderSettings(options = {}) {
       this.ensureReaderSettingsScope()
@@ -1082,8 +1098,32 @@ function sanitizeReaderSettings(payload, options = {}) {
   settings.columnWidth = numberAtLeast(payload.columnWidth, 160, 800)
   settings.normalPageConfig = sanitizePageConfigSnapshot(payload.normalPageConfig || payload.normalModeSnapshot)
   settings.kindlePageConfig = sanitizePageConfigSnapshot(payload.kindlePageConfig)
+  if (includeCustomConfigs && (Number(payload.settingsVersion) || 0) < 15) migrateLegacyBuiltInNightText(settings)
   settings.settingsVersion = READER_SETTINGS_VERSION
   return settings
+}
+
+// Settings version 15 restores reader-dev's #666 built-in night text. Earlier
+// builds saved #ffffff as the built-in night default; move exactly that value
+// in the built-in scheme and wherever that scheme is applied.
+function migrateLegacyBuiltInNightText(settings) {
+  const legacy = value => value?.theme === 'dark'
+    && typeof value.fontColor === 'string'
+    && value.fontColor.trim().toLowerCase() === LEGACY_BUILT_IN_NIGHT_TEXT
+  if (Array.isArray(settings.customConfigList)) {
+    settings.customConfigList = settings.customConfigList.map(item => (
+      item?.name === BUILT_IN_NIGHT_SCHEME && legacy(item) ? { ...item, fontColor: BUILT_IN_NIGHT_TEXT } : item
+    ))
+  }
+  if (settings.customConfigName === BUILT_IN_NIGHT_SCHEME && legacy(settings)) {
+    settings.fontColor = BUILT_IN_NIGHT_TEXT
+  }
+  for (const key of ['normalPageConfig', 'kindlePageConfig']) {
+    const snapshot = settings[key]
+    if (snapshot?.customConfigName === BUILT_IN_NIGHT_SCHEME && legacy(snapshot)) {
+      settings[key] = { ...snapshot, fontColor: BUILT_IN_NIGHT_TEXT }
+    }
+  }
 }
 
 function sanitizeCustomFontsMap(value) {
@@ -1190,7 +1230,7 @@ function defaultCustomConfigList() {
       chineseFont: '简体',
       fontSize: 18,
       fontWeight: 400,
-      fontColor: '#ffffff',
+      fontColor: BUILT_IN_NIGHT_TEXT,
       theme: 'dark',
       themeType: 'night',
       customBodyColor: '#121212',

@@ -80,6 +80,9 @@ onMounted(() => {
     bookshelf.ensureShelfScope()
     preferences.ensurePreferenceScope()
     readerStore.ensureReaderSettingsScope()
+    // Follow this device before the account settings arrive (reader-dev
+    // applies the system scheme in App.created); it is not saved anywhere.
+    applyAutoThemeFromSystem()
     connect()
     loadReaderSettingsAndApplyTheme()
     preferences.loadPreferences().catch(() => {})
@@ -106,6 +109,7 @@ watch(isLoggedIn, (loggedIn) => {
     readerStore.ensureProgressScope()
     readerStore.ensureReaderSettingsScope()
     preferences.ensurePreferenceScope()
+    applyAutoThemeFromSystem()
     connect()
     loadReaderSettingsAndApplyTheme()
     preferences.loadPreferences().catch(() => {})
@@ -145,8 +149,7 @@ function setupAutoThemeListener() {
 }
 
 function applyAutoThemeFromSystem() {
-  if (!readerStore.autoTheme || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-  readerStore.applyAutoTheme(window.matchMedia('(prefers-color-scheme: dark)').matches)
+  readerStore.followDeviceColorScheme()
 }
 
 function loadReaderSettingsAndApplyTheme() {
