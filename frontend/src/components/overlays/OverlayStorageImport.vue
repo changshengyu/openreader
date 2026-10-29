@@ -93,7 +93,7 @@
   >
     <template v-if="currentRow">
       <div class="storage-import-check-form">
-        <BookCover class="storage-import-cover" :book="importCoverBook(currentRow)" decorative />
+        <BookCover class="storage-import-cover" :book="importCoverBook(currentRow)" />
         <div class="storage-import-single-form">
           <label class="storage-import-field">
             <span class="storage-import-label">书名：</span>
