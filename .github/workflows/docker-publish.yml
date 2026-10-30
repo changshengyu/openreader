@@ -15,6 +15,7 @@ on:
       - frontend/**
       - scripts/docker-volume-backup-smoke.sh
       - scripts/smoke/store-read-list-lifecycle-contract.mjs
+      - scripts/smoke/instance-secret-volume-contract.mjs
       - scripts/smoke/webdav-protocol-contract.sh
       - scripts/smoke/local-store-directory-lifecycle-contract.mjs
       - scripts/smoke/openreader-smoke.mjs
@@ -181,6 +182,28 @@ jobs:
           HISTORICAL_VOLUME: "1"
           IMAGE: openreader-ci:${{ github.sha }}
         run: ./scripts/docker-volume-backup-smoke.sh
+
+      # The standard Compose deployment does not set OPENREADER_JWT_SECRET.
+      - name: Validate fresh volumes and portable backups with the JWT secret unset
+        env:
+          JWT_SECRET_MODE: unset
+          IMAGE: openreader-ci:${{ github.sha }}
+        run: ./scripts/docker-volume-backup-smoke.sh
+
+      - name: Validate historical volume compatibility with the JWT secret unset
+        env:
+          HISTORICAL_VOLUME: "1"
+          JWT_SECRET_MODE: unset
+          IMAGE: openreader-ci:${{ github.sha }}
+        run: ./scripts/docker-volume-backup-smoke.sh
+
+      # The previous image is the last release that still signs with the
+      # published default (92c98a9), pinned by OCI index digest.
+      - name: Validate the instance secret across upgrade, restart, rollback and re-upgrade
+        env:
+          CANDIDATE_IMAGE: openreader-ci:${{ github.sha }}
+          PREVIOUS_IMAGE: ghcr.io/changshengyu/openreader@sha256:3b29f501e659454ea096fddcc4e0a05ba3c881cccacf8c3a684218649ba218d2
+        run: node scripts/smoke/instance-secret-volume-contract.mjs
 
       - name: Log in to GHCR
         uses: docker/login-action@v4

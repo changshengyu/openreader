@@ -219,7 +219,7 @@ Then run the `docker run` command from [step 1](#1-start-the-server) again. The 
 
 **Check the version**: the sidebar shows the running version next to the app name, 阅读. You can also open `http://<server-ip>:8080/api/health` and look at `version` and `commit`.
 
-**Pinning and rolling back**: besides `latest`, every release gets a 7-character commit tag, listed on the [package page](https://github.com/changshengyu/openreader/pkgs/container/openreader). Replace `latest` in `image` with a specific tag (such as `ghcr.io/changshengyu/openreader:<commit>`) to stay on that version. To roll back, stop the container, restore all three folders from the pre-upgrade backup, and start the older tag. Never mix database files from different versions.
+**Pinning and rolling back**: besides `latest`, every release gets a 7-character commit tag, listed on the [package page](https://github.com/changshengyu/openreader/pkgs/container/openreader). Replace `latest` in `image` with a specific tag (such as `ghcr.io/changshengyu/openreader:<commit>`) to stay on that version. To roll back, stop the container, restore all three folders from the pre-upgrade backup, and start the older tag. Never mix database files from different versions. Versions before `4c40a4a` don't use `data/instance-secret`, so after going back to one of them, devices that signed in on the newer version have to sign in again.
 
 ## Configuration
 
@@ -242,21 +242,7 @@ The time zone controls when the daily backup runs and the time shown in backup f
 
 The defaults are fine inside your home network. Before making OpenReader reachable from the internet:
 
-1. **Set your own login secret.** The default secret is published in the source code, so anyone could use it to forge links or credentials that only your server should issue. Changing it is recommended for home-network installs too. Generate a random value:
-
-   ```bash
-   openssl rand -hex 32
-   ```
-
-   Then add it under `environment`:
-
-   ```yaml
-       environment:
-         OPENREADER_JWT_SECRET: "paste-the-random-string-here"
-   ```
-
-   Every device has to sign in again once after the change. Bookshelves and other data are not affected.
-
+1. **Keep the `data` folder private.** On first start OpenReader creates its own random signing key, `data/instance-secret`, and signs login sessions and resource links with it. Anyone who can read that file could forge them, so don't share it, and keep it together with the rest of `data/` when you back up or move the server. You don't need to set `OPENREADER_JWT_SECRET`. If you set it anyway, use a long random value (for example the output of `openssl rand -hex 32`, never an example from a guide): it replaces the generated key, and every device has to sign in again once.
 2. **Put it behind an HTTPS reverse proxy** such as Caddy or Nginx, instead of exposing port 8080 directly.
 3. **Mind open registration.** Anyone who can open the page can currently create an account. To keep strangers out, put OpenReader behind a VPN (such as Tailscale or WireGuard) or allow only trusted IP addresses. Administrators can also delete unknown accounts in user management.
 
@@ -325,7 +311,7 @@ Most installations never need these. Change them only for a specific need.
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENREADER_JWT_SECRET` | A public built-in default | Signs login sessions and resource links. Set your own random value; see [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) |
+| `OPENREADER_JWT_SECRET` | Not set: a random key is generated in `data/instance-secret` | Signs login sessions and resource links. Optional; see [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) |
 | `OPENREADER_TRUSTED_PROXIES` | empty | Your reverse proxy's own IP addresses or network ranges, comma-separated. Leave empty for direct access |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Local-network hostnames, IP addresses, or ranges that book sources may reach, comma-separated |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | How often the bookshelf is checked for updates |

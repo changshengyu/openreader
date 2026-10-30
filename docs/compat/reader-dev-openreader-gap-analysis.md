@@ -12,6 +12,35 @@
 状态 **contract-only**。
 2026-10-30 记录（合同第 8 节）：合同 `465ad11`、红测 `f54fcbc`、实现 `849c33d`、浏览器夹具修正 `086e987`、L2 修订 `4ee2515`/`c576933`。实现中修订 L2：导入的本地书每章都有服务端 `cachePath`，沿用 `isCached` 会让整本目录夜间变成 `#444`；上游 `cachedCataMap` 只读浏览器缓存，现在 `cached` 只看浏览器缓存，`el-tag` 不变。真实账号对照 `ec3736f` 构建：五个视口日间列表与字体预览 computed style 完全相同，夜间逐项为上游值；移动/换源/书架刷新/文档标题/设置位置/EPUB 浏览器合同、前端 843/843 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
 
+## 2026-10-29 P1 认证与资源链接 实例签名密钥（S2，合同 2026-10-22）
+
+P0 合同第 8 节定下方向的后续切片。`OPENREADER_JWT_SECRET` 未设置（标准 Compose 的形态）、空白或为两个公开默认值之一时，
+会话 token 和五类资源 capability（EPUB/CBZ/音频/章节图片 HMAC，封面 AES-GCM）都用仓库里公开的值签名；会话靠随机
+`jti` 摘要认证不受影响，capability 却只靠签名认证（封面中风险：匿名图片代理；其余低风险）。现有卷门都显式设置密钥，
+这条标准部署路径从未被真实启动过。固定上游没有服务端签名密钥（随机 token 查 `token_map`，封面代理与 `/epub/*` 不带
+签名），这是 OpenReader 自有设计的安全修复。判定：公开值签名会话（F1）与 capability（F2）为 **`must-fix`（P1）**，缺少
+未设置密钥的真实启动门（F3）为 **`must-fix`（发布门）**。目标：首次启动生成 256 bit 实例密钥，原子创建、0600 保存在
+`data/instance-secret`（不进 WebDAV、`/uploads`、本地书仓与任何备份，随整份 `data/` 迁移），之后用它签名一切；自定义
+密钥行为不变且不碰该文件。公开值签名的新格式会话由 `user_sessions` 摘要认证，过渡期继续接受、不设截止时间；旧格式
+token 在实例密钥模式下一律拒绝；capability 没有过渡。代价：切换前的资源链接（12–48 小时）失效一次；回滚到 `92c98a9`
+及更早的镜像时切换后签发的会话失效。门：api 层红测、未设置密钥的真实启动/卷门（fresh、historical、restart、rollback、
+re-upgrade，旧镜像按 digest 固定），历史卷门新增未设置密钥模式。完整合同见
+[`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](instance-signing-secret-fixed-baseline-second-audit-p1-contract.md)。
+
+记录（2026-10-22）：合同 `b0972b4`、红测 `3dec2ad`、Actions 接线 `f10c266`、夹具修正 `77dfee0`、实现 `26948f9`。`b1e84f3` 上 R1 4/4、
+R2 5/5、R3 3/3 子测试按预期失败，生命周期合同（二进制方式与已发布 `92c98a9` 镜像的 Docker 方式）在“升级后生成实例密钥”处失败，
+未设置密钥的卷门在首次启动处失败；实现后同一组断言全部通过，生命周期合同十个场景通过，四次临时变异各自只让对应用例变红。
+Go 30 包、vet、race，前端 810/810 与 build，advisory 门通过。状态 **implementation-complete / regression-validated**，候选镜像的
+Docker 门由 Actions 执行。
+
+合并记录（2026-10-30）：先后合并 `a7fd6aa`、`b4cf2be`、`24511c0`（`6137b37`/`2749428`/`af0035a`）；GO-2026-6860 由 main 上另一会话的
+`7a18346` 修复，本会话的重复升级未推送即丢弃。main 新增的 UMD 封面 capability 由 S2 守卫覆盖，R2 补上该用例（`bcba652`）。合并树
+上 Go 31 包、vet、race（engine 看门狗一次负载超时，重跑通过）、前端 836/836 与 build、advisory 门、生命周期、存储与浏览器合同通过。
+
+发布（2026-10-30）：可信 Actions `41001294540` 全部门通过（含未设置密钥的 fresh/historical 卷门与 Docker 方式生命周期合同），
+`ghcr.io/changshengyu/openreader:4c40a4a` / `latest` = OCI index `sha256:46f0b426…dd2e`（amd64 + arm64，revision 为完整提交号）。
+状态 **Docker-published**；生产未访问，版本未知。
+
 ## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
 
 日夜切片（`b3164e3`）把内置夜间阅读面改回上游后，工具按钮与设置面板仍是 2026-07 夜间对比度合同的可读性配色：强调色 `#ff7589`、

@@ -217,7 +217,7 @@ docker rm openreader
 
 **确认版本**：左侧边栏「阅读」旁边会显示当前版本号；也可以访问 `http://服务器IP:8080/api/health`，查看 `version` 和 `commit`。
 
-**固定版本与回退**：除了 `latest`，每次发布还会有一个 7 位提交号标签，可以在[镜像页面](https://github.com/changshengyu/openreader/pkgs/container/openreader)查看。把 `image` 里的 `latest` 换成具体标签（如 `ghcr.io/changshengyu/openreader:<提交号>`）即可固定版本。回退时，先停止容器、完整恢复升级前备份的三个文件夹，再用旧标签启动；不要把新旧数据库文件混在一起。
+**固定版本与回退**：除了 `latest`，每次发布还会有一个 7 位提交号标签，可以在[镜像页面](https://github.com/changshengyu/openreader/pkgs/container/openreader)查看。把 `image` 里的 `latest` 换成具体标签（如 `ghcr.io/changshengyu/openreader:<提交号>`）即可固定版本。回退时，先停止容器、完整恢复升级前备份的三个文件夹，再用旧标签启动；不要把新旧数据库文件混在一起。`4c40a4a` 之前的版本不使用 `data/instance-secret`，回退到这些版本后，在新版本上登录过的设备需要重新登录。
 
 ## 常用设置
 
@@ -240,21 +240,7 @@ docker rm openreader
 
 只在家里局域网使用时，默认配置就能用。需要从外网访问时，请做好下面几件事：
 
-1. **换成自己的登录密钥。** 默认密钥写在公开的源码里，别人可以用它伪造本该只由你的服务器签发的链接或凭证。局域网部署也建议更换。先生成一串随机字符：
-
-   ```bash
-   openssl rand -hex 32
-   ```
-
-   再填进 `environment`：
-
-   ```yaml
-       environment:
-         OPENREADER_JWT_SECRET: "粘贴刚才生成的随机字符串"
-   ```
-
-   更换后所有设备需要重新登录一次，书架和其他数据不受影响。
-
+1. **保管好 `data` 文件夹。** 首次启动时 OpenReader 会自动生成随机签名密钥 `data/instance-secret`，用它签名登录状态和资源链接。能读到这个文件的人就能伪造它们，所以不要外传；备份或迁移服务器时，让它和 `data/` 里的其他文件放在一起。不需要设置 `OPENREADER_JWT_SECRET`。如果仍要设置，请用足够长的随机字符串（例如 `openssl rand -hex 32` 的输出，不要照抄教程里的示例值）：它会取代自动生成的密钥，所有设备需要重新登录一次。
 2. **通过 HTTPS 反向代理访问**（如 Caddy、Nginx），不要把 8080 端口直接暴露到公网。
 3. **注意开放注册。** 目前任何能打开网页的人都能注册账号。不希望陌生人注册时，可以把服务放在 VPN（如 Tailscale、WireGuard）后面，或者只允许信任的 IP 访问；管理员也可以在「管理用户空间」里删除不认识的账号。
 
@@ -323,7 +309,7 @@ OpenReader 不会读取容器里的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`�
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `OPENREADER_JWT_SECRET` | 公开的内置默认值 | 用于签名登录状态和资源链接，建议改成自己的随机字符串，见[在公网上使用](#在公网上使用) |
+| `OPENREADER_JWT_SECRET` | 不设置：自动生成并保存在 `data/instance-secret` | 用于签名登录状态和资源链接，可不设置，见[在公网上使用](#在公网上使用) |
 | `OPENREADER_TRUSTED_PROXIES` | 空 | 反向代理自己的 IP 或网段，多个用英文逗号分隔；直接访问时留空 |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | 空 | 允许书源访问的局域网主机名、IP 或网段，多个用英文逗号分隔 |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | 定时检查书架更新的间隔 |

@@ -49,6 +49,10 @@ type Config struct {
 	MaxCoverCacheBytes          int64
 	CoverImageTimeoutSeconds    int
 	MaxCoverImageRedirects      int
+	// JWTPreviousSecrets are published values that signed sessions before an
+	// instance secret replaced JWTSecret (services/instancesecret). They only
+	// verify jti-backed session tokens and never sign anything.
+	JWTPreviousSecrets []string
 }
 
 func Load() Config {
