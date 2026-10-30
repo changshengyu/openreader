@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { appendFileSync } from 'node:fs'
 import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:5173'
@@ -491,7 +492,8 @@ async function installApiMocks(page, readerSettings = {}) {
       return route.fulfill(json({}))
     }
     if (path === '/sources') {
-      return route.fulfill(json([{ id: 2, name: '测试书源', enabled: true }]))
+      // The source panel's group select lists the groups of the enabled sources.
+      return route.fulfill(json([{ id: 2, name: '测试书源', enabled: true, group: '默认' }]))
     }
     if (path === '/categories') {
       return route.fulfill(json([]))
@@ -1723,12 +1725,143 @@ async function assertBuiltInNightLists(page, viewport, { mobile }) {
   })
 }
 
+// Computed style of the first rendered element matching selector.
+async function renderedStyle(page, selector, properties) {
+  return page.evaluate(({ selector, properties }) => {
+    const element = [...document.querySelectorAll(selector)].find(node => node.getClientRects().length)
+    if (!element) return null
+    const style = window.getComputedStyle(element)
+    return Object.fromEntries(properties.map(property => [property, style.getPropertyValue(property)]))
+  }, { selector, properties })
+}
+
+// Computed Element Plus colors in the Reader (page, source group select and its dropdown,
+// catalog tag, add-scheme prompt, bookmark dialog), for the reader-dev App.vue
+// `.night-theme` contract (2026-10-30).
+async function readerElementSnapshot(page, { mobile }) {
+  const box = ['background-color', 'color', 'border-top-color']
+  const panelTool = label => (mobile
+    ? mobileTopTool(page, label)
+    : page.locator(`.reader-left-rail button[title="${label}"]`))
+  const closePanel = async (tool) => {
+    if (mobile) {
+      await tool.click()
+      await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+    } else {
+      await page.locator('.reader-desktop-workspace-close').click()
+      await page.waitForSelector('.reader-desktop-workspace', { state: 'detached', timeout: 10000 })
+    }
+  }
+  const snapshot = { body: await renderedStyle(page, 'body', ['background-color']) }
+
+  let tool = panelTool('书源')
+  await tool.click()
+  await page.waitForSelector('.source-item.selected', { timeout: 10000 })
+  await page.mouse.move(1, 1)
+  snapshot.sourceGroupSelect = await renderedStyle(page, '.source-group-select .el-select__wrapper', ['background-color', 'box-shadow'])
+  await page.locator('.source-group-select .el-select__wrapper').click()
+  const optionSelector = '.el-select__popper .el-select-dropdown__item'
+  await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(node => node.getClientRects().length), optionSelector, { timeout: 10000 })
+  snapshot.sourceGroupDropdown = await renderedStyle(page, '.el-select__popper', ['background-color', 'border-top-color'])
+  snapshot.sourceGroupOption = await renderedStyle(page, optionSelector, ['color'])
+  await page.locator(optionSelector).filter({ visible: true }).first().hover()
+  await page.waitForTimeout(300)
+  snapshot.sourceGroupOptionHover = await renderedStyle(page, `${optionSelector}.is-hovering`, ['background-color'])
+  await page.locator('.title-zone .title').filter({ visible: true }).first().click()
+  await page.waitForFunction(selector => ![...document.querySelectorAll(selector)].some(node => node.getClientRects().length), optionSelector, { timeout: 10000 })
+  await closePanel(tool)
+
+  tool = panelTool('目录')
+  await tool.click()
+  await page.waitForSelector('.toc-item.active', { timeout: 10000 })
+  await page.waitForFunction(() => (
+    document.querySelector('.toc-item[data-chapter-index="1"] .el-tag')?.textContent?.trim() === '本地'
+  ), null, { timeout: 10000 })
+  await page.mouse.move(1, 1)
+  snapshot.tocTag = await renderedStyle(page, '.toc-item[data-chapter-index="1"] .el-tag', box)
+  await closePanel(tool)
+
+  tool = panelTool('设置')
+  await tool.click()
+  await page.waitForSelector('.settings-body', { timeout: 10000 })
+  await page.locator('.settings-body .config-scheme.add').click()
+  await page.waitForSelector('.el-message-box__input', { state: 'visible', timeout: 10000 })
+  await page.waitForTimeout(350)
+  snapshot.messageBox = await renderedStyle(page, '.el-message-box', ['background-color', 'border-top-color'])
+  snapshot.messageTitle = await renderedStyle(page, '.el-message-box__title', ['color'])
+  snapshot.messageContent = await renderedStyle(page, '.el-message-box__content', ['color'])
+  snapshot.messageInput = await renderedStyle(page, '.el-message-box__input .el-input__wrapper', ['background-color', 'box-shadow'])
+  snapshot.messageInputText = await renderedStyle(page, '.el-message-box__input .el-input__inner', ['color'])
+  snapshot.messageCancel = await renderedStyle(page, '.el-message-box__btns .el-button:not(.el-button--primary)', box)
+  snapshot.messageConfirm = await renderedStyle(page, '.el-message-box__btns .el-button--primary', box)
+  await page.locator('.el-message-box__btns .el-button:not(.el-button--primary)').click()
+  await page.waitForSelector('.el-message-box', { state: 'hidden', timeout: 10000 })
+  await closePanel(tool)
+
+  const bookmarkTool = mobile
+    ? page.locator('.reader-mobile-float-left.visible button[title="书签"]')
+    : page.locator('.reader-right-rail button[title="书签"]')
+  await bookmarkTool.click()
+  const dialog = '.global-bookmark-dialog'
+  await page.waitForSelector(`${dialog} .el-table__body-wrapper tbody tr`, { timeout: 10000 })
+  await page.waitForTimeout(350)
+  await page.mouse.move(1, 1)
+  snapshot.dialog = await renderedStyle(page, dialog, ['background-color'])
+  snapshot.dialogTitle = await renderedStyle(page, `${dialog} .reader-dialog-title > span`, ['color'])
+  snapshot.tableHeader = await renderedStyle(page, `${dialog} th.el-table__cell`, ['background-color', 'color', 'border-bottom-color'])
+  snapshot.tableRow = await renderedStyle(page, `${dialog} .el-table__body tr`, ['background-color'])
+  snapshot.tableCell = await renderedStyle(page, `${dialog} .el-table__body td.el-table__cell`, ['color', 'border-bottom-color'])
+  snapshot.dialogCounter = await renderedStyle(page, `${dialog} .reader-dialog-footer > span`, ['color'])
+  snapshot.dialogCancel = await renderedStyle(page, `${dialog} .reader-dialog-footer .el-button:not(.el-button--primary)`, box)
+  snapshot.dialogPrimary = await renderedStyle(page, `${dialog} .reader-dialog-footer .el-button--primary`, box)
+  await page.locator(`${dialog} .el-dialog__headerbtn`).click()
+  await page.waitForSelector(dialog, { state: 'hidden', timeout: 10000 })
+  return snapshot
+}
+
+// reader-dev App.vue `.night-theme` on Element Plus, as measured on Element UI 2.15
+// (user decision 2026-10-30: global, catalog tag effect dark).
+async function assertBuiltInNightElements(page, viewport, { mobile }) {
+  const plainButton = { 'background-color': 'rgb(136, 136, 136)', color: 'rgb(221, 221, 221)', 'border-top-color': 'rgb(136, 136, 136)' }
+  const primaryButton = { 'background-color': 'rgb(24, 87, 152)', color: 'rgb(255, 255, 255)', 'border-top-color': 'rgb(24, 87, 152)' }
+  const inputRing = 'rgb(68, 68, 68) 0px 0px 0px 1px inset'
+  assertChromeSnapshot(viewport, 'night elements', await readerElementSnapshot(page, { mobile }), {
+    body: { 'background-color': 'rgb(34, 34, 34)' },
+    sourceGroupSelect: { 'background-color': 'rgb(68, 68, 68)', 'box-shadow': inputRing },
+    sourceGroupDropdown: { 'background-color': 'rgb(51, 51, 51)', 'border-top-color': 'rgb(51, 51, 51)' },
+    sourceGroupOption: { color: 'rgb(221, 221, 221)' },
+    sourceGroupOptionHover: { 'background-color': 'rgb(68, 68, 68)' },
+    tocTag: { 'background-color': 'rgb(103, 194, 58)', color: 'rgb(255, 255, 255)', 'border-top-color': 'rgb(103, 194, 58)' },
+    messageBox: { 'background-color': 'rgb(33, 33, 33)', 'border-top-color': 'rgb(33, 33, 33)' },
+    messageTitle: { color: 'rgb(136, 136, 136)' },
+    messageContent: { color: 'rgb(119, 119, 119)' },
+    messageInput: { 'background-color': 'rgb(68, 68, 68)', 'box-shadow': inputRing },
+    messageInputText: { color: 'rgb(221, 221, 221)' },
+    messageCancel: plainButton,
+    messageConfirm: primaryButton,
+    dialog: { 'background-color': 'rgb(34, 34, 34)' },
+    dialogTitle: { color: 'rgb(187, 187, 187)' },
+    tableHeader: { 'background-color': 'rgb(34, 34, 34)', color: 'rgb(144, 147, 153)', 'border-bottom-color': 'rgb(85, 85, 85)' },
+    tableRow: { 'background-color': 'rgb(34, 34, 34)' },
+    tableCell: { color: 'rgb(136, 136, 136)', 'border-bottom-color': 'rgb(85, 85, 85)' },
+    dialogCounter: { color: 'rgb(187, 187, 187)' },
+    dialogCancel: plainButton,
+    dialogPrimary: primaryButton,
+  })
+}
+
 async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   const markBackground = () => page.locator('.reader-body [data-reader-block] mark')
     .evaluate(element => window.getComputedStyle(element).backgroundColor)
   const dayMarkBackground = await markBackground()
   const dayChrome = await readerChromeSnapshot(page, { mobile })
   const dayLists = await readerListSnapshot(page, { mobile })
+  const dayElements = await readerElementSnapshot(page, { mobile })
+  if (process.env.SMOKE_DAY_SNAPSHOT) {
+    // Evidence for "day unchanged": compare these lines between builds.
+    const viewportKey = `${viewport.width}x${viewport.height}`
+    appendFileSync(process.env.SMOKE_DAY_SNAPSHOT, `${JSON.stringify({ viewport: viewportKey, dayChrome, dayLists, dayElements })}\n`)
+  }
   assertChromeSnapshot(viewport, 'day lists', dayLists, {
     fontPreview: { color: 'rgb(44, 42, 36)', 'border-top-color': 'rgb(234, 223, 202)', 'background-color': 'rgb(255, 250, 240)' },
   })
@@ -1768,6 +1901,7 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(await markBackground() === dayMarkBackground, `${viewport.width}: built-in night must not take over inline mark surfaces`)
   await assertBuiltInNightChrome(page, viewport, { mobile })
   await assertBuiltInNightLists(page, viewport, { mobile })
+  await assertBuiltInNightElements(page, viewport, { mobile })
 
   const dayToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
@@ -1785,6 +1919,11 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(
     JSON.stringify(restoredDayLists) === JSON.stringify(dayLists),
     `${viewport.width}: day lists must restore exactly: ${JSON.stringify(dayLists)} -> ${JSON.stringify(restoredDayLists)}`,
+  )
+  const restoredDayElements = await readerElementSnapshot(page, { mobile })
+  assert(
+    JSON.stringify(restoredDayElements) === JSON.stringify(dayElements),
+    `${viewport.width}: day Element Plus colors must restore exactly: ${JSON.stringify(dayElements)} -> ${JSON.stringify(restoredDayElements)}`,
   )
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
@@ -2490,6 +2629,12 @@ async function main() {
         await runPublicStaticViewport(browser, viewport)
       }
       console.log('reader public static tree contract smoke passed')
+      return
+    }
+    if (process.env.SMOKE_NIGHT_ONLY === '1' && process.env.SMOKE_VIEWPORT) {
+      const [width, height] = process.env.SMOKE_VIEWPORT.split('x').map(Number)
+      await runNightSurfaceViewport(browser, { width, height })
+      console.log(`reader built-in night surface contract smoke passed at ${width}x${height}`)
       return
     }
     if (process.env.SMOKE_NIGHT_ONLY === '1') {
