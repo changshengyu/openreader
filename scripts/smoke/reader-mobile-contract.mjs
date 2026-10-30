@@ -255,6 +255,46 @@ function savedReaderShelf() {
   ]
 }
 
+// reader-dev PopCatalog/BookSource night lists need an uncached row, a cached
+// row (cachePath) and a current row, plus a current and an alternative source.
+function savedReaderChapters() {
+  return [
+    { id: 11, index: 0, title: '第一章' },
+    { id: 12, index: 1, title: '第二章' },
+    { id: 13, index: 2, title: '第三章', cachePath: 'cache/books/1/chapters/2.txt' },
+  ]
+}
+
+function savedReaderSourceCandidates() {
+  const book = savedReaderBook()
+  return [
+    {
+      sourceId: 2,
+      sourceName: '测试书源',
+      group: '默认',
+      title: book.title,
+      author: book.author,
+      bookUrl: book.bookUrl,
+      latestChapterTitle: '第三章',
+      time: 18,
+      current: true,
+      type: 0,
+    },
+    {
+      sourceId: 3,
+      sourceName: '夜间列表备用书源',
+      group: '默认',
+      title: book.title,
+      author: book.author,
+      bookUrl: 'https://backup.example/book/mobile-reader-contract',
+      latestChapterTitle: '第三章 备用',
+      time: 34,
+      current: false,
+      type: 0,
+    },
+  ]
+}
+
 async function installApiMocks(page, readerSettings = {}) {
   const bookmarks = [{
     id: 101,
@@ -308,10 +348,7 @@ async function installApiMocks(page, readerSettings = {}) {
     }
     if (path === '/books') return route.fulfill(json(savedReaderShelf()))
     if (path === '/books/1/chapters') {
-      return route.fulfill(json([
-        { id: 11, index: 0, title: '第一章' },
-        { id: 12, index: 1, title: '第二章' },
-      ]))
+      return route.fulfill(json(savedReaderChapters()))
     }
     if (path === '/books/1/chapters/0/content') {
       return route.fulfill(json({
@@ -334,6 +371,17 @@ async function installApiMocks(page, readerSettings = {}) {
           '第二章结尾。',
         ].join('\n'),
       }))
+    }
+    if (path === '/books/1/chapters/2/content') {
+      return route.fulfill(json({
+        chapter: { id: 13, index: 2, title: '第三章' },
+        content: ['第三章开头。', '第三章结尾。'].join('\n'),
+      }))
+    }
+    if (path === '/books/1/source-candidates' && method === 'GET') {
+      const mode = url.searchParams.get('mode') || 'available'
+      if (mode === 'available' || mode === 'refresh') return route.fulfill(json(savedReaderSourceCandidates()))
+      return route.fulfill(json({ list: [], offset: 0, nextOffset: 0, hasMore: false, total: 0 }))
     }
     if (path === '/books/1/search' && method === 'GET') {
       const keyword = url.searchParams.get('q') || ''
@@ -1569,11 +1617,109 @@ async function assertBuiltInNightChrome(page, viewport, { mobile }) {
   await page.waitForSelector('.settings-body', { state: 'detached', timeout: 10000 })
 }
 
+// Computed list colors of the shelf, source and catalog panels, and the settings
+// font preview, for the reader-dev night list typography contract (2026-10-30).
+async function readerListSnapshot(page, { mobile }) {
+  const panels = [
+    ['书架', 'shelf', '.reader-shelf-card.active'],
+    ['书源', 'source', '.source-item.selected'],
+    ['目录', 'toc', '.toc-item.active'],
+    ['设置', 'settings', '.settings-body .font-preview'],
+  ]
+  const snapshot = {}
+  for (const [label, panel, ready] of panels) {
+    const tool = mobile
+      ? mobileTopTool(page, label)
+      : page.locator(`.reader-left-rail button[title="${label}"]`)
+    await tool.click()
+    await page.waitForSelector(ready, { timeout: 10000 })
+    // Keep hover states out of the snapshot.
+    await page.mouse.move(1, 1)
+    Object.assign(snapshot, await page.evaluate((panel) => {
+      const pick = (selector, properties) => {
+        const element = document.querySelector(selector)
+        if (!element) return null
+        const style = window.getComputedStyle(element)
+        return Object.fromEntries(properties.map(property => [property, style.getPropertyValue(property)]))
+      }
+      if (panel === 'shelf') {
+        return {
+          shelfCard: pick('.reader-shelf-card:not(.active)', ['color', 'border-bottom-color']),
+          shelfTitle: pick('.reader-shelf-card:not(.active) .reader-shelf-title-line strong', ['color']),
+          shelfUnread: pick('.reader-shelf-card:not(.active) .reader-shelf-title-line em', ['color']),
+          shelfChapter: pick('.reader-shelf-card:not(.active) .reader-shelf-chapter', ['color']),
+          shelfActiveTitle: pick('.reader-shelf-card.active .reader-shelf-title-line strong', ['color']),
+        }
+      }
+      if (panel === 'source') {
+        return {
+          sourceItem: pick('.source-item:not(.selected)', ['border-bottom-color']),
+          sourceName: pick('.source-item:not(.selected) .source-name', ['color']),
+          sourceTime: pick('.source-item:not(.selected) .source-time', ['color']),
+          sourceLatest: pick('.source-item:not(.selected) .source-latest-chapter', ['color']),
+          sourceSelectedName: pick('.source-item.selected .source-name', ['color']),
+        }
+      }
+      if (panel === 'toc') {
+        return {
+          tocItem: pick('.toc-item:not(.active):not(.cached)', ['color', 'border-bottom-color', 'background-color']),
+          tocCached: pick('.toc-item.cached:not(.active)', ['color']),
+          tocActive: pick('.toc-item.active', ['color', 'background-color']),
+          tocMeta: pick('.toc-item:not(.active) small', ['color']),
+        }
+      }
+      return {
+        fontPreview: pick('.settings-body .font-preview', ['color', 'border-top-color', 'background-color']),
+      }
+    }, panel))
+    if (mobile) {
+      await tool.click()
+      await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+    } else {
+      await page.locator('.reader-desktop-workspace-close').click()
+      await page.waitForSelector('.reader-desktop-workspace', { state: 'detached', timeout: 10000 })
+    }
+  }
+  return snapshot
+}
+
+// reader-dev PopCatalog.vue/BookShelf.vue/BookSource.vue `.night` lists and the
+// font preview on ReadSettings' night control surface (user decision 2026-10-30).
+async function assertBuiltInNightLists(page, viewport, { mobile }) {
+  const listText = 'rgb(96, 98, 102)'
+  const shelfTitle = 'rgb(136, 136, 136)'
+  const shelfChapter = 'rgb(85, 85, 85)'
+  const border = 'rgb(51, 51, 51)'
+  const accent = 'rgb(237, 66, 89)'
+  const transparent = 'rgba(0, 0, 0, 0)'
+  assertChromeSnapshot(viewport, 'night lists', await readerListSnapshot(page, { mobile }), {
+    shelfCard: { color: shelfTitle, 'border-bottom-color': border },
+    shelfTitle: { color: shelfTitle },
+    shelfUnread: { color: shelfTitle },
+    shelfChapter: { color: shelfChapter },
+    shelfActiveTitle: { color: accent },
+    sourceItem: { 'border-bottom-color': border },
+    sourceName: { color: listText },
+    sourceTime: { color: listText },
+    sourceLatest: { color: shelfTitle },
+    sourceSelectedName: { color: accent },
+    tocItem: { color: listText, 'border-bottom-color': border, 'background-color': transparent },
+    tocCached: { color: 'rgb(68, 68, 68)' },
+    tocActive: { color: accent, 'background-color': transparent },
+    ...(mobile ? { tocMeta: { color: shelfChapter } } : {}),
+    fontPreview: { color: listText, 'border-top-color': 'rgb(102, 102, 102)', 'background-color': 'rgba(45, 45, 45, 0.5)' },
+  })
+}
+
 async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   const markBackground = () => page.locator('.reader-body [data-reader-block] mark')
     .evaluate(element => window.getComputedStyle(element).backgroundColor)
   const dayMarkBackground = await markBackground()
   const dayChrome = await readerChromeSnapshot(page, { mobile })
+  const dayLists = await readerListSnapshot(page, { mobile })
+  assertChromeSnapshot(viewport, 'day lists', dayLists, {
+    fontPreview: { color: 'rgb(44, 42, 36)', 'border-top-color': 'rgb(234, 223, 202)', 'background-color': 'rgb(255, 250, 240)' },
+  })
   const nightToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="夜间模式"]')
     : page.locator('.reader-right-rail button[title="夜间模式"]')
@@ -1609,6 +1755,7 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(state.pageImage.includes('content_6.png'), `${viewport.width}: built-in night page texture ${state.pageImage}`)
   assert(await markBackground() === dayMarkBackground, `${viewport.width}: built-in night must not take over inline mark surfaces`)
   await assertBuiltInNightChrome(page, viewport, { mobile })
+  await assertBuiltInNightLists(page, viewport, { mobile })
 
   const dayToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
@@ -1621,6 +1768,11 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(
     JSON.stringify(restoredDayChrome) === JSON.stringify(dayChrome),
     `${viewport.width}: day chrome must restore exactly: ${JSON.stringify(dayChrome)} -> ${JSON.stringify(restoredDayChrome)}`,
+  )
+  const restoredDayLists = await readerListSnapshot(page, { mobile })
+  assert(
+    JSON.stringify(restoredDayLists) === JSON.stringify(dayLists),
+    `${viewport.width}: day lists must restore exactly: ${JSON.stringify(dayLists)} -> ${JSON.stringify(restoredDayLists)}`,
   )
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })

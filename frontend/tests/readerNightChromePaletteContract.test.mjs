@@ -42,6 +42,10 @@ test('reader night chrome variables carry the reader-dev night palette for every
     '--reader-settings-value-text': '#a6a6a6',
     '--reader-theme-selected-border': '#666',
     '--reader-moon-icon': '#ed4259',
+    // 2026-10-30 D3 (reader-night-list-typography contract): the OpenReader-only
+    // font preview takes ReadSettings' night `.span-item` surface.
+    '--reader-font-preview-bg': 'rgba(45, 45, 45, 0.5)',
+    '--reader-font-preview-border': '#666',
   })
   assert.match(readerViewSource, /\.\.\.\(reader\.themeType === 'night' \? NIGHT_CHROME_STYLE : \{\}\)/)
 })
