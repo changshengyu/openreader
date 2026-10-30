@@ -197,9 +197,9 @@ export const useReaderStore = defineStore('reader', {
       })
       this.ensureClientId()
     },
-    setMode(mode) {
+    setMode(mode, options = {}) {
       this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'page'
-      this.markSettingsDirty()
+      this.markSettingsDirty({ localOnly: options.deviceLocal === true })
     },
     setCustomConfig(name) {
       const config = (Array.isArray(this.customConfigList) ? this.customConfigList : []).find(item => item?.name === name)

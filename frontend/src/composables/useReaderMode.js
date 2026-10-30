@@ -7,6 +7,7 @@ export function readerEffectiveMode(
   isReadBarOpen = false,
   isOrdinaryImageComic = false,
   isAutoReading = false,
+  isDesktop = false,
 ) {
   // reader-dev's isCarToon excludes CBZ. Ordinary image-comic chapters use
   // the non-slide page branch, while a CBZ keeps an explicitly selected flip
@@ -16,6 +17,9 @@ export function readerEffectiveMode(
   // non-slide branch is the vertical page interaction, while scroll modes
   // remain native scrolling.
   if ((isReadBarOpen || isAutoReading) && mode === 'flip') return 'page'
+  // reader-dev only slides in its mini interface (isSlideRead), so a flip
+  // setting that reaches the desktop is the same page layout.
+  if (isDesktop && mode === 'flip') return 'page'
   return mode
 }
 
@@ -167,6 +171,18 @@ export function useReaderMode(options) {
       }
     },
     { immediate: true },
+  )
+
+  // A flip setting that reaches the desktop later (the account settings,
+  // another device, a scheme) goes back to page on this device only: the
+  // account keeps the choice of the device that made it.
+  watch(
+    () => options.reader.mode,
+    mode => {
+      if (mode === 'flip' && !unref(options.isMobileReader)) {
+        options.reader.setMode('page', { deviceLocal: true })
+      }
+    },
   )
 
   return {

@@ -703,6 +703,7 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
+const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const restoringPosition = ref(false)
 let pendingReaderChapterLoad = null
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
@@ -929,6 +930,7 @@ const effectiveReaderMode = computed(() => (
     ttsReadBarLayoutActive.value,
     isOrdinaryImageComicChapter.value,
     autoReading.value,
+    !isMobileReader.value,
   )
 ))
 const effectiveReaderState = {
@@ -1442,7 +1444,6 @@ function formatRunningChapterLabel(index, title) {
 
 const runningChapterLabel = computed(() => formatRunningChapterLabel(currentIndex.value, chapter.value?.title))
 const showRunningChapterHeader = computed(() => !isAudioChapter.value && !isCBZBook(book.value))
-const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const desktopWorkspacePanel = computed(() => {
   if (isMobileReader.value) return ''
   if (showShelfDrawer.value) return 'shelf'
