@@ -1,5 +1,19 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-30 P1 Reader 桌面端把账号的“左右滑动”改写成“上下滑动”（D4）
+
+晚到设置合同第 10 节观察 1、2。桌面 Reader setup 时与 mini→桌面切换时，`useReaderMode.js:166–174` 的 immediate watcher 调用
+`setMode('page')`：刷新设置时间戳、改写当前方案并 `PUT` `page`。手机选了“左右滑动”后在电脑或横屏 iPad 打开 Reader，账号就变成
+“上下滑动”；iPad 手机模式→自适应→手机模式之后不再左右滑动；晚到 `flip` 只改本设备的 `page` 也会随桌面下一次保存写回账号。上游
+`isSlideRead = miniInterface && readMethod === "左右滑动"`（`vuex.js` L451–453）是派生，界面切换只改 `miniInterface`，`readMethod`
+只由用户选择与配置恢复改变；桌面翻页方式隐藏“左右滑动”，账号为“左右滑动”时没有高亮项。盘点修正了晚到设置合同第 3.1 节：
+布局、键盘、指针拿到的是只暴露有效模式的 `effectiveReaderState`，真正读原始设置的是位置恢复、章节窗口、本地进度、store 的
+`saveProgress`、`closeTTSBar` 与设置面板高亮。D4-1–D4-4 **`must-fix`**：删除两个转换 watcher，原始设置只由明确选择改变；新增界面模式
+`readerInterfaceMode`（桌面 `flip` 为 `page`），原始设置读者改读它（`getMode`、`saveProgress` 的 `payload.mode`），行为不变；D4-6（缺
+`mode` 的旧本地进度回退值）`acceptable-change`。完整合同见
+[`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-10-30 P0 Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局
 
 面板正文控件浏览器合同的 `C1 flip` 每次有 2–6/12 组在等 `加载下一章` 时超时，查明是 Reader 的竞态而不是 harness：桌面把 `flip` 转成

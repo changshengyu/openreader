@@ -181,6 +181,8 @@ F3. 不变：
 
 ## 10. 观察（不在本切片）
 
+观察 1、2 由 D4 切片处理，见 [`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)（它的第 3.3 节修正了本文第 3.1 节的读者清单）。
+
 1. D4：setup 时与界面切换时的桌面转换写回账号。手机选了“左右滑动”后在桌面打开 Reader，账号就变成“上下滑动”；iPad 从手机模式切回
    自适应再切回去，左右滑动也丢了。上游只在渲染上派生（第 2 节）。改成派生要处理第 3.1 节列出的约 20 处直接读原始设置的代码，适合单独
    盘点。

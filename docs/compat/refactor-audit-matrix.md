@@ -1,5 +1,14 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-30 当前切片：Reader 桌面端不再改写账号的“左右滑动”（D4，P1）
+
+见[`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
+晚到设置合同观察 1、2：桌面 setup 与 mini→桌面切换时 `setMode('page')` 把账号的 `flip` 写成 `page`，iPad 手机模式往返丢失左右滑动，
+本设备的 `page` 还会随下一次保存写回。上游只派生 `isSlideRead`，从不改写 `readMethod`。D4-1–D4-4 must-fix（不再转换原始设置；
+界面模式 `readerInterfaceMode` 替代“桌面原始设置不是 flip”的不变量，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar`
+改读它；桌面翻页方式随上游无高亮），D4-6 acceptable-change。计划红测：单元 U1–U9 与两条与上游冲突的旧断言改写，新浏览器合同
+A1–A4（设置先到的桌面打开、iPad 手机模式往返、手机对照、桌面改字号）。状态 contract-only。
+
 ## 2026-10-30 当前切片：Reader 桌面端晚到的“左右滑动”设置（P0）
 
 见[`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。
