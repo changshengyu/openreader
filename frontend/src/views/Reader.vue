@@ -1285,6 +1285,21 @@ const NIGHT_CHROME_STYLE = Object.freeze({
   '--reader-settings-value-text': '#a6a6a6',
   '--reader-theme-selected-border': '#666',
   '--reader-moon-icon': '#ed4259',
+  '--reader-font-preview-bg': 'rgba(45, 45, 45, 0.5)',
+  '--reader-font-preview-border': '#666',
+})
+
+// reader-dev PopCatalog.vue / BookShelf.vue / BookSource.vue `.night` lists, keyed only on isNight.
+// Day leaves these unset so each list keeps its own day fallback.
+const NIGHT_LIST_STYLE = Object.freeze({
+  '--reader-list-text': '#606266',
+  '--reader-list-cached-text': '#444',
+  '--reader-list-border': '#333',
+  '--reader-list-active-text': '#ed4259',
+  '--reader-list-active-bg': 'transparent',
+  '--reader-shelf-title-text': '#888',
+  '--reader-shelf-chapter-text': '#555',
+  '--reader-source-chapter-text': '#888',
 })
 
 const readerStyle = computed(() => ({
@@ -1307,6 +1322,7 @@ const readerStyle = computed(() => ({
   '--reader-accent': '#ed4259',
   '--reader-active-text': reader.themeType === 'night' ? '#7ed8d4' : '#0f5451',
   ...(reader.themeType === 'night' ? NIGHT_CHROME_STYLE : {}),
+  ...(reader.themeType === 'night' ? NIGHT_LIST_STYLE : {}),
   '--reader-font-weight': reader.fontWeight,
   '--reader-brightness': `${reader.brightness}%`,
   '--reader-dim-opacity': Math.max(0, 1 - reader.brightness / 100),

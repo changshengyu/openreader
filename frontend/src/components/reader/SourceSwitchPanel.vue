@@ -210,7 +210,7 @@ function jumpToActive() {
 }
 
 .title-actions button:disabled {
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 62%, transparent);
+  color: var(--reader-list-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 62%, transparent));
   cursor: default;
 }
 
@@ -238,7 +238,7 @@ function jumpToActive() {
   color: var(--reader-popup-text, var(--reader-text));
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--reader-list-border, #eee);
   cursor: pointer;
   text-align: left;
 }
@@ -263,7 +263,7 @@ function jumpToActive() {
 .source-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-list-text, var(--reader-popup-text, var(--reader-text)));
   font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -271,21 +271,21 @@ function jumpToActive() {
 
 .source-time {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-list-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   font-size: 12px;
 }
 
 .source-latest-chapter {
   min-width: 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-source-chapter-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .source-status {
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-source-chapter-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   font-size: 12px;
 }
 

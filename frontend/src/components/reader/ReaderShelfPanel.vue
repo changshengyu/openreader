@@ -114,10 +114,10 @@ onBeforeUnmount(() => {
   max-width: 100%;
   overflow: hidden;
   padding: 8px 0;
-  color: var(--reader-popup-text, var(--reader-text));
+  color: var(--reader-shelf-title-text, var(--reader-popup-text, var(--reader-text)));
   background: transparent;
   border: 0;
-  border-bottom: 1px solid rgba(160, 139, 91, 0.22);
+  border-bottom: 1px solid var(--reader-list-border, rgba(160, 139, 91, 0.22));
   cursor: pointer;
   text-align: left;
 }
@@ -150,13 +150,13 @@ onBeforeUnmount(() => {
 
 .reader-shelf-title-line em {
   flex: 0 0 auto;
-  color: var(--reader-accent, #ed4259);
+  color: var(--reader-shelf-title-text, var(--reader-accent, #ed4259));
   font-size: 12px;
   font-style: normal;
 }
 
 .reader-shelf-chapter {
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent);
+  color: var(--reader-shelf-chapter-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   font-size: 14px;
 }
 
