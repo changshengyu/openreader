@@ -1,6 +1,6 @@
 # Reader 夜间目录/书架/换源列表文字合同（P1）
 
-状态：**implementation-complete / regression-validated**（记录见第 8 节；用户 2026-10-30 确认第 5 节：列表文字全部改回上游，字体预览框夜间用控件夜间面）。审查日期：2026-10-30。审查基线：`OpenReader@ec3736f`。
+状态：**aligned / Docker-published / awaiting-device-verification**（发布见文末；记录见第 8 节；用户 2026-10-30 确认第 5 节：列表文字全部改回上游，字体预览框夜间用控件夜间面）。审查日期：2026-10-30。审查基线：`OpenReader@ec3736f`。
 
 ## 1. 来源与范围
 
@@ -228,3 +228,7 @@ L2 修订红测 `4ee2515`、修订实现 `c576933`。
 `reader-epub-contract.mjs`（真实接口，三视口）通过。依赖未变，公告门沿用上面的结果，Actions 会再跑一次。
 
 状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
+
+## 发布（2026-10-30）
+
+main 快进到 `21d78ab`（本切片以 `51377c1` 合并到实例签名密钥发布 `906cec5` 之上；ls-remote 核验，未强推）；可信 Actions run `41031337197` 全部成功（09:09–09:33Z）。`ghcr.io/changshengyu/openreader:21d78ab` 与 `latest` 为 OCI index `sha256:d0fca276c1fc41f1c25e00b0fcd07580c07a144f51c13fbdea640c272b588d1d`（linux/amd64 `sha256:ca6801a8…`、linux/arm64 `sha256:a4d715ac…`），两平台 `org.opencontainers.image.revision` 均为 `21d78aba21529fa255cf0e97a8fcec1f0620b691`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认。

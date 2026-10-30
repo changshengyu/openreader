@@ -11,6 +11,7 @@
 [`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 2026-10-30 记录（合同第 8 节）：合同 `465ad11`、红测 `f54fcbc`、实现 `849c33d`、浏览器夹具修正 `086e987`、L2 修订 `4ee2515`/`c576933`。实现中修订 L2：导入的本地书每章都有服务端 `cachePath`，沿用 `isCached` 会让整本目录夜间变成 `#444`；上游 `cachedCataMap` 只读浏览器缓存，现在 `cached` 只看浏览器缓存，`el-tag` 不变。真实账号对照 `ec3736f` 构建：五个视口日间列表与字体预览 computed style 完全相同，夜间逐项为上游值；移动/换源/书架刷新/文档标题/设置位置/EPUB 浏览器合同、前端 843/843 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-30 发布：main 快进到 `21d78ab`（本切片以 `51377c1` 合并到实例签名密钥发布 `906cec5` 之上；ls-remote 核验，未强推）；可信 Actions run `41031337197` 全部成功（09:09–09:33Z）。`ghcr.io/changshengyu/openreader:21d78ab` 与 `latest` 为 OCI index `sha256:d0fca276c1fc41f1c25e00b0fcd07580c07a144f51c13fbdea640c272b588d1d`（linux/amd64 `sha256:ca6801a8…`、linux/arm64 `sha256:a4d715ac…`），两平台 `org.opencontainers.image.revision` 均为 `21d78aba21529fa255cf0e97a8fcec1f0620b691`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-29 P1 认证与资源链接 实例签名密钥（S2，合同 2026-10-22）
 
