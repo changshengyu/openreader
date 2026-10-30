@@ -10,6 +10,7 @@
 `#EB4259`→`#ed4259` 为 `acceptable-change`；面板里的 Element Plus 组件、日间配色与日夜共用结构不重开。完整合同见
 [`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
+2026-10-30 记录（合同第 8 节）：合同 `465ad11`、红测 `f54fcbc`、实现 `849c33d`、浏览器夹具修正 `086e987`、L2 修订 `4ee2515`/`c576933`。实现中修订 L2：导入的本地书每章都有服务端 `cachePath`，沿用 `isCached` 会让整本目录夜间变成 `#444`；上游 `cachedCataMap` 只读浏览器缓存，现在 `cached` 只看浏览器缓存，`el-tag` 不变。真实账号对照 `ec3736f` 构建：五个视口日间列表与字体预览 computed style 完全相同，夜间逐项为上游值；移动/换源/书架刷新/文档标题/设置位置/EPUB 浏览器合同、前端 843/843 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
 
 ## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
 

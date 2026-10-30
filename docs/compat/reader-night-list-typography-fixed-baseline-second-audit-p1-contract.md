@@ -1,6 +1,6 @@
 # Reader 夜间目录/书架/换源列表文字合同（P1）
 
-状态：**contract-only**（用户 2026-10-30 确认第 5 节：列表文字全部改回上游，字体预览框夜间用控件夜间面）。审查日期：2026-10-30。审查基线：`OpenReader@ec3736f`。
+状态：**implementation-complete / regression-validated**（记录见第 8 节；用户 2026-10-30 确认第 5 节：列表文字全部改回上游，字体预览框夜间用控件夜间面）。审查日期：2026-10-30。审查基线：`OpenReader@ec3736f`。
 
 ## 1. 来源与范围
 
@@ -79,7 +79,7 @@ Element UI 2.15 `.el-popover` 的 `#606266`。`App.vue` 的 `.night-theme`（939
 | 编号 | 项目 | 上游夜间 | 当前夜间 | 裁决 |
 | --- | --- | --- | --- | --- |
 | L1 | 目录章节名（未缓存） | `#606266`（继承，3.1:1） | 白色（18.7:1） | **must-fix**（D1） |
-| L2 | 目录已缓存章节名 | `#444`（1.9:1） | 白色，另有绿色 `el-tag` | **must-fix**（D1）：章节名 `#444`；`el-tag` 是 OpenReader 新增标记，保留不动 |
+| L2 | 目录已缓存章节名（上游只认浏览器缓存 `cachedCataMap`） | `#444`（1.9:1） | 白色，另有绿色 `el-tag` | **must-fix**（D1）：浏览器已缓存的章节名 `#444`；`el-tag` 是 OpenReader 新增标记，保留不动（实现中修订判定，见第 8 节） |
 | L3 | 目录分隔线 | `#333` | `#f0f0f0` | **must-fix** |
 | L4 | 目录当前章（移动一列） | `#EB4259`，无底色 | `#409eff` + `#ecf5ff` 浅蓝块 | **must-fix**：夜间强调色 + 透明底（桌面两列已是如此） |
 | L5 | 目录悬停（上游没有） | — | `#409eff` + `#f5f7fa` 浅灰块 | **acceptable-change**：保留悬停状态，夜间与 L4 同色、透明底，不再出现浅色块 |
@@ -155,8 +155,10 @@ Element UI 2.15 `.el-popover` 的 `#606266`。`App.vue` 的 `.night-theme`（939
    | `.title-actions button:disabled`（换源） | `--reader-list-text`（回退 62%） |
    | `.reader-workspace-actions :deep(button:disabled)`（桌面目录/书架） | `--reader-list-text`（回退 `#aaa`） |
 
-   已缓存的判定沿用 `ReaderTocPanel.vue` 现有的 `isCached`（服务端 `cachePath` 或浏览器缓存，与 `el-tag` 同一批章节），本切片不调整。
-   唯一的 DOM 变化是已缓存章节行的 `cached` 类。移动标题区不可用色已是 `#606266`，不改。
+   `cached` 类只看浏览器缓存 `browserCachedMap`（`isBrowserCached`），对应上游 `cachedCataMap`：上游每次成功取到正文都经
+   `cacheFirstRequest` 写入浏览器缓存，目录只按这些键变暗；服务端 `cachePath`（导入的本地书每章都有）不算。`el-tag` 仍用 `isCached`
+   （含服务端 `cachePath`），不调整。（实现中修订：原文写的是沿用 `isCached`，见第 8 节。）
+   唯一的 DOM 变化是浏览器已缓存章节行的 `cached` 类。移动标题区不可用色已是 `#606266`，不改。
 4. `--reader-popup-text`、`--reader-text` 与阅读面计算不变。
 
 ## 7. 计划测试（先红）
@@ -164,17 +166,18 @@ Element UI 2.15 `.el-popover` 的 `#606266`。`App.vue` 的 `.night-theme`（939
 `frontend/tests`（node --test）：
 
 1. 新增 `readerNightListTypographyContract.test.mjs`：`NIGHT_LIST_STYLE` 的变量与上游值完全一致，且只在 `reader.themeType === 'night'`
-   时展开；三块面板、两个标题区与字体预览框按第 6 节取色，每个回退值等于现在的日间表达式；目录已缓存行带 `cached` 类，且
-   `.toc-item.cached` 排在悬停与当前章之前。
+   时展开；三块面板、两个标题区与字体预览框按第 6 节取色，每个回退值等于现在的日间表达式；目录浏览器已缓存行带 `cached` 类
+   （只看 `browserCachedMap`），且 `.toc-item.cached` 排在悬停与当前章之前。
 2. `readerNightChromePaletteContract.test.mjs` 的变量组断言按 D3 加入两项字体预览变量（扩充，不删改已有项）。
 3. 对照：夜间配色切片其余断言、`--reader-popup-text` 计算、自定义方案对比度保护保持通过。
 
-浏览器（`scripts/smoke/reader-mobile-contract.mjs`，模拟接口新增带 `cachePath` 的第三章及其正文、两个换源候选）：内置夜间段在
+浏览器（`scripts/smoke/reader-mobile-contract.mjs`，模拟接口新增第三、四章及其正文——第二、三章由预加载写入浏览器缓存，第四章只有
+服务端 `cachePath`、必须保持未缓存色——以及两个换源候选）：内置夜间段在
 1440×900、390×844、360×800 与 iPad 1024×1366 / 1366×1024（自适应）打开书架、换源、目录，读取 computed style：
 
 | 元素 | 夜间期望 |
 | --- | --- |
-| 目录未缓存章节 / 已缓存章节 / 当前章 | `rgb(96, 98, 102)` / `rgb(68, 68, 68)` / `rgb(237, 66, 89)` + `rgba(0, 0, 0, 0)` 底；分隔 `rgb(51, 51, 51)` |
+| 目录未缓存章节（含只有服务端 `cachePath` 的） / 浏览器已缓存章节 / 当前章 | `rgb(96, 98, 102)` / `rgb(68, 68, 68)` / `rgb(237, 66, 89)` + `rgba(0, 0, 0, 0)` 底；分隔 `rgb(51, 51, 51)` |
 | 移动目录“第 N 章” | `rgb(85, 85, 85)` |
 | 书架书名 / 未读数 / 最近章节 / 当前书书名 | `rgb(136, 136, 136)` / `rgb(136, 136, 136)` / `rgb(85, 85, 85)` / `rgb(237, 66, 89)`；分隔 `rgb(51, 51, 51)` |
 | 换源书源名 / 耗时 / 最新章节 / 当前来源名 | `rgb(96, 98, 102)` / `rgb(96, 98, 102)` / `rgb(136, 136, 136)` / `rgb(237, 66, 89)`；分隔 `rgb(51, 51, 51)` |
@@ -182,3 +185,41 @@ Element UI 2.15 `.el-popover` 的 `#606266`。`App.vue` 的 `.night-theme`（939
 
 日间在切换前后各读一次同一批元素（含字体预览框），要求逐项相同，且字体预览框为 `rgb(44, 42, 36)`/`rgb(234, 223, 202)`/
 `rgb(255, 250, 240)`。另跑真实 Go 服务 + 新构建、新数据目录的账号对照（新构建与 `ec3736f` 构建），确认日间 computed style 相同。
+
+## 8. 记录（2026-10-30）
+
+提交（分支 `claude/reader-night-list-typography`）：合同 `465ad11`；红测 `f54fcbc`；实现 `849c33d`；浏览器夹具修正 `086e987`；
+L2 修订红测 `4ee2515`、修订实现 `c576933`。
+
+- 红测：`f54fcbc` 在 `ec3736f` 上 7 项断言失败（6 项新测：夜间列表变量组、目录、书架、换源、桌面标题按钮、字体预览；以及按 D3
+  扩充的夜间配色变量组），日间回退对照与夜间配色其余 6 项通过；`849c33d` 后同一批断言全部转绿。浏览器合同在 `ec3736f` 构建上于
+  `1440: night lists shelfCard color expected rgb(136, 136, 136), got rgb(255, 255, 255)` 失败。
+- 夹具修正（`086e987`）：载入章节会写入浏览器缓存，阅读器又预加载当前章前后两章，三章夹具里所有非当前行都变成已缓存
+  （`849c33d` 构建报 `1440: night lists tocItem is missing`）；改为四章，第四章在预加载半径之外。
+- 实现中修订 L2（`4ee2515` 红 → `c576933`）：真实后端对照时发现导入的本地书每章都写了服务端 `cachePath`
+  （`backend/services/localbook/durable_import.go:251`），沿用 `isCached` 会把整本本地书目录在夜间染成 `#444`。上游 `PopCatalog`
+  的 `cachedCataMap` 只读浏览器缓存（`localCache@…@chapterContent-<index>`，`App.vue#getBookContent` 经 `plugins/helper.js#cacheFirstRequest`
+  每次成功取正文都写入）。现在 `cached` 类只看 `browserCachedMap`（`isBrowserCached`），`el-tag` 仍用 `isCached`。修订红测在
+  `849c33d` 上 1 项单元断言（catalog rows）与浏览器断言 `1440: night lists tocItem color expected rgb(96, 98, 102), got rgb(68, 68, 68)`
+  （只有服务端 `cachePath` 的第四章被染暗）失败，`c576933` 后通过。这比原写法更贴近上游，仍在 D1“全部改回上游”之内。
+- 测试：frontend 843/843 与 build；backend `go test ./...` 30 个包与 `go vet ./...`（后端未改动；race 门跳过：没有触及
+  db/api/services）；advisory 门自测 109/109，Go 与前端公告扫描 exit 0。
+- 真实浏览器（本地 Go 服务 + 新构建与 `ec3736f` 构建各一份，新数据目录）：
+  - `reader-mobile-contract.mjs`（模拟接口）全量通过：1440×900、390×844、360×800、自定义纯黑夜间、iPad 1024×1366 / 1366×1024
+    （自适应）与强制手机模式；内置夜间三块列表与字体预览逐项为第 7 节的值，切回日间后与切换前逐项相同。
+  - `reader-source-switch-contract.mjs`、`bookshelf-refresh-progress-contract.mjs`、`document-title-contract.mjs`（三视口）、
+    `reader-settings-position-contract.mjs`、`reader-epub-contract.mjs`（三视口）通过。`reader-desktop-panel-controls-contract.mjs`
+    108 组中 105 组通过，失败的 3 组都是 C1 flip 开头等待 `.reader-chapter-end` 的 10 秒 harness 超时（还没打开面板）；只跑 C1 flip
+    （12 组）各两次：新构建 12/12、11/12，`ec3736f` 构建 12/12、10/12，与本切片无关，未修改该脚本。
+  - 真实账号 + 两本导入的 TXT（各 12 章），两份构建对照五个视口（1440×900、390×844、360×800、iPad 1024×1366 / 1366×1024）：
+    日间三块列表与字体预览的 computed style 与 `ec3736f` **完全相同**（唯一 DOM 差异是新构建当前章与预加载两章上的 `cached` 类）；
+    夜间为目录 `rgb(96, 98, 102)`、浏览器已缓存 `rgb(68, 68, 68)`（带服务端“已缓存”标签的第 4–12 章保持 `rgb(96, 98, 102)`）、
+    当前章 `rgb(237, 66, 89)` 透明底、移动“第 N 章” `rgb(85, 85, 85)`、分隔 `rgb(51, 51, 51)`，书架书名与未读数 `rgb(136, 136, 136)`、
+    最近章节 `rgb(85, 85, 85)`、当前书 `rgb(237, 66, 89)`，换源分隔 `rgb(51, 51, 51)`，字体预览 `rgb(96, 98, 102)` / `rgb(102, 102, 102)` /
+    `rgba(45, 45, 45, 0.5)`。旧构建夜间为白字（`rgb(255, 255, 255)`，书架副行 72%）、未读数 `rgb(237, 66, 89)`、分隔
+    `rgb(240, 240, 240)` / `rgba(160, 139, 91, 0.22)` / `rgb(238, 238, 238)`、移动当前章 `rgb(64, 158, 255)` + `rgb(236, 245, 255)`、
+    字体预览浅色块。两份构建都没有控制台错误、页面错误或 5xx。
+- 观察到但未改动：目录 `el-tag` 在夜间仍是 Element Plus 的白底标签（全局 Element 夜间覆盖，第 4 节不重开）；本地书的换源面板只有
+  当前来源一行。
+
+状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。

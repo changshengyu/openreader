@@ -8,6 +8,7 @@ must-fix（目录 `#606266`/已缓存 `#444`/当前章 `#ed4259` 透明底，书
 `#606266`）；字体预览框夜间用控件夜间面（D3）；L5、L6、L14 acceptable-change；Element Plus 组件、日间配色、日夜共用结构不重开。
 计划红测：`NIGHT_LIST_STYLE` 变量组与只在夜间展开、各组件变量与日间回退源码合同、字体预览变量；浏览器三视口 + iPad computed style 与日间前后一致。
 状态 contract-only。
+记录（2026-10-30，取代上段的状态）：合同 `465ad11`、红测 `f54fcbc`（7 项断言失败，对照通过）、实现 `849c33d`、夹具修正 `086e987`、L2 修订 `4ee2515`/`c576933`（已缓存变暗只看浏览器缓存，同上游 `cachedCataMap`；本地书每章的服务端 `cachePath` 不算）。五个视口日间与 `ec3736f` 完全相同、夜间为上游值；前端 843/843 与 build、后端全量/vet、advisory 门、移动/换源/书架刷新/文档标题/设置位置/EPUB 浏览器合同通过；面板控件合同 C1 flip 偶发 harness 超时新旧构建都有。状态 implementation-complete / regression-validated，待可信 Actions。
 
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 
