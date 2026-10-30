@@ -1,6 +1,6 @@
 # Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局（P0）
 
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（合同 `098a662`、红测 `0a73689`、实现 `8cb15dc`，见第 11 节）。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本会话 scratchpad 里的克隆，工作树干净；约定路径
 `/private/tmp/changshengyu-reader-dev` 在会话沙箱里不可写）。OpenReader 基线：`ec3736f`（origin/main，`24511c0` 发布之后只有文档提交），
@@ -187,3 +187,64 @@ F3. 不变：
 2. 桌面在 F2 之后修改其他设置时，`PUT` 的整份设置会带上本设备的 `page`，账号里的 `flip` 仍会被覆盖，与 D4 同源。
 3. 面板正文控件合同的 harness 在 `localStorage.reader` 里写了 `mode`，但 App 挂载时的自动日夜方案先覆盖了它，真正起作用的是模拟的账号
    设置；这正是它能暴露本竞态的原因，本切片不改 harness。
+
+## 11. 实施与验证（2026-10-30）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `098a662` | 合同 | 本文件、gap analysis 与 matrix 顶部条目。 |
+| `0a73689` | 红测 | 单元合同 `frontend/tests/readerDesktopFlipLateSettings.test.mjs`（5 条）；浏览器合同 `scripts/smoke/reader-desktop-flip-late-settings-contract.mjs`（L1–L3，7 组）。 |
+| `8cb15dc` | 实现 | `useReaderMode.js` +16、`stores/reader.js` +2/−2、`Reader.vue` +2/−1。 |
+
+分支 `claude/beautiful-morse-fb1f94` 先快进到 origin/main `ec3736f`。`git diff ec3736f 8cb15dc -- backend` 为空。
+
+**实现**：
+
+- `readerEffectiveMode` 增加第 7 个参数 `isDesktop`（默认 `false`），桌面上的 `flip` 返回 `page`。`Reader.vue` 传 `!isMobileReader.value`，
+  并把 `isMobileReader` 的声明移到 `effectiveReaderMode` 之前（`readerIPadWorkspaceContract.test.mjs` 的源码断言与位置无关）。
+- `useReaderMode` 在已有的 `isMobileReader` watcher 之后加一个只看 `reader.mode` 的 watcher：桌面上变成 `flip` 时调用
+  `setMode('page', { deviceLocal: true })`。
+- store 的 `setMode(mode, options = {})` 调用 `markSettingsDirty({ localOnly: options.deviceLocal === true })`。
+- 没改：setup 时与界面切换时的转换（仍写回账号，D4）；直接读原始设置的代码；朗读条、自动阅读、EPUB、音频、普通图片漫画的规则；
+  后端、API、数据与存储 key。
+
+**单元**（`node --test`）：
+
+| 代码 | 结果 |
+| --- | --- |
+| `0a73689`（产品代码同 `ec3736f`） | 新增 5 条中 3 条失败：`readerEffectiveMode('flip', …, true)` 得到 `'flip'`；桌面 setup 之后的 `flip` 停在 `'flip'`（`the raw setting must not stay flip on the desktop`），还跑了一次 page→flip 事务；`setMode('page', { deviceLocal: true })` 刷新了 `settingsUpdatedAt`（`a device-local mode change must not look newer than the account`）。两条对照通过。 |
+| `8cb15dc` | 5/5；`readerMode.test.mjs` 10/10 不变；全量 841/841（原 836 + 5）；`npm run build` 通过，只有既有的 chunk 大小提示。 |
+
+**浏览器**：本 worktree 编译的 go1.26.10 二进制，服务只提供静态文件；接口由 `page.route` 模拟，新合同的同步连接由 `page.routeWebSocket`
+模拟。Playwright 1.61.1 / chromium-headless-shell，Node v26.4.0，服务与浏览器在沙箱外运行。每个构建一个服务，各有独立的临时
+data/cache/library 与随机 JWT secret（未输出）。
+
+| 构建 | 新合同（7 组） |
+| --- | --- |
+| `ec3736f` 的 `npm run build`（两次） | 两次都是 6/7 FAIL。L1 三个视口都停在 `.reader-shell.flip`，`加载下一章` 缺失。L2 三个视口变成 flip，文档滚动 1660/1619/1505 → 0，`加载下一章` 缺失。L3 通过。所有组都没有设置 `PUT`：现行代码根本不转换晚到的 flip。 |
+| scratchpad 原型：只加原始设置的 watcher（未入库） | L1、L3 通过；L2 三个视口只在位置断言失败（1660/1619/1505 → 54）。`layoutState` 先看到了 flip（第 4 节第 4 条），这是 F1 必要的直接证据。 |
+| `8cb15dc` | 7/7 PASS（两次）。L1 是 `.reader-shell.page`，按钮挂载，没有设置 `PUT`。L2 滚动 1660/1619/1505 不变，按钮仍在，没有 `PUT`。L3 进入 flip。 |
+
+**面板正文控件合同**（`reader-desktop-panel-controls-contract.mjs`，脚本与断言未改）：
+
+- 修复前（`ec3736f` 构建）：`SMOKE_CASES='^C1 flip'` 两次各 9/12，失败组不同，都是 `加载下一章` 等待超时。用 scratchpad 里的
+  harness 副本让账号设置 GET 等 `.reader-shell` 出现后才返回：1440×900 `C1 flip` 4/4 FAIL，`C1 page` 4/4 PASS。
+- 修复后（`8cb15dc` 构建）：连续 5 次全量，每次 108/108（每次约 399s）；`C1 flip` 共 60/60，`C1 page` 60/60；没有 harness、页面或路由错误。
+  同一 harness 副本在修复后的定序晚到下：三个视口 × 四个面板的 `C1 flip` 与 `C1 page` 共 24/24 PASS。
+
+**回归**（`8cb15dc`，同一服务）：
+
+- 新合同第二次 7/7。
+- `reader-tts-contract`：默认 390×844，另用 `SMOKE_VIEWPORT_WIDTH/HEIGHT` 跑 1440×900、1366×1024、1024×1366，都通过；桌面分支的
+  `desktop reader should normalize flip to page before opening TTS` 与本切片同一转换。
+- `reader-settings-position-contract`、`reader-text-modes-contract`、`reader-continuous-contract`：通过。
+- `reader-mobile-contract`：通过（桌面、手机、自适应 iPad、强制移动 iPad）。
+- `reader-error-surface-contract`：30/30（含 flip 设置）。
+- `openreader-smoke`：三个视口通过（入口 `/login`）。
+- 服务日志：除 `/ws/sync` 的 401（假 token，其余合同不接管同步连接）外都是 200；没有 5xx，没有 panic。
+
+**其余门**：Go `test`/`vet`/`race` 跳过（后端无改动）；依赖 advisory、Compose 与卷门跳过（依赖、Dockerfile、数据格式都没改，卷门只在 Actions
+上运行）。实现提交改了 `frontend/**`，命中 `docker-publish.yml` 的路径过滤，合入 main 会触发镜像发布，是否合入由协调方决定。
+
+**状态**：Git 为本地分支 `claude/beautiful-morse-fb1f94` 上的提交（`098a662`、`0a73689`、`8cb15dc` 与本记录），未推送，未合入 main。
+镜像：未构建，未推送。生产：未访问，未操作。

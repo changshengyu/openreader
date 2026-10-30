@@ -9,6 +9,7 @@
 设置。D1/D2 **`must-fix`**：有效模式在桌面把 `flip` 当作 `page`（不跑位置事务），原始设置在同一轮更新里只在本设备转回 `page`
 （`setMode('page', { deviceLocal: true })`，不写回账号，避免把其他设备刚选的“左右滑动”撤销）；setup 时已有转换写回账号（D4）记为观察，不在本切片。
 完整合同见 [`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。状态 **contract-only**。
+2026-10-30 记录（合同第 11 节，面板正文控件合同第 13 节）：合同 `098a662`；红测 `0a73689`（单元 3/5 失败，浏览器 L1、L2 共 6 组失败，对照通过）；实现 `8cb15dc`（`readerEffectiveMode` 加 `isDesktop`，`useReaderMode` 的原始设置 watcher，store `setMode` 的 `deviceLocal`）。只加 watcher 的原型在 L2 丢阅读位置（滚动 → 54），所以有效模式也要按上游派生。单元 5/5、前端 841/841 与 build；新浏览器合同 7/7；面板正文控件合同连续 5 次全量 108/108（`C1 flip` 60/60）；TTS（手机与三个桌面视口）、设置位置、文字模式、移动、错误面 30/30、连续与 openreader-smoke 通过。状态 **implementation-complete / regression-validated**；本地分支未推送，镜像未构建，生产未访问。
 
 ## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
 

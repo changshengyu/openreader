@@ -7,6 +7,7 @@
 与本设备套用 flip 方案时必然发生。D1/D2 must-fix（有效模式按上游 `isSlideRead` 在桌面把 flip 当作 page；原始设置只在本设备转回 page，不写回账号），
 D3 acceptable-change，D4（setup 时的转换写回账号）为观察。计划红测：`readerEffectiveMode`/`useReaderMode`/store 单元合同，新浏览器合同 L1–L3
 （定序的晚到 GET、同步连接的 `settings_update`、手机对照）。状态 contract-only。
+记录（2026-10-30，取代上段的状态）：合同 `098a662`、红测 `0a73689`（单元 3/5、浏览器 6/7 失败，对照通过）、实现 `8cb15dc`。单元 5/5、前端 841/841 与 build、新浏览器合同 7/7、面板正文控件合同连续 5 次全量 108/108；TTS（含三个桌面视口）、设置位置、文字模式、移动、错误面、连续与 openreader-smoke 通过；状态 implementation-complete / regression-validated，未推送、未发布。
 
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 

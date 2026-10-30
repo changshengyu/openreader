@@ -5,6 +5,7 @@
 上 cherry-pick 为 `20fb76d`）只写文档；第 2.4 节、第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，没有入库，探针和原始输出的
 副本在共享笔记目录 `panel-content-controls/`；其中第 4.2、4.3 节的正文控件与对照部分已由入库的
 `scripts/smoke/reader-desktop-panel-controls-contract.mjs` 承接。第 10 节第 1 条（桌面进度块）没有并入。
+浏览器合同 `C1 flip` 的偶发超时是 Reader 竞态（账号设置晚于 Reader setup 到达时桌面停在 flip），由 `8cb15dc` 修复，原因与证据见第 13 节。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
 `/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不可写，用的是另一个会话 scratchpad 里已 checkout 同一提交的克隆
@@ -450,3 +451,37 @@ Compose、存储 HTTP 合同、浏览器启动门、两平台 OS APK 门、新�
 里的 Reader 与本切片验证过的相同。
 
 状态：P3、P4 **released / awaiting-device-verification**；第 10 节第 1 条（桌面进度块）仍开放。生产未访问，实际运行版本未知。
+
+## 13. `C1 flip` 偶发超时的原因（2026-10-30）
+
+现象：2026-10-29 起，`C1 flip` 的 12 组（3 个视口 × 4 个面板）每次跑都有 2–6 组在 `runChapterEndCase` 第一步
+`page.waitForSelector('.reader-chapter-end')` 超时（`harness: page.waitForSelector: Timeout 10000ms exceeded.`，notes 为空）。失败组每次不同，
+`c62c619` 与 `24511c0` 两个构建都有；`C1 page` 与 C2–C4 从不失败。
+
+原因：不是 harness 的等待或分页稳定问题，而是 Reader 的竞态，详见
+[晚到左右滑动设置合同](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)第 3.2、4 节：
+
+- harness 在 `localStorage.reader` 里写了 `mode: 'flip'`，但 App 挂载时自动日夜（`autoTheme` 默认为真）先用内置白天方案的快照覆盖了
+  `mode`（`page`）。真正带来 flip 的是模拟的账号设置 `GET /api/settings/reader`。
+- 桌面把 flip 转成 page 的 watcher（`useReaderMode.js:162–170`）只在 Reader setup 与界面切换时运行。GET 先到时转换成功，按钮出现。
+  Reader 先 setup 时，GET 随后把 `mode` 设回 flip，桌面停在 `.reader-shell.flip`，`showChapterEndPrompt` 为假，按钮永不挂载。哪组失败
+  取决于这两件事的先后，所以每次不同。
+- 临时探针（scratchpad，未入库）：失败组 Reader setup 92ms、GET 应用 102ms，超时时 `reader.mode` 仍为 `flip`、第 0 章已加载；通过组
+  GET 应用 181ms、setup 196ms。让 GET 等 `.reader-shell` 出现后才返回，1440×900 `C1 flip` 4/4 失败、`C1 page` 4/4 通过，竞态变成确定的失败。
+- 同一机制在 WebSocket `settings_update`、冲突响应、备份恢复和桌面套用 flip 方案时必然发生，不只是测试时序。
+
+第 4.1 节那一次超时不是这个原因：盘点探针的原始输出（共享笔记 `panel-content-controls/output/panel-controls-probe-portrait.txt`）记的是
+`chapter-end/page`，即 page 设置、`98f4ddb`、1024×1366、书源。page 设置不经过这个竞态。那一组当时单独重跑两次正常，之后（包括下面
+5 次全量里的 60 组 `C1 page`）没有再出现，原因未定。
+
+修复：合同 `098a662`、红测 `0a73689`、实现 `8cb15dc`（有效模式在桌面把 flip 当作 page，原始设置只在本设备转回 page）。本合同的脚本、
+断言与等待都没有改。
+
+验证（`8cb15dc` 的 `npm run build`，服务与浏览器同第 11 节）：
+
+| 构建 | 结果 |
+| --- | --- |
+| `ec3736f`（修复前） | `SMOKE_CASES='^C1 flip'` 两次各 9/12：第一次失败 1440 书源、1024×1366 书源与设置，第二次失败 1440 书架与书源、1366×1024 目录，都是上面的超时。 |
+| `8cb15dc`（修复后） | 连续 5 次全量，每次 108/108，每次约 399s；`C1 flip` 共 60/60，`C1 page` 60/60，C2–C4 420/420；没有 harness、页面或路由错误。 |
+
+状态：本合同 P3、P4 的结论与状态不变（released / awaiting-device-verification）；本节只记录浏览器合同的稳定性。
