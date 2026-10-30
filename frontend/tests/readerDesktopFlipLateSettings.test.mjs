@@ -11,7 +11,7 @@ import {
 // reader-dev only slides in its mini interface (vuex isSlideRead). A flip
 // setting that reaches a desktop Reader after setup (the account settings,
 // another device, a scheme) renders as page without a position transaction,
-// and the desktop keeps its page off the account.
+// and the desktop writes nothing back to the account.
 
 class MemoryStorage {
   constructor() {
@@ -163,7 +163,8 @@ test('the desktop renders a flip setting as the page branch, the mini interface 
   }
 })
 
-test('a flip setting that reaches the desktop after setup becomes page on this device without a position transaction', async () => {
+// The desktop leaves the setting as it is (docs/compat/reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md).
+test('a flip setting that reaches the desktop after setup renders as page without touching the setting or running a position transaction', async () => {
   const { calls, reader, scope } = mountMode({ mobile: false })
   await flushModeChange()
   assert.deepEqual(calls, [], 'a page setting needs nothing at setup')
@@ -172,12 +173,8 @@ test('a flip setting that reaches the desktop after setup becomes page on this d
   Object.assign(reader, { mode: 'flip' })
   await flushModeChange()
 
-  assert.equal(reader.mode, 'page', 'the raw setting must not stay flip on the desktop')
-  assert.deepEqual(
-    calls,
-    [['set-mode', 'page', { deviceLocal: true }]],
-    'the late flip is turned back on this device only and runs no position transaction',
-  )
+  assert.equal(reader.mode, 'flip', 'the desktop must not rewrite the setting')
+  assert.deepEqual(calls, [], 'a late flip needs no setMode and no position transaction')
   scope.stop()
 })
 

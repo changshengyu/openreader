@@ -35,6 +35,7 @@ function createController(overrides = {}) {
     jumpToParagraph: (target, options) => calls.push(['jump', target.dataset.pos, options]),
     updateLayout: () => calls.push(['layout']),
     nextFrame: async () => calls.push(['frame']),
+    getMode: () => reader.mode,
     ...overrides,
   })
   return { activeChapter, calls, controller, state }
@@ -46,6 +47,15 @@ test('restores flip pages after the layout frame', async () => {
   await fixture.controller.restore(0, { restorePercent: 0.5 })
   assert.equal(fixture.state.page.value, 2)
   assert.deepEqual(fixture.calls, [['frame'], ['layout']])
+})
+
+// docs/compat/reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md U6.
+test('restores by the mode it is given rather than the raw flip setting on the desktop', async () => {
+  const fixture = createController({ getMode: () => 'page' })
+  fixture.state.reader.mode = 'flip'
+  await fixture.controller.restore(0, { restorePercent: 0.5 })
+  assert.equal(fixture.state.page.value, 0, 'the desktop page layout has no flip page to set')
+  assert.equal(fixture.state.contentEl.value.scrollTop, 400)
 })
 
 test('restores single chapter positions by paragraph before scroll offset', async () => {
