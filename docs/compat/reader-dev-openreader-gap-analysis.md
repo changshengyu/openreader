@@ -36,6 +36,7 @@ Docker 门由 Actions 执行。
 [`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 2026-10-29 记录（合同第 8 节）：合同 `795d914`、红测 `a47bc03`、实现 `7d8a0b2`、浏览器合同与补充红测 `f84dbbc`、补充实现 `a44ea45`。实现中发现原生 range 配深色 `accent-color` 时 Chromium 把未读段画成浅色，C10 改为夜间按上游 `el-slider` 自绘（`#185798` 已读段、`#282828` 未读段与滑块）。真实账号对照 `c62c619` 构建：五个视口日间工具栏与设置面板 computed style 完全相同，夜间逐项为上游值；移动/EPUB/设置位置浏览器合同、前端 834/834 与 build、后端全量/vet、advisory 门通过（面板控件合同 C1 flip 的偶发 harness 超时在旧构建同样出现）。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-10-29 发布：main 快进到 `24511c0`（把本切片合并到 M8 封面发布 `0561dee` 之上，只有两份总账顶部冲突、两条都保留；ls-remote 核验，未强推）；可信 Actions run `40890726765` 全部成功（14:21–14:38Z）。`ghcr.io/changshengyu/openreader:24511c0` 与 `latest` 为 OCI index `sha256:62eee27d0174d6b4782fa54aaa54bb5d3d572ad778b65827fbb52585d14e192c`（linux/amd64 `sha256:b6a68cc9…`、linux/arm64 `sha256:2b9fcb0a…`），两平台 `org.opencontainers.image.revision` 均为 `24511c08e63f9e6a241fae116c09503e096694d0`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-29 P1 本地书封面：EPUB/UMD 书架封面与导入确认框封面（M8）
 

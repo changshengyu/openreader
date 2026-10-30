@@ -29,6 +29,7 @@ capability 由守卫覆盖并补测（bcba652）。合并树全量回归通过�
 朗读条、全局 Element 夜间覆盖另起。计划红测：`readerStyle` 夜间变量组与日间对照、各组件变量与日间回退源码合同；浏览器三视口 + iPad
 computed style。状态 contract-only。
 记录（2026-10-29，取代上段的状态）：合同 `795d914`、红测 `a47bc03`（6 项断言失败，对照通过）、实现 `7d8a0b2`、浏览器合同 + 补充红测 `f84dbbc`、补充实现 `a44ea45`（夜间页码滑块按上游 `el-slider` 自绘，原生未读段在深色 accent 下会变白）。五个视口日间与 `c62c619` 完全相同、夜间为上游值；前端 834/834 与 build、后端全量/vet、advisory 门、移动/EPUB/设置位置浏览器合同通过；面板控件合同 C1 flip 偶发 harness 超时新旧构建都有。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-10-29）：main 快进到 24511c0（合并到 M8 发布之上），run 40890726765 全部成功，24511c0/latest index `sha256:62eee27d…e192c`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-10-29 当前切片：本地书封面——EPUB/UMD 书架封面与导入确认框封面（P1，M8）
 
