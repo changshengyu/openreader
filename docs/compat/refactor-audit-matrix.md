@@ -1,5 +1,15 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
+
+见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
+`html.dark-reader` 只改 `--app-*`，夜间 Element Plus 组件全是浅色；上游 `body.night-theme`（`App.vue` 939–1141）全局改写，并按打包层叠顺序
+实测为准。用户确认全局同上游：N1–N19 must-fix（页面底 `#222`、消息框、默认/主要/禁用/类型按钮、输入框与选择框、选择下拉、对话框、
+表格、复选框、“已选择 N 个”、多选标签、数字输入框、标签页、分页、下拉菜单）；O1 目录标签夜间 `effect="dark"`、O2/O3 空状态暗色填充与
+遮罩 `#222`（intentional-redesign）；N21/N22 acceptable-change；首页侧栏现有夜间面与其它组件级 `.night-theme` 不重开。
+计划红测：`body.night-theme` 切换、`night-element.css` 每个映射值等于上游实测、D2–D4；浏览器五个视口阅读页 + 首页对话框/消息框夜间
+computed style，日间前后一致。状态 contract-only。
+
 ## 2026-10-30 当前切片：Reader 夜间目录/书架/换源列表文字（P1，L1–L16）
 
 见[`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。

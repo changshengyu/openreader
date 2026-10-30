@@ -1,5 +1,20 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
+
+前两个夜间切片（`24511c0`、`21d78ab`）只改了 Reader 自己画的工具栏、设置与列表；`html.dark-reader` 只改 `--app-*`，夜间所有
+Element Plus 组件（消息框、按钮、输入框、选择下拉、对话框、表格、复选框、标签页、分页、下拉菜单）仍是默认浅色。上游 `App.vue#setTheme`
+在 `isNight` 时给 `body` 加 `night-theme`，939–1141 行全局改写 Element：消息框 `#212121`/`#888`/`#777`、默认按钮 `#888`/`#ddd`、主要按钮
+`#185798`、输入框 `#444`/`#ddd`、下拉 `#333`/`#ddd`/悬停 `#444`、对话框 `#222`/`#bbb`、表格 `#222`/`#555`/`#888`、分页 `#444`/`#ddd`、下拉菜单
+`#444`/`#bbb`、“已选择 N 个” `#bbb`。上游打包时 Element UI 自己的 CSS 排在 `App.vue` 之后，同权重时 Element 规则赢；用 Element UI 2.15.14
++ 摊平的 `.night-theme` 在 Chromium 实测（禁用按钮仍白底 `#666` 字、类型按钮悬停 `#bbb`、选中项/选中标签页/选中复选框保持 `#409eff`）。
+当前与上游有 128 个测量属性不同。用户确认：全局，同上游（N1–N19 **`must-fix`**，所有夜间方案）；目录“本地/已缓存”标签夜间用上游
+标签惯例 `effect="dark"`；空状态插图用 Element Plus 暗色填充、`v-loading` 遮罩夜间 `#222`（O1–O3 `intentional-redesign`）；照上游实际
+渲染层叠结果（D4）。占位/禁用等未覆盖状态的 Element Plus 默认色差、内阴影环与键盘焦点轮廓为 `acceptable-change`；首页侧栏现有夜间面、
+`Index.vue`/RSS/朗读组件自己的 `.night-theme` 规则、日间配色不重开。完整合同见
+[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-10-30 P1 Reader 夜间目录/书架/换源列表文字
 
 夜间配色切片（`24511c0`）之后，三块列表面板仍是 4.5:1 替换出的纯白文字：目录分隔线日夜都是 `#f0f0f0`，移动目录当前章是 `#409eff`
