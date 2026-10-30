@@ -255,13 +255,17 @@ function savedReaderShelf() {
   ]
 }
 
-// reader-dev PopCatalog/BookSource night lists need an uncached row, a cached
-// row (cachePath) and a current row, plus a current and an alternative source.
+// reader-dev PopCatalog/BookSource night lists need a current, a cached and an
+// uncached catalog row, plus a current and an alternative source. Loading a chapter
+// marks it browser-cached and the reader preloads two chapters around the current
+// one, so the third chapter is cached from the start (cachePath) and the fourth
+// stays uncached while the reader is on the first.
 function savedReaderChapters() {
   return [
     { id: 11, index: 0, title: '第一章' },
     { id: 12, index: 1, title: '第二章' },
     { id: 13, index: 2, title: '第三章', cachePath: 'cache/books/1/chapters/2.txt' },
+    { id: 14, index: 3, title: '第四章' },
   ]
 }
 
@@ -372,10 +376,11 @@ async function installApiMocks(page, readerSettings = {}) {
         ].join('\n'),
       }))
     }
-    if (path === '/books/1/chapters/2/content') {
+    const extraChapter = savedReaderChapters().slice(2).find(chapter => path === `/books/1/chapters/${chapter.index}/content`)
+    if (extraChapter) {
       return route.fulfill(json({
-        chapter: { id: 13, index: 2, title: '第三章' },
-        content: ['第三章开头。', '第三章结尾。'].join('\n'),
+        chapter: { id: extraChapter.id, index: extraChapter.index, title: extraChapter.title },
+        content: [`${extraChapter.title}开头。`, `${extraChapter.title}结尾。`].join('\n'),
       }))
     }
     if (path === '/books/1/source-candidates' && method === 'GET') {
