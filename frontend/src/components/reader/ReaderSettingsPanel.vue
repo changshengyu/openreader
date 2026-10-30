@@ -1096,9 +1096,9 @@ function resetReaderSettings() {
 .font-preview {
   min-width: 0;
   padding: 10px 12px;
-  color: #2c2a24;
-  background: #fffaf0;
-  border: 1px solid #eadfca;
+  color: var(--reader-settings-text, #2c2a24);
+  background: var(--reader-font-preview-bg, #fffaf0);
+  border: 1px solid var(--reader-font-preview-border, #eadfca);
   border-radius: 6px;
   overflow-wrap: anywhere;
 }

@@ -9,6 +9,40 @@ D3 acceptable-change，D4（setup 时的转换写回账号）为观察。计划�
 （定序的晚到 GET、同步连接的 `settings_update`、手机对照）。状态 contract-only。
 记录（2026-10-30，取代上段的状态）：合同 `098a662`、红测 `0a73689`（单元 3/5、浏览器 6/7 失败，对照通过）、实现 `8cb15dc`。单元 5/5、前端 841/841 与 build、新浏览器合同 7/7、面板正文控件合同连续 5 次全量 108/108；TTS（含三个桌面视口）、设置位置、文字模式、移动、错误面、连续与 openreader-smoke 通过；状态 implementation-complete / regression-validated，未推送、未发布。
 
+## 2026-10-30 当前切片：Reader 夜间目录/书架/换源列表文字（P1，L1–L16）
+
+见[`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。
+夜间三块列表仍是纯白文字，目录分隔 `#f0f0f0`、移动当前章/悬停是浅色块。用户确认全部改回上游并对所有夜间方案生效：L1–L4、L7–L13
+must-fix（目录 `#606266`/已缓存 `#444`/当前章 `#ed4259` 透明底，书架 `#888`/`#555`，换源 `#606266`/`#888`，分隔 `#333`，不可用按钮
+`#606266`）；字体预览框夜间用控件夜间面（D3）；L5、L6、L14 acceptable-change；Element Plus 组件、日间配色、日夜共用结构不重开。
+计划红测：`NIGHT_LIST_STYLE` 变量组与只在夜间展开、各组件变量与日间回退源码合同、字体预览变量；浏览器三视口 + iPad computed style 与日间前后一致。
+状态 contract-only。
+记录（2026-10-30，取代上段的状态）：合同 `465ad11`、红测 `f54fcbc`（7 项断言失败，对照通过）、实现 `849c33d`、夹具修正 `086e987`、L2 修订 `4ee2515`/`c576933`（已缓存变暗只看浏览器缓存，同上游 `cachedCataMap`；本地书每章的服务端 `cachePath` 不算）。五个视口日间与 `ec3736f` 完全相同、夜间为上游值；前端 843/843 与 build、后端全量/vet、advisory 门、移动/换源/书架刷新/文档标题/设置位置/EPUB 浏览器合同通过；面板控件合同 C1 flip 偶发 harness 超时新旧构建都有。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-10-30）：main 快进到 21d78ab（合并到 S2 实例签名密钥发布之上），run 41031337197 全部成功，21d78ab/latest index `sha256:d0fca276…88d1d`（amd64+arm64，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
+
+## 2026-10-29 当前切片：实例签名密钥，不再用公开默认值签名（S2，P1 安全，合同 2026-10-22）
+
+见[`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](instance-signing-secret-fixed-baseline-second-audit-p1-contract.md)。
+P0 合同 F3 的后续切片。密钥未设置、空白或为公开默认值时，会话与资源 capability 都用公开值签名，capability 可被第三方
+构造（封面中风险）；卷门从未真实启动未设置密钥的部署形态。F1（会话）、F2（capability）must-fix P1，F3（发布门）must-fix：
+首次启动在 `data/instance-secret` 原子创建 0600 的 256 bit 实例密钥（非法内容或非普通文件时失败关闭、拒绝启动），之后
+用它签名一切；自定义密钥不变、不碰文件；公开值签名的新格式会话由摘要认证继续接受，旧格式 token 一律拒绝，capability
+无过渡。代价写进发布记录：切换前链接失效一次、回滚到 `92c98a9` 及更早时切换后会话失效。红测在 api 层（R1 公开值换成
+实例密钥、R2 五类 capability、R3 重启复用）与新的真实启动卷门（fresh/historical/restart/rollback/re-upgrade/custom/malformed，
+Docker 与二进制两种方式）上表达；历史卷门加 `JWT_SECRET_MODE=unset`。README 公网一节（O1）在发布后直接改 main。
+
+记录（2026-10-22，取代上段状态）：b0972b4/3dec2ad/f10c266/77dfee0/26948f9。红测在 b1e84f3 上按预期失败（R1 4/4、R2 5/5、R3 3/3，生命周期
+合同停在升级步骤，未设置密钥卷门停在首次启动），实现后同一断言转绿；生命周期合同二进制方式十个场景通过；四次临时变异（previous 下
+旧格式拒绝、RegisterRoutes 守卫、main 提前准备、硬链接发布）各被对应用例拦下。Go full/vet/race、前端 810/810 与 build、advisory 门、
+Compose、存储 HTTP 合同、未设置密钥的真实会话合同通过。状态 implementation-complete / regression-validated；候选镜像 Docker 门在
+Actions。
+
+合并记录（2026-10-30）：6137b37/2749428/af0035a 合并 main；GO-2026-6860 以 main 的 7a18346 为准（本会话重复升级未推送即丢弃）；UMD 封面
+capability 由守卫覆盖并补测（bcba652）。合并树全量回归通过（engine XPath 看门狗一次负载超时，重跑通过）。
+
+发布（2026-10-30，取代上段状态）：main 快进到 4c40a4a，可信 Actions 41001294540 全部门通过；`4c40a4a`/`latest` = index
+`46f0b426…dd2e`（amd64 `9d47b5f4…`、arm64 `eedde7ec…`）。状态 Docker-published；生产未操作，实际版本未知。
+
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 
 见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。

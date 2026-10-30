@@ -2,6 +2,18 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## 2026-10-22 instance signing secret (new data file, no schema migration)
+
+When `OPENREADER_JWT_SECRET` is unset, blank or a published default, the first start creates
+`data/instance-secret` (64 hex characters and a newline, mode 0600) next to `openreader.db`; later starts read it.
+It is created atomically and never replaced, so restarts, rollbacks to older images (which ignore it) and
+re-upgrades keep the same file. It is not inside `data/webdav`, `data/uploads` or `library/localStore` and is not
+part of ordinary, portable or Legado backups; a full copy of `data/` carries it to another host. Restoring only a
+backup on a new instance gives that instance its own secret (everyone signs in again). No table, column, cache or
+library layout changes; custom-secret instances get no file. A malformed file stops the start before any migration
+and is left untouched. See
+[`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](instance-signing-secret-fixed-baseline-second-audit-p1-contract.md).
+
 ## 2026-10-16 SQLite WAL/OS-C supplement (contract-only, no migration)
 
 See focused SQLite/WAL/OS-C contract. Maintain WAL, pooled connections, busytimeout5000, oldDB/table/

@@ -5,6 +5,7 @@ IMAGE="${IMAGE:-ghcr.io/changshengyu/openreader:latest}"
 PORT="${PORT:-18080}"
 PORTABLE_PORT="${PORTABLE_PORT:-$((PORT + 1))}"
 HISTORICAL_VOLUME="${HISTORICAL_VOLUME:-0}"
+JWT_SECRET_MODE="${JWT_SECRET_MODE:-custom}"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openreader-volume-smoke.XXXXXX")"
 NAME="${NAME:-openreader-volume-smoke-$(basename "$ROOT")}"
 PORTABLE_ROOT=""
@@ -20,6 +21,14 @@ case "$HISTORICAL_VOLUME" in
   0|1) ;;
   *)
     echo "HISTORICAL_VOLUME must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
+case "$JWT_SECRET_MODE" in
+  custom|unset) ;;
+  *)
+    echo "JWT_SECRET_MODE must be custom or unset" >&2
     exit 2
     ;;
 esac
@@ -71,6 +80,15 @@ need cmp
 
 mkdir -p "$ROOT/data" "$ROOT/cache" "$ROOT/library" "$ROOT/retired-host"
 
+# custom passes a smoke-only secret; unset starts every container the way the
+# standard Compose file does, without OPENREADER_JWT_SECRET at all.
+SECRET_ENV_FILE="$ROOT/secret.env"
+if [ "$JWT_SECRET_MODE" = "custom" ]; then
+  printf 'OPENREADER_JWT_SECRET=openreader-smoke-secret-change-me\n' >"$SECRET_ENV_FILE"
+else
+  : >"$SECRET_ENV_FILE"
+fi
+
 if [ "$HISTORICAL_VOLUME" = "1" ]; then
   need go
   need shasum
@@ -87,7 +105,7 @@ start_container() {
     --name "$NAME" \
     -p "127.0.0.1:${PORT}:8080" \
     -e OPENREADER_ADDR=":8080" \
-    -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+    --env-file "$SECRET_ENV_FILE" \
     -e OPENREADER_DATA_DIR="/app/data" \
     -e OPENREADER_CACHE_DIR="/app/cache" \
     -e OPENREADER_LIBRARY_DIR="/app/library" \
@@ -120,7 +138,7 @@ start_portable_destination() {
     --name "$PORTABLE_NAME" \
     -p "127.0.0.1:${PORTABLE_PORT}:8080" \
     -e OPENREADER_ADDR=":8080" \
-    -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+    --env-file "$SECRET_ENV_FILE" \
     -e OPENREADER_DATA_DIR="/app/data" \
     -e OPENREADER_CACHE_DIR="/app/cache" \
     -e OPENREADER_LIBRARY_DIR="/app/library" \
@@ -154,6 +172,41 @@ wait_removed() {
     i=$((i + 1))
     sleep 1
   done
+}
+
+instance_secret_state() {
+  python3 -c '
+import os, stat, sys
+path = os.path.join(sys.argv[1], "instance-secret")
+try:
+    info = os.lstat(path)
+except FileNotFoundError:
+    print("absent")
+    raise SystemExit(0)
+if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size != 65:
+    print("invalid")
+    raise SystemExit(0)
+print(f"{info.st_ino}:{info.st_mtime_ns}")
+' "$1"
+}
+
+# A custom secret must never create data/instance-secret. Without one the
+# first start creates a private 65-byte file that restarts keep unchanged.
+check_instance_secret() {
+  state="$(instance_secret_state "$1")"
+  if [ "$JWT_SECRET_MODE" = "custom" ]; then
+    if [ "$state" != "absent" ]; then
+      echo "$2: a custom JWT secret created data/instance-secret" >&2
+      exit 1
+    fi
+  elif [ "$state" = "absent" ] || [ "$state" = "invalid" ]; then
+    echo "$2: data/instance-secret is ${state}, want a 0600 regular 65-byte file" >&2
+    exit 1
+  elif [ -n "${3:-}" ] && [ "$state" != "$3" ]; then
+    echo "$2: data/instance-secret was replaced or rewritten" >&2
+    exit 1
+  fi
+  printf '%s' "$state"
 }
 
 json_field() {
@@ -351,6 +404,7 @@ print(row[0])
 
 start_container
 wait_health
+SECRET_STATE="$(check_instance_secret "$ROOT/data" 'first start')"
 
 if [ "$HISTORICAL_VOLUME" = "1" ]; then
   TOKEN="$(historical_login "$USERNAME" "$PASSWORD")"
@@ -459,6 +513,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   wait_removed
   start_container
   wait_health
+  check_instance_secret "$ROOT/data" 'historical restart' "$SECRET_STATE" >/dev/null
 
   TOKEN="$(historical_login "$USERNAME" "$PASSWORD")"
   OWNER_TOKEN="$TOKEN"
@@ -508,6 +563,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
 
   start_portable_destination
   wait_portable_health
+  PORTABLE_SECRET_STATE="$(check_instance_secret "$PORTABLE_ROOT/data" 'portable destination start')"
   PORTABLE_BASE_URL="http://127.0.0.1:${PORTABLE_PORT}"
   # The historical fixture deliberately keeps its legacy underscore account
   # name to prove existing users can still log in. A portable restore creates
@@ -582,7 +638,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
     --name "$PORTABLE_NAME" \
     -p "127.0.0.1:${PORTABLE_PORT}:8080" \
     -e OPENREADER_ADDR=":8080" \
-    -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+    --env-file "$SECRET_ENV_FILE" \
     -e OPENREADER_DATA_DIR="/app/data" \
     -e OPENREADER_CACHE_DIR="/app/cache" \
     -e OPENREADER_LIBRARY_DIR="/app/library" \
@@ -591,6 +647,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
     -v "$PORTABLE_ROOT/library:/app/library" \
     "$IMAGE" >/dev/null
   wait_portable_health
+  check_instance_secret "$PORTABLE_ROOT/data" 'portable destination restart' "$PORTABLE_SECRET_STATE" >/dev/null
   PORTABLE_TOKEN="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/login" \
     -H 'Content-Type: application/json' \
     -d "{\"username\":\"${PORTABLE_USERNAME}\",\"password\":\"${PASSWORD}\"}" | json_field token)"
@@ -609,7 +666,7 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   assert_archive_hash "$PORTABLE_RELATIVE_CACHE_ARCHIVE" "$RELATIVE_CACHE_HASH" 'portable restart'
   BASE_URL="$SOURCE_BASE_URL"
   TOKEN="$SOURCE_TOKEN"
-  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz, relative-cache, owner-isolation)"
+  echo "OpenReader historical Docker volume/backup smoke passed for ${IMAGE} (txt, epub, umd, cbz, relative-cache, owner-isolation, jwt-secret=${JWT_SECRET_MODE})"
   exit 0
 fi
 
@@ -714,6 +771,7 @@ curl -fsS "${BASE_URL}/api/backup/list" \
 
 start_portable_destination
 wait_portable_health
+PORTABLE_SECRET_STATE="$(check_instance_secret "$PORTABLE_ROOT/data" 'portable destination start')"
 PORTABLE_BASE_URL="http://127.0.0.1:${PORTABLE_PORT}"
 FILLER_USERNAME="portablefiller$$"
 curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/register" \
@@ -803,6 +861,7 @@ docker stop "$NAME" >/dev/null
 wait_removed
 start_container
 wait_health
+check_instance_secret "$ROOT/data" 'restart' "$SECRET_STATE" >/dev/null
 
 LOGIN_RESPONSE="$(curl -fsS -X POST "${BASE_URL}/api/auth/login" \
   -H 'Content-Type: application/json' \
@@ -823,7 +882,7 @@ docker run -d --rm \
   --name "$PORTABLE_NAME" \
   -p "127.0.0.1:${PORTABLE_PORT}:8080" \
   -e OPENREADER_ADDR=":8080" \
-  -e OPENREADER_JWT_SECRET="openreader-smoke-secret-change-me" \
+  --env-file "$SECRET_ENV_FILE" \
   -e OPENREADER_DATA_DIR="/app/data" \
   -e OPENREADER_CACHE_DIR="/app/cache" \
   -e OPENREADER_LIBRARY_DIR="/app/library" \
@@ -832,6 +891,7 @@ docker run -d --rm \
   -v "$PORTABLE_ROOT/library:/app/library" \
   "$IMAGE" >/dev/null
 wait_portable_health
+check_instance_secret "$PORTABLE_ROOT/data" 'portable destination restart' "$PORTABLE_SECRET_STATE" >/dev/null
 PORTABLE_TOKEN="$(curl -fsS -X POST "${PORTABLE_BASE_URL}/api/auth/login" \
   -H 'Content-Type: application/json' \
   -d "{\"username\":\"${PORTABLE_USERNAME}\",\"password\":\"${PASSWORD}\"}" | json_field token)"
@@ -843,4 +903,4 @@ PORTABLE_RESTART_SETTING="$(curl -fsS "${PORTABLE_BASE_URL}/api/settings/reader"
 printf '%s' "$PORTABLE_RESTART_SETTING" | grep "$PORTABLE_BACKGROUND_URL" >/dev/null
 printf '%s' "$PORTABLE_RESTART_SETTING" | grep "$PORTABLE_FONT_URL" >/dev/null
 
-echo "OpenReader Docker volume/backup smoke passed for ${IMAGE} (portable-v1, portable-v2-assets, cross-user, restart)"
+echo "OpenReader Docker volume/backup smoke passed for ${IMAGE} (portable-v1, portable-v2-assets, cross-user, restart, jwt-secret=${JWT_SECRET_MODE})"

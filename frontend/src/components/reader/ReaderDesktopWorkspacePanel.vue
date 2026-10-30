@@ -141,7 +141,7 @@ defineEmits(['close'])
 }
 
 .reader-workspace-actions :deep(button:disabled) {
-  color: #aaa;
+  color: var(--reader-list-text, #aaa);
   cursor: default;
 }
 

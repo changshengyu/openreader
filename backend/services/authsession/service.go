@@ -43,18 +43,25 @@ type Identity struct {
 }
 
 type Service struct {
-	db     *gorm.DB
-	secret string
-	now    func() time.Time
-	random io.Reader
+	db       *gorm.DB
+	secret   string
+	previous []string
+	now      func() time.Time
+	random   io.Reader
 }
 
-func New(database *gorm.DB, secret string) *Service {
+// New returns a service that signs sessions with secret. Tokens signed with a
+// previous secret, compatible as it was when configured, still verify: a
+// jti-backed session is proved by its user_sessions row, not its signature.
+// Legacy-format tokens are refused whenever previous is given, because an
+// older binary could only have signed them with that published value.
+func New(database *gorm.DB, secret string, previous ...string) *Service {
 	return &Service{
-		db:     database,
-		secret: secret,
-		now:    time.Now,
-		random: rand.Reader,
+		db:       database,
+		secret:   secret,
+		previous: append([]string(nil), previous...),
+		now:      time.Now,
+		random:   rand.Reader,
 	}
 }
 
@@ -114,14 +121,16 @@ func (s *Service) Issue(ctx context.Context, user models.User) (string, error) {
 }
 
 func (s *Service) Authenticate(ctx context.Context, token string) (Identity, error) {
-	claims, err := parseClaims(s.secret, token)
+	claims, err := s.parse(token)
 	if err != nil || claims.UserID == 0 || claims.IssuedAt == nil {
 		return Identity{}, ErrInvalidSession
 	}
 	legacy := claims.ID == "" && claims.AuthVersion == 0
 	// A legacy token proves its origin only by its signature, and a signature
-	// made with a published key is indistinguishable from a forged one.
-	if legacy && publicSecret(s.secret) {
+	// made with a published key is indistinguishable from a forged one. A
+	// previous secret means the configured one was published, so that holds
+	// whichever key verified the token.
+	if legacy && (publicSecret(s.secret) || len(s.previous) > 0) {
 		return Identity{}, ErrInvalidSession
 	}
 	now := s.now().UTC()
@@ -279,6 +288,18 @@ func pruneUserSessions(tx *gorm.DB, userID uint) error {
 		return nil
 	}
 	return tx.Where("user_id = ? AND id IN ?", userID, stale).Delete(&models.UserSession{}).Error
+}
+
+// parse verifies token with the signing secret, then with each previous one.
+func (s *Service) parse(token string) (Claims, error) {
+	claims, err := parseClaims(s.secret, token)
+	for _, previous := range s.previous {
+		if err == nil {
+			break
+		}
+		claims, err = parseClaims(previous, token)
+	}
+	return claims, err
 }
 
 func parseClaims(secret, token string) (Claims, error) {
