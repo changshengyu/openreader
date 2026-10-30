@@ -222,4 +222,9 @@ L2 修订红测 `4ee2515`、修订实现 `c576933`。
 - 观察到但未改动：目录 `el-tag` 在夜间仍是 Element Plus 的白底标签（全局 Element 夜间覆盖，第 4 节不重开）；本地书的换源面板只有
   当前来源一行。
 
+合并（2026-10-30）：main 在此期间前进到 `906cec5`（实例签名密钥 S2 发布，只改后端、CI、脚本与文档），以合并提交 `51377c1` 并入，
+只有两份总账顶部冲突、两条都保留。合并后的树：backend `go test ./...` 31 个包与 `go vet ./...`、frontend 843/843 与 build 通过；
+不设 `OPENREADER_JWT_SECRET` 启动（生成 0600 的 `data/instance-secret`）后 `reader-mobile-contract.mjs` 全量与
+`reader-epub-contract.mjs`（真实接口，三视口）通过。依赖未变，公告门沿用上面的结果，Actions 会再跑一次。
+
 状态：**implementation-complete / regression-validated**，待可信 Actions；镜像未发布；生产未访问。
