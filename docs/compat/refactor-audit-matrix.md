@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-30 当前切片：Reader 桌面端晚到的“左右滑动”设置（P0）
+
+见[`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。
+面板正文控件合同 `C1 flip` 的偶发超时来自 Reader 竞态：账号设置 GET 晚于 Reader setup 时桌面停在 flip 布局，`加载下一章` 不挂载；WebSocket
+与本设备套用 flip 方案时必然发生。D1/D2 must-fix（有效模式按上游 `isSlideRead` 在桌面把 flip 当作 page；原始设置只在本设备转回 page，不写回账号），
+D3 acceptable-change，D4（setup 时的转换写回账号）为观察。计划红测：`readerEffectiveMode`/`useReaderMode`/store 单元合同，新浏览器合同 L1–L3
+（定序的晚到 GET、同步连接的 `settings_update`、手机对照）。状态 contract-only。
+
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 
 见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。

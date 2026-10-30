@@ -1,5 +1,15 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-30 P0 Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局
+
+面板正文控件浏览器合同的 `C1 flip` 每次有 2–6/12 组在等 `加载下一章` 时超时，查明是 Reader 的竞态而不是 harness：桌面把 `flip` 转成
+`page` 的 watcher（`useReaderMode.js:162–170`）只在 Reader setup 与界面切换时运行；账号设置 GET 晚于 Reader setup 到达时，
+`applyReaderSettings` 把 `mode` 设回 `flip`，桌面停在 `.reader-shell.flip`，章末按钮永不挂载。WebSocket `settings_update`、冲突响应、
+备份恢复和本设备套用 flip 方案时每次都会这样。上游 `isSlideRead = miniInterface && readMethod === "左右滑动"` 是实时派生，桌面从不滑动，也不改写
+设置。D1/D2 **`must-fix`**：有效模式在桌面把 `flip` 当作 `page`（不跑位置事务），原始设置在同一轮更新里只在本设备转回 `page`
+（`setMode('page', { deviceLocal: true })`，不写回账号，避免把其他设备刚选的“左右滑动”撤销）；setup 时已有转换写回账号（D4）记为观察，不在本切片。
+完整合同见 [`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。状态 **contract-only**。
+
 ## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
 
 日夜切片（`b3164e3`）把内置夜间阅读面改回上游后，工具按钮与设置面板仍是 2026-07 夜间对比度合同的可读性配色：强调色 `#ff7589`、
