@@ -48,7 +48,10 @@ test('reader night list variables carry the reader-dev night list palette for ev
 
 test('catalog rows take night text, cached, current and separator colors from the list palette', () => {
   const template = tocSource.slice(0, tocSource.indexOf('</template>'))
-  assert.match(template, /:class="\{ active: item\.index === currentIndex, cached: isCached\(item\) \}"/)
+  assert.match(template, /:class="\{ active: item\.index === currentIndex, cached: isBrowserCached\(item\) \}"/)
+  // reader-dev dims only chapters in the browser cache (PopCatalog cachedCataMap);
+  // every imported local-book chapter has a server cachePath and must not dim.
+  assert.match(tocSource, /function isBrowserCached\(item\) \{\n  return Boolean\(props\.browserCachedMap\?\.\[item\?\.index\]\)\n\}/)
 
   const item = rule(tocSource, '.toc-item')
   assert.match(item, new RegExp(`color: var\\(--reader-list-text, ${POPUP_TEXT}\\);`))

@@ -255,17 +255,18 @@ function savedReaderShelf() {
   ]
 }
 
-// reader-dev PopCatalog/BookSource night lists need a current, a cached and an
-// uncached catalog row, plus a current and an alternative source. Loading a chapter
-// marks it browser-cached and the reader preloads two chapters around the current
-// one, so the third chapter is cached from the start (cachePath) and the fourth
-// stays uncached while the reader is on the first.
+// reader-dev PopCatalog/BookSource night lists need a current, a browser-cached and
+// an uncached catalog row, plus a current and an alternative source. Loading a
+// chapter marks it browser-cached and the reader preloads two chapters around the
+// current one, so the second and third chapters become browser-cached; the fourth
+// has only a server cachePath (like every imported local-book chapter) and must
+// keep the uncached color, as reader-dev's cachedCataMap only reads the browser cache.
 function savedReaderChapters() {
   return [
     { id: 11, index: 0, title: '第一章' },
     { id: 12, index: 1, title: '第二章' },
-    { id: 13, index: 2, title: '第三章', cachePath: 'cache/books/1/chapters/2.txt' },
-    { id: 14, index: 3, title: '第四章' },
+    { id: 13, index: 2, title: '第三章' },
+    { id: 14, index: 3, title: '第四章', cachePath: 'cache/books/1/chapters/3.txt' },
   ]
 }
 
@@ -1638,6 +1639,12 @@ async function readerListSnapshot(page, { mobile }) {
       : page.locator(`.reader-left-rail button[title="${label}"]`)
     await tool.click()
     await page.waitForSelector(ready, { timeout: 10000 })
+    if (panel === 'toc') {
+      // The preload marks the second chapter browser-cached (its tag reads 本地).
+      await page.waitForFunction(() => (
+        document.querySelector('.toc-item[data-chapter-index="1"] .el-tag')?.textContent?.trim() === '本地'
+      ), null, { timeout: 10000 })
+    }
     // Keep hover states out of the snapshot.
     await page.mouse.move(1, 1)
     Object.assign(snapshot, await page.evaluate((panel) => {
@@ -1667,10 +1674,10 @@ async function readerListSnapshot(page, { mobile }) {
       }
       if (panel === 'toc') {
         return {
-          tocItem: pick('.toc-item:not(.active):not(.cached)', ['color', 'border-bottom-color', 'background-color']),
-          tocCached: pick('.toc-item.cached:not(.active)', ['color']),
+          tocItem: pick('.toc-item[data-chapter-index="3"]', ['color', 'border-bottom-color', 'background-color']),
+          tocCached: pick('.toc-item[data-chapter-index="1"]', ['color']),
           tocActive: pick('.toc-item.active', ['color', 'background-color']),
-          tocMeta: pick('.toc-item:not(.active) small', ['color']),
+          tocMeta: pick('.toc-item[data-chapter-index="1"] small', ['color']),
         }
       }
       return {
