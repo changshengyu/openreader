@@ -420,6 +420,9 @@ Contract `31b2963`, red tests `5734f74` and implementation `3bb465f` landed in o
 
 Target contract:
 [`docs/compat/instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](compat/instance-signing-secret-fixed-baseline-second-audit-p1-contract.md).
+Status is `Docker-published`: trusted Actions run `41001294540` passed every gate, including the unset-secret volume
+smokes and the Docker-mode lifecycle contract, and published `ghcr.io/changshengyu/openreader:4c40a4a` and `latest`
+(OCI index `sha256:46f0b426873f40de646b6508fc2420bdbe4e9251cc55ab5b55d85fa17c46dd2e`, amd64 + arm64).
 
 ### P0 legacy session adoption under a public default secret (2026-10-22 implemented)
 

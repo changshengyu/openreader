@@ -5,7 +5,7 @@
 当前实施基线：`OpenReader@b1e84f3`（`origin/main`；应用代码与已发布的 `92c98a9` 相同）
 
 审查日期：2026-10-22
-状态：**implementation-complete / regression-validated**（证据见第 10 节；发布见第 11 节）
+状态：**implementation-complete / regression-validated / Docker-published**（证据见第 10 节，发布见第 11 节）
 
 前置合同：[`authenticated-session-legacy-public-secret-fixed-baseline-second-audit-p0-contract.md`](authenticated-session-legacy-public-secret-fixed-baseline-second-audit-p0-contract.md)
 （下称“P0 合同”）。本合同实现 P0 合同第 8 节定下方向的后续切片 S2，处理其 F3；P0 合同的 T1、T2 与
@@ -291,3 +291,21 @@
   看门狗子测试（`attribute`）在全量并行负载下超出 3 s 一次，测试未改、与 S2 无关，单独重跑 3/3 通过、engine 包 race 通过，
   无 DATA RACE；前端 836/836 与 build；advisory 离线测试 141/141、Go 扫描 pass-with-not-applicable（仅 GO-2026-5932）、前端扫描
   pass；生命周期合同十个场景、存储 HTTP 合同、未设置密钥实例上的三项浏览器合同通过。
+
+## 11. 发布与状态（2026-10-30）
+
+- Git：`main` 与分支 `claude/great-mendel-94080c` 都在 `4c40a4aff27cb86880bddb37e3b990d51eec95b2`（快进推送，无 force，`git ls-remote`
+  核验）。
+- 镜像：可信 Actions run [`41001294540`](https://github.com/changshengyu/openreader/actions/runs/41001294540)（04:09–04:26Z）全部步骤
+  成功，含本合同新增的三步：`JWT_SECRET_MODE=unset` 的 fresh 卷门（`jwt-secret=unset`）、historical 卷门（`jwt-secret=unset`），以及
+  Docker 方式的 `instance-secret-volume-contract.mjs`（historical、upgrade、exposure、restart、rollback、re-upgrade、fresh、
+  previous-default、custom、malformed 全部通过，旧镜像为按 digest 固定的 `92c98a9`）；既有 custom 模式卷门、浏览器启动门、OS APK 门
+  照常通过。`ghcr.io/changshengyu/openreader:4c40a4a` 与 `latest` 为同一 OCI index
+  `sha256:46f0b426873f40de646b6508fc2420bdbe4e9251cc55ab5b55d85fa17c46dd2e`：`linux/amd64`
+  `sha256:9d47b5f406c10fc168b8824174f8edf3506bbb4c384df14b86b71b2faecc48dd`、`linux/arm64`
+  `sha256:eedde7eca98ec83de8283560e9b96ac61f8448588a37dc99e103ef52df762416`，两平台 revision 标签均为完整提交号。
+- 生产：未访问，运行版本未知。用户更新容器后生效（标准 Compose 用 `latest` 加 `pull_policy: always`）：首次启动在 `data/` 生成
+  `instance-secret`，已登录的会话保持有效，打开着的封面、漫画与 EPUB 资源可能需要刷新一次；回滚到 `92c98a9` 等旧镜像时，升级后
+  登录的设备需要重新登录。
+- README：发布后直接在 main 上改写“在公网上使用”第 1 步、配置表与回退说明（见下一提交）。
+- 仍开放：P0 合同的 O1、O2；README 占位值照抄部署（O1）由 README 改写消除动机，名单不扩大。

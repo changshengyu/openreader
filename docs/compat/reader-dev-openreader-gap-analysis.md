@@ -25,6 +25,10 @@ Docker 门由 Actions 执行。
 `7a18346` 修复，本会话的重复升级未推送即丢弃。main 新增的 UMD 封面 capability 由 S2 守卫覆盖，R2 补上该用例（`bcba652`）。合并树
 上 Go 31 包、vet、race（engine 看门狗一次负载超时，重跑通过）、前端 836/836 与 build、advisory 门、生命周期、存储与浏览器合同通过。
 
+发布（2026-10-30）：可信 Actions `41001294540` 全部门通过（含未设置密钥的 fresh/historical 卷门与 Docker 方式生命周期合同），
+`ghcr.io/changshengyu/openreader:4c40a4a` / `latest` = OCI index `sha256:46f0b426…dd2e`（amd64 + arm64，revision 为完整提交号）。
+状态 **Docker-published**；生产未访问，版本未知。
+
 ## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
 
 日夜切片（`b3164e3`）把内置夜间阅读面改回上游后，工具按钮与设置面板仍是 2026-07 夜间对比度合同的可读性配色：强调色 `#ff7589`、

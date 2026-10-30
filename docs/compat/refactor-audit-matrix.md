@@ -20,6 +20,9 @@ Actions。
 合并记录（2026-10-30）：6137b37/2749428/af0035a 合并 main；GO-2026-6860 以 main 的 7a18346 为准（本会话重复升级未推送即丢弃）；UMD 封面
 capability 由守卫覆盖并补测（bcba652）。合并树全量回归通过（engine XPath 看门狗一次负载超时，重跑通过）。
 
+发布（2026-10-30，取代上段状态）：main 快进到 4c40a4a，可信 Actions 41001294540 全部门通过；`4c40a4a`/`latest` = index
+`46f0b426…dd2e`（amd64 `9d47b5f4…`、arm64 `eedde7ec…`）。状态 Docker-published；生产未操作，实际版本未知。
+
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 
 见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。

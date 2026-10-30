@@ -260,3 +260,10 @@ volume smoke fails at its first start (fresh and historical), and the custom-mod
 historical smoke hit the known one-off HTTP 404 after fixture creation once; two reruns of the edited script and one
 of the original `b1e84f3` script passed. See
 [`instance-signing-secret-fixed-baseline-second-audit-p1-contract.md`](compat/instance-signing-secret-fixed-baseline-second-audit-p1-contract.md).
+
+Release: trusted Actions run `41001294540` (`4c40a4a`) ran both unset-mode volume smokes (fresh and historical, each
+ending `jwt-secret=unset`) and the Docker-mode lifecycle contract against the candidate and the digest-pinned `92c98a9`
+image; all ten scenarios passed before the multi-platform push. `ghcr.io/changshengyu/openreader:4c40a4a` and `latest`
+resolve to OCI index `sha256:46f0b426873f40de646b6508fc2420bdbe4e9251cc55ab5b55d85fa17c46dd2e` (amd64
+`sha256:9d47b5f406c10fc168b8824174f8edf3506bbb4c384df14b86b71b2faecc48dd`, arm64
+`sha256:eedde7eca98ec83de8283560e9b96ac61f8448588a37dc99e103ef52df762416`); both revision labels carry the full commit.
