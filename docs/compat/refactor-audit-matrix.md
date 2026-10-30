@@ -1,5 +1,14 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-10-30 当前切片：Reader 夜间目录/书架/换源列表文字（P1，L1–L16）
+
+见[`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。
+夜间三块列表仍是纯白文字，目录分隔 `#f0f0f0`、移动当前章/悬停是浅色块。用户确认全部改回上游并对所有夜间方案生效：L1–L4、L7–L13
+must-fix（目录 `#606266`/已缓存 `#444`/当前章 `#ed4259` 透明底，书架 `#888`/`#555`，换源 `#606266`/`#888`，分隔 `#333`，不可用按钮
+`#606266`）；字体预览框夜间用控件夜间面（D3）；L5、L6、L14 acceptable-change；Element Plus 组件、日间配色、日夜共用结构不重开。
+计划红测：`NIGHT_LIST_STYLE` 变量组与只在夜间展开、各组件变量与日间回退源码合同、字体预览变量；浏览器三视口 + iPad computed style 与日间前后一致。
+状态 contract-only。
+
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 
 见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。

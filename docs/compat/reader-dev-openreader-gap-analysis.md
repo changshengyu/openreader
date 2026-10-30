@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-10-30 P1 Reader 夜间目录/书架/换源列表文字
+
+夜间配色切片（`24511c0`）之后，三块列表面板仍是 4.5:1 替换出的纯白文字：目录分隔线日夜都是 `#f0f0f0`，移动目录当前章是 `#409eff`
+加 `#ecf5ff` 浅蓝块，悬停是 `#f5f7fa` 浅灰块。上游三个组件按 `isNight` 加 `.night`：目录章节继承 `.el-popover` 的 `#606266`、已缓存
+`#444`、当前章 `#EB4259` 无底色、分隔 `#333`；书架书名与未读数 `#888`、最近章节 `#555`、分隔 `#333`；换源书源名与耗时 `#606266`、
+最新章节 `#888`、分隔 `#333`；标题按钮加载中 `#606266`。用户确认全部改回上游、对所有夜间方案生效（L1–L4、L7–L13 **`must-fix`**），
+设置字体预览框（OpenReader 新增）夜间用控件夜间面 `rgba(45, 45, 45, 0.5)`/`#666`/`#606266`；目录悬停与移动“第 N 章”小字、选中红
+`#EB4259`→`#ed4259` 为 `acceptable-change`；面板里的 Element Plus 组件、日间配色与日夜共用结构不重开。完整合同见
+[`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-10-29 P1 Reader 夜间工具栏与设置控件配色
 
 日夜切片（`b3164e3`）把内置夜间阅读面改回上游后，工具按钮与设置面板仍是 2026-07 夜间对比度合同的可读性配色：强调色 `#ff7589`、
