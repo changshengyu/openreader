@@ -17,6 +17,9 @@ Docker 与二进制两种方式）上表达；历史卷门加 `JWT_SECRET_MODE=u
 Compose、存储 HTTP 合同、未设置密钥的真实会话合同通过。状态 implementation-complete / regression-validated；候选镜像 Docker 门在
 Actions。
 
+合并记录（2026-10-30）：6137b37/2749428/af0035a 合并 main；GO-2026-6860 以 main 的 7a18346 为准（本会话重复升级未推送即丢弃）；UMD 封面
+capability 由守卫覆盖并补测（bcba652）。合并树全量回归通过（engine XPath 看门狗一次负载超时，重跑通过）。
+
 ## 2026-10-29 当前切片：Reader 夜间工具栏与设置控件配色（P1，C1–C10）
 
 见[`reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md`](reader-night-chrome-palette-fixed-baseline-second-audit-p1-contract.md)。

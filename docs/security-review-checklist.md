@@ -408,7 +408,7 @@ Contract `31b2963`, red tests `5734f74` and implementation `3bb465f` landed in o
   so an existing file is never replaced); later starts read it and narrow wider permissions. A non-regular file
   (symlink, directory, FIFO) or any content other than 64 hex characters stops the start before migration, with an
   error that names the path and never the content.
-- [x] Sessions and the EPUB/CBZ/audio/chapter-image/cover capabilities are signed with the instance secret. The
+- [x] Sessions and the EPUB/CBZ/audio/chapter-image/cover/UMD-cover capabilities are signed with the instance secret. The
   published value only verifies jti-backed sessions that an older image signed (their `user_sessions` row is the
   authenticator); every legacy-format token is refused before account lookup. Capabilities have no transition.
 - [x] The file sits outside the WebDAV (`data/webdav[/users/<name>]`), `/uploads` (`data/uploads`), local-store

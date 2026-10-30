@@ -271,3 +271,23 @@
 | 其它 | `docker compose config --quiet`、`store-read-list-lifecycle-contract.mjs` 通过 |
 
 未在本地运行：候选镜像的 Docker 卷门与 Docker 方式的生命周期合同（本地不构建镜像），由 Actions 在推送镜像前执行。
+
+### 10.5 合并 main 与发布阻塞（2026-10-23 至 10-30）
+
+- `6137b37`：合并 `a7fd6aa`（发布流程浏览器启动门，另一会话）。只有 gap-analysis 与 matrix 冲突，保留双方条目；workflow
+  自动合并，两边的步骤与 `paths` 都在，浏览器门测试 10/10。
+- `2749428`：合并 `b4cf2be`（其后 23 个提交），仍只有两份总账冲突，S2 条目改记 2026-10-29 置顶。`92c98a9` 之后没有
+  `backend/db`、`backend/models` 变化，回滚伙伴仍有代表性。
+- 2026-10-29 重跑发布门时，Go advisory 实际扫描因 2026-10-27 发布的 GO-2026-6860（`golang.org/x/net/html` 文本合并二次
+  复杂度）失败，任何发布都会被拦下。经用户确认在本会话修复；本地完成合同、红测、升级三个提交后，发现另一会话已在 main
+  上修复并发布同一问题（`53770f4`/`7a18346`，记录 `c62c619`），模块版本与本地升级完全一致。本地三个提交从未推送，已丢弃，
+  以 main 的修复为准。
+- `af0035a`：合并 `24511c0`（其后 34 个提交：上述 x/net 修复、EPUB/UMD 本地书封面、Reader 夜间配色、本地导入元数据识别等）。
+  冲突为 `backend/api/server.go`（S2 的 previous 接线与新增的 `umdCovers` 同时保留）和两份总账。新增的 `services/umdcover`
+  （`/api/umd-cover`，purpose `openreader:umd-cover:v1`）由 `RegisterRoutes` 中同一个 `cfg` 构造，S2 守卫自动覆盖；EPUB 封面
+  复用 EPUB capability。资源 capability 由五类变为六类。
+- `bcba652`：R2 增加 UMD 封面用例（只用实例密钥签名，公开值重签后 403）；去掉 `RegisterRoutes` 守卫时该用例变红。
+- 合并树（`bcba652`）回归：`go test ./...` 31 包、`go vet ./...`；race：api 1257.8 s 等 25 包通过，engine 的 XPath advisory
+  看门狗子测试（`attribute`）在全量并行负载下超出 3 s 一次，测试未改、与 S2 无关，单独重跑 3/3 通过、engine 包 race 通过，
+  无 DATA RACE；前端 836/836 与 build；advisory 离线测试 141/141、Go 扫描 pass-with-not-applicable（仅 GO-2026-5932）、前端扫描
+  pass；生命周期合同十个场景、存储 HTTP 合同、未设置密钥实例上的三项浏览器合同通过。
