@@ -59,12 +59,13 @@ export function useReaderLocalProgress(options) {
       baseUpdatedAt: payload.baseUpdatedAt
         || serverBaseUpdatedAt(payload.bookId),
     }
-    const key = readerProgressSaveKey(nextPayload, options.reader.mode)
+    const mode = options.getMode()
+    const key = readerProgressSaveKey(nextPayload, mode)
     if (key === lastLocalProgressKey && !applyOptions.force) return
     lastLocalProgressKey = key
     options.reader.applyProgress({
       ...nextPayload,
-      mode: options.reader.mode,
+      mode,
       updatedAt: now().toISOString(),
       pendingSync: true,
     })

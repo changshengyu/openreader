@@ -1,5 +1,12 @@
 import { nextTick, unref, watch } from 'vue'
 
+// reader-dev only slides in its mini interface (isSlideRead), so a flip
+// setting renders as the page layout on the desktop. The setting itself is
+// never rewritten: the mini interface slides again with it.
+export function readerInterfaceMode(mode, isDesktop = false) {
+  return isDesktop && mode === 'flip' ? 'page' : mode
+}
+
 export function readerEffectiveMode(
   mode,
   isEPUB,
@@ -17,10 +24,7 @@ export function readerEffectiveMode(
   // non-slide branch is the vertical page interaction, while scroll modes
   // remain native scrolling.
   if ((isReadBarOpen || isAutoReading) && mode === 'flip') return 'page'
-  // reader-dev only slides in its mini interface (isSlideRead), so a flip
-  // setting that reaches the desktop is the same page layout.
-  if (isDesktop && mode === 'flip') return 'page'
-  return mode
+  return readerInterfaceMode(mode, isDesktop)
 }
 
 export function readerAutoReadingSupported({
@@ -160,28 +164,6 @@ export function useReaderMode(options) {
       if (!active || generation !== transitionGeneration) return
       if (options.progressVersion) options.progressVersion.value += 1
       options.saveProgress()
-    },
-  )
-
-  watch(
-    options.isMobileReader,
-    mobile => {
-      if (!mobile && options.reader.mode === 'flip') {
-        options.reader.setMode('page')
-      }
-    },
-    { immediate: true },
-  )
-
-  // A flip setting that reaches the desktop later (the account settings,
-  // another device, a scheme) goes back to page on this device only: the
-  // account keeps the choice of the device that made it.
-  watch(
-    () => options.reader.mode,
-    mode => {
-      if (mode === 'flip' && !unref(options.isMobileReader)) {
-        options.reader.setMode('page', { deviceLocal: true })
-      }
     },
   )
 

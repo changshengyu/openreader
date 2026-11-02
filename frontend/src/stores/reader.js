@@ -730,7 +730,7 @@ export const useReaderStore = defineStore('reader', {
       const currentProgress = this.progressByBook[payload.bookId]
       const optimistic = {
         ...payload,
-        mode: this.mode,
+        mode: payload.mode || this.mode,
         updatedAt: new Date().toISOString(),
         pendingSync: true,
         baseUpdatedAt: payload.baseUpdatedAt || progressServerBaseUpdatedAt(currentProgress),
@@ -738,7 +738,7 @@ export const useReaderStore = defineStore('reader', {
       this.applyProgress(optimistic)
       const response = await api.put('/progress', {
         ...payload,
-        mode: this.mode,
+        mode: optimistic.mode,
         baseUpdatedAt: optimistic.baseUpdatedAt,
         clientUpdatedAt: optimistic.updatedAt,
         clientId: this.ensureClientId(),

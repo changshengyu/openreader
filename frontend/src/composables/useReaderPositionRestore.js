@@ -49,7 +49,7 @@ export function useReaderPositionRestore(options) {
     await options.nextFrame()
     options.updateLayout()
     const chapterOffset = Number(offset || 0)
-    if (options.reader.mode === 'flip') {
+    if (options.getMode() === 'flip') {
       options.page.value = restoredReaderFlipPage({
         offset: chapterOffset,
         percent: hasRestorePercent ? restorePercent : null,

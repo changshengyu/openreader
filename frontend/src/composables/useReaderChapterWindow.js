@@ -18,7 +18,7 @@ export function useReaderChapterWindow(options) {
   function scopeKey() {
     return [
       options.getScopeKey?.() || '',
-      options.reader.mode || '',
+      options.getMode() || '',
       unref(options.isContinuousScrollRead) ? 'continuous' : 'single',
     ].join('|')
   }
@@ -115,7 +115,7 @@ export function useReaderChapterWindow(options) {
         }
       }
       const indexes = readerChapterWindowIndexes({
-        mode: options.reader.mode,
+        mode: options.getMode(),
         anchorIndex,
         startIndex: scrollStartIndex,
         totalChapters: chapterRows.length,
@@ -192,7 +192,7 @@ export function useReaderChapterWindow(options) {
       ]
       const plan = readerChapterWindowPrunePlan({
         blocks: appended,
-        mode: options.reader.mode,
+        mode: options.getMode(),
         currentIndex: unref(options.currentIndex),
         totalChapters: chapterRows.length,
       })
@@ -249,7 +249,7 @@ export function useReaderChapterWindow(options) {
     const lastBlock = options.chapterBlocks.value[options.chapterBlocks.value.length - 1]
     if (lastBlock?.error) return
     const extension = readerChapterWindowExtension({
-      mode: options.reader.mode,
+      mode: options.getMode(),
       scrollTop: viewport.scrollTop,
       clientHeight: viewport.clientHeight,
       scrollHeight: viewport.scrollHeight,

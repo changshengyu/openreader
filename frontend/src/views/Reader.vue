@@ -439,6 +439,7 @@ import { useReaderNavigation } from '../composables/useReaderNavigation'
 import {
   readerAutoReadingSupported,
   readerEffectiveMode,
+  readerInterfaceMode,
   readerTTSSupported,
   useReaderMode,
 } from '../composables/useReaderMode'
@@ -922,6 +923,8 @@ const ttsReadBarLayoutActive = computed(() => (
     && !isAudioChapter.value
     && !isOrdinaryImageComicChapter.value
 ))
+// The raw setting keeps the account's choice; this is what this interface lays out.
+const interfaceReaderMode = computed(() => readerInterfaceMode(reader.mode, !isMobileReader.value))
 const effectiveReaderMode = computed(() => (
   readerEffectiveMode(
     reader.mode,
@@ -1033,6 +1036,7 @@ const {
   getCurrentPayload: currentAudioProgressPayload,
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,
+  getMode: () => interfaceReaderMode.value,
   mergeBook: mergeShelfBook,
   isTemporaryReader: isTemporaryRemoteReader,
 })
@@ -1044,7 +1048,7 @@ const {
   retry: retryContinuousChapter,
   syncCurrentChapter: updateCurrentChapterFromScroll,
 } = useReaderChapterWindow({
-  reader,
+  getMode: () => interfaceReaderMode.value,
   contentEl: scrollViewport,
   contentBody,
   chapters,
@@ -1185,7 +1189,7 @@ onBeforeUnmount(cancelPageAnimation)
 const {
   restore: restoreReadingPosition,
 } = useReaderPositionRestore({
-  reader,
+  getMode: () => interfaceReaderMode.value,
   contentEl: scrollViewport,
   contentBody,
   currentIndex,
@@ -1757,7 +1761,7 @@ const {
   getPayload: () => chapter.value ? currentProgressPayload() : null,
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
   applyLocal: applyLocalProgressSnapshot,
-  saveRemote: payload => reader.saveProgress(payload),
+  saveRemote: payload => reader.saveProgress({ ...payload, mode: interfaceReaderMode.value }),
   onSaved: progress => upsertReaderBookProgress(progress, { replace: true }),
   getMode: () => effectiveReaderMode.value,
   getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
@@ -1994,7 +1998,7 @@ function closeTTSBar() {
     await nextTick()
     updateFlipLayout()
     await nextFrame()
-    if (reader.mode !== 'flip' || !activeParagraph?.isConnected) return
+    if (interfaceReaderMode.value !== 'flip' || !activeParagraph?.isConnected) return
     updateFlipLayout()
     await nextFrame()
     jumpToParagraph(activeParagraph, { save: false, flash: false })
