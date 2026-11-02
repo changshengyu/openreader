@@ -181,7 +181,7 @@ F3. 不变：
 
 ## 10. 观察（不在本切片）
 
-观察 1、2 由 D4 切片处理，见 [`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)（它的第 3.3 节修正了本文第 3.1 节的读者清单）。
+观察 1、2 已由 D4 切片关闭（实现 `c2c7789`，2026-11-02），见 [`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)（它的第 3.3 节修正了本文第 3.1 节的读者清单）。本文 F2 的“只改本设备”转换与 setup 时的转换一起删除：原始设置不再被改写，桌面经 F1 与界面模式按 page 渲染；本文的单元第 2 条随之改写，浏览器合同 L1–L3 不变并通过。
 
 1. D4：setup 时与界面切换时的桌面转换写回账号。手机选了“左右滑动”后在桌面打开 Reader，账号就变成“上下滑动”；iPad 从手机模式切回
    自适应再切回去，左右滑动也丢了。上游只在渲染上派生（第 2 节）。改成派生要处理第 3.1 节列出的约 20 处直接读原始设置的代码，适合单独

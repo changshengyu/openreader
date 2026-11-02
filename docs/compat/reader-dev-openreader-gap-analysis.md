@@ -13,6 +13,7 @@
 `mode` 的旧本地进度回退值）`acceptable-change`。完整合同见
 [`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
+2026-11-02 记录（合同第 9 节）：合同 `5026d6b`；红测 `fcfd19e`（单元 11 条失败；新浏览器合同 8/9 失败，A3 手机对照与 A1 的位置、进度守卫通过）；实现 `c2c7789`（导出 `readerInterfaceMode`，删除两个转换 watcher，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar` 改读界面模式）。单元 857/857 与 build；新合同 9/9（两次）、晚到设置合同 7/7、面板正文控件合同连续 3 次 108/108，TTS 四个视口、settings-position、text-modes、mobile、error-surface 30/30、continuous、openreader-smoke 通过；Go advisory 门通过。前端 advisory 门因 follow-redirects 1.16.1（GHSA-mrwp-f3q8-3g9p）失败，与本切片无关但阻塞任何发布。状态 **implementation-complete / regression-validated**；分支包含未合入 main 的晚到设置切片，未合入 main。
 
 ## 2026-10-30 P0 Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局
 

@@ -1,6 +1,6 @@
 # Reader 桌面端把账号的“左右滑动”改写成“上下滑动”（D4，P1）
 
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（合同 `5026d6b`、红测 `fcfd19e`、实现 `c2c7789`，见第 9 节）。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本会话 scratchpad 里用
 `git archive fa22f27 web/src` 取出的只读副本）。OpenReader 基线：`b52def1`，即晚到设置切片的 `a574d78`（分支
@@ -208,3 +208,59 @@ setup”。
 4. **回归**：按 7.3 执行。
 5. **记录**：提交号、结果和状态标签写回本文件、gap analysis、matrix；晚到设置合同第 10 节注明观察 1、2 已由本切片关闭。
 6. **发布**：实现提交改了 `frontend/**`，合入 main 会触发镜像发布；本分支包含未合入 main 的晚到设置切片，是否合入由协调方决定。
+
+## 9. 实施与验证（2026-11-02）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `b52def1` | 基线 | 晚到设置切片 `a574d78` 合并 origin/main `6193f79`（只有两份总账顶部冲突，两条都保留）。 |
+| `5026d6b` | 合同 | 本文件、gap analysis 与 matrix 顶部条目；晚到设置合同第 10 节指向本文件。 |
+| `fcfd19e` | 红测 | 单元合同 `frontend/tests/readerDesktopFlipAccount.test.mjs`（U1–U5、U9，6 条）；U6–U8 放在各组合函数已有的测试文件里，夹具加 `getMode: () => reader.mode`，原断言不动；两条与上游冲突的旧断言改写（第 7.1 节）；浏览器合同 `scripts/smoke/reader-desktop-flip-account-contract.mjs`（A1–A4，9 组）。 |
+| `c2c7789` | 实现 | 6 个文件 +26/−39：`useReaderMode.js` 导出 `readerInterfaceMode`、`readerEffectiveMode` 的桌面规则经它表达、删除两个转换 watcher；`useReaderPositionRestore`、`useReaderChapterWindow`、`useReaderLocalProgress` 改读 `getMode()`；store `saveProgress` 的 `mode` 取 `payload.mode`；`Reader.vue` 增加 `interfaceReaderMode` 并接线（三个组合函数、`saveRemote`、`closeTTSBar`）。 |
+
+`git diff origin/main..c2c7789 -- backend` 为空。store 的 `setMode(mode, { deviceLocal })` 保留，`readerSettingsPayload`、设置面板与
+`syncLocalProgress` 回退没改（第 6 节 G3）。
+
+**单元**（`node --test`）：
+
+| 代码 | 结果 |
+| --- | --- |
+| `fcfd19e`（产品代码同 `b52def1`） | 改动的 6 个测试文件共 42 条，11 条失败：U1 `useReaderMode.js must export the interface mode`（`'undefined'`）；U2 `the desktop must not rewrite the setting`（`'page' !== 'flip'`）；U3 `switching to the desktop must not rewrite the setting`（`'page'`）；U4 `the desktop must not rewrite the account setting`（`'page'`）；U5 进度 `PUT` 的 `mode` 是 `'flip'`（应为 `'page'`）；U6 `the desktop page layout has no flip page to set`（`2 !== 0`）；U7 窗口 `[2, 3, 4]`（应为 `[3, 4]`）；U8 本地进度 `mode` 为 `['flip']`；U9 `Reader.vue must derive interfaceReaderMode from the setting and the interface`；两条改写都是 `'page' !== 'flip'`。其余 31 条通过（含晚到设置合同的 mini 对照与 store `deviceLocal` 条）。 |
+| `c2c7789` | 42/42；全量 857/857（原 848 + 新增 9）；`npm run build` 通过，只有既有的 chunk 大小提示。 |
+
+**浏览器**：本 worktree 编译的 go1.26.10 二进制只提供静态文件，接口由 `page.route` 模拟，同步连接由 `page.routeWebSocket` 接管；
+Playwright 1.61.1 / chromium-headless-shell，Node v26.4.0，服务与浏览器在沙箱外运行。修复前的 dist 副本与修复后的 dist 各由一个服务提供，
+各有独立的临时 data/cache/library 与随机 JWT secret（未输出）。新合同按第 7.2 节把 Reader 路由代码块（`Reader-*.js`）扣到账号设置应用之后。
+
+| 构建 | 新合同（9 组） |
+| --- | --- |
+| `b52def1` 的 `npm run build`（两次，结果相同） | 8/9 FAIL。A1 三个视口：`.reader-shell.page`、`加载下一章` 挂载、滚动比例 0.49、进度 `PUT` 为 `1/page`（守卫都通过），但打开后有一次 `mode: 'page'` 的设置 `PUT`。A2 两个方向：设置 `PUT` 为 `auto/page`、`mobile/page`，回到手机模式是 `page … mini-interface`（左右滑动丢失）。A4 三个视口：“上下滑动”高亮，`PUT` 改字号前 `page/18`、之后 `page/19`。A3 通过。 |
+| `c2c7789`（两次） | 9/9 PASS。A1 没有设置 `PUT`，page、滚动比例 0.49、进度 `1/page`；A2 自适应为 page、回到手机模式为 `flip … mini-interface`，`PUT` 为 `auto/flip`、`mobile/flip`；A3 flip、没有 `PUT`；A4 没有高亮项，改字号后 `PUT` 为 `flip/19`。 |
+
+**回归**（`c2c7789` 构建，顺序执行）：
+
+| 合同 | 结果 |
+| --- | --- |
+| `reader-desktop-flip-late-settings-contract`（晚到设置合同） | 7/7（L1、L2 桌面晚到与其他设备的 `flip` 都是 page、没有设置 `PUT`、L2 滚动不变；L3 手机进入 flip） |
+| `reader-desktop-flip-account-contract`（第二次） | 9/9 |
+| `reader-tts-contract`：390×844、1440×900、1366×1024、1024×1366 | 都通过（桌面的“normalize flip to page before opening TTS”与“TTS close should retain the normalized page branch”依赖 R6） |
+| `reader-settings-position-contract` | 通过（两个手机视口的翻页方式与方案事务、自动日夜、iPad 页面模式事务） |
+| `reader-text-modes-contract`、`reader-continuous-contract` | 通过 |
+| `reader-mobile-contract` | 通过（桌面、手机、自适应 iPad、强制移动 iPad） |
+| `reader-error-surface-contract` | 30/30（含 flip 设置） |
+| `openreader-smoke` | 三个视口通过（入口 `/login`） |
+| `reader-desktop-panel-controls-contract`（脚本与断言未改） | 连续 3 次全量，每次 108/108（每次约 398s）；`C1 flip` 共 36/36；没有 harness、页面或路由错误 |
+
+第一轮顺序执行到 `reader-mobile-contract` 时应用退出，服务与后台任务被停掉；其余各项（error-surface、continuous、smoke、面板正文控件
+3 次）在重启的服务上重跑，二进制相同，dist 重新构建后 Reader 代码块哈希不变（`Reader-BrcOX7jX.js`），即同一构建。重跑的服务日志：
+除 877 次 `/ws/sync` 的 401（假 token，这些合同不接管同步连接）外都是 200，没有 5xx，没有 panic。
+
+**其余门**：Go `test`/`vet`/`race` 跳过（后端无改动）；Compose 与卷门跳过（依赖、Dockerfile、数据格式都没改，卷门只在 Actions 上运行）。
+依赖 advisory 门（2026-11-02 重跑，距上次扫描已过数日）：Go 门 `pass-with-not-applicable`（govulncheck v1.9.0，go1.26.10，漏洞库
+2026-10-27，唯一的发现 GO-2026-5932 按既有记录不适用，复核期限 2026-11-16）。前端门**失败**：`npm audit` 报 follow-redirects 1.16.1 命中
+GHSA-mrwp-f3q8-3g9p（high，范围 1.16.0–1.16.1，经 axios 引入，由 `frontend/package.json` 的 `overrides` 固定为 1.16.1）。它与本切片无关
+（依赖未改，main 上同样存在），但会让任何合入 main 的发布停在 Actions 的 advisory 门，需要单独的依赖切片升级这个 override。
+
+**状态**：Git 为分支 `claude/modest-hypatia-e29ab1`（已推送），包含未合入 main 的晚到设置切片（`098a662`–`a574d78`）、它与 main 的合并
+`b52def1` 与本切片；未合入 main。实现提交改了 `frontend/**`，合入 main 会触发镜像发布，是否合入由协调方决定；发布前要先解决上面的
+前端 advisory。镜像：未构建，未推送。生产：未访问，未操作。

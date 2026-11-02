@@ -8,6 +8,7 @@
 界面模式 `readerInterfaceMode` 替代“桌面原始设置不是 flip”的不变量，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar`
 改读它；桌面翻页方式随上游无高亮），D4-6 acceptable-change。计划红测：单元 U1–U9 与两条与上游冲突的旧断言改写，新浏览器合同
 A1–A4（设置先到的桌面打开、iPad 手机模式往返、手机对照、桌面改字号）。状态 contract-only。
+记录（2026-11-02，取代上段的状态）：合同 5026d6b、红测 fcfd19e（单元 11 条、浏览器 8/9 失败，对照通过）、实现 c2c7789。单元 857/857 与 build，新合同 9/9 ×2、晚到设置 7/7、面板正文控件 108/108 ×3，TTS、settings-position、text-modes、mobile、error-surface、continuous、smoke 通过，Go advisory 通过。前端 advisory 门因 follow-redirects 1.16.1（GHSA-mrwp-f3q8-3g9p）失败，阻塞任何发布，需单独的依赖切片。状态 implementation-complete / regression-validated；含未合入 main 的晚到设置切片，合入由协调方决定。
 
 ## 2026-10-30 当前切片：Reader 桌面端晚到的“左右滑动”设置（P0）
 
