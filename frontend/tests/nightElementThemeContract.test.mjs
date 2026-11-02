@@ -76,12 +76,15 @@ test('control: day styling and existing night surfaces stay as they are', () => 
   assert.match(source('components/BookInfoPanel.vue'), /:effect="isNight \? 'dark' : 'light'"/)
 })
 
-test('App.vue toggles body.night-theme with the night theme type, next to html.dark-reader', () => {
+test('App.vue toggles body.night-theme with the night theme type, except on the login page', () => {
   const app = source('App.vue')
-  const watcher = app.match(/watch\(\n  \(\) => readerStore\.themeType,\n  \(themeType\) => \{([\s\S]*?)\n  \},\n  \{ immediate: true \},\n\)/)
-  assert.ok(watcher, 'App.vue must keep one immediate themeType watcher')
-  assert.match(watcher[1], /document\.documentElement\.classList\.toggle\('dark-reader', themeType === 'night'\)/)
-  assert.match(watcher[1], /document\.body\.classList\.toggle\('night-theme', themeType === 'night'\)/)
+  const darkReader = app.match(/watch\(\n  \(\) => readerStore\.themeType,\n  \(themeType\) => \{([\s\S]*?)\n  \},\n  \{ immediate: true \},\n\)/)
+  assert.ok(darkReader, 'App.vue must keep its immediate themeType watcher')
+  assert.match(darkReader[1], /document\.documentElement\.classList\.toggle\('dark-reader', themeType === 'night'\)/)
+  // D6: the standalone login page keeps its light design; the in-app login dialog follows night.
+  const nightTheme = app.match(/watch\(\n  \(\) => readerStore\.themeType === 'night' && !isLoginRoute\.value,\n  \(night\) => \{([\s\S]*?)\n  \},\n  \{ immediate: true \},\n\)/)
+  assert.ok(nightTheme, 'App.vue must watch the night theme outside the login route')
+  assert.match(nightTheme[1], /document\.body\.classList\.toggle\('night-theme', night\)/)
 })
 
 test('the night stylesheet loads after Element Plus and only styles under .night-theme', () => {
@@ -90,6 +93,8 @@ test('the night stylesheet loads after Element Plus and only styles under .night
   const nightCss = main.indexOf("import './styles/night-element.css'")
   assert.ok(elementCss >= 0, 'main.js must import Element Plus CSS')
   assert.ok(nightCss > elementCss, 'main.js must import the night stylesheet after Element Plus CSS')
+  // reader-dev bundles App.vue's night overrides before its components, so component styles win ties.
+  assert.ok(nightCss < main.indexOf("import App from './App.vue'"), 'main.js must import the night stylesheet before App.vue')
   const rules = nightRules()
   assert.ok(rules.length > 10, 'the night stylesheet must carry the night-theme rules')
   for (const rule of rules) {
@@ -180,7 +185,7 @@ test('inputs, selects and their dropdowns take reader-dev night colors', () => {
   assertDeclarations('.night-theme .el-select__wrapper:not(.is-disabled)', { 'background-color': '#444' })
   assertDeclarations([
     '.night-theme .el-select__wrapper',
-    '.night-theme .el-select__wrapper.is-hovering:not(.is-focused)',
+    '.night-theme .el-select__wrapper.is-hovering',
     '.night-theme .el-select__wrapper.is-focused',
   ], { 'box-shadow': '0 0 0 1px #444 inset' })
   assertDeclarations('.night-theme .el-select .el-tag.el-tag--info', {
@@ -276,6 +281,16 @@ test('custom dialog headers take the night title color like reader-dev span.el-d
   const title = rss.match(/\n\.rss-dialog-title-text \{([^}]*)\}/)
   assert.ok(title, 'RSSManager keeps its title rule')
   assert.doesNotMatch(title[1], /(^|\s)color:/, 'the RSS dialog title must inherit the header color')
+})
+
+test('the light home sidebar selects keep their text color at night', () => {
+  // D5: the sidebar keeps its current look until it follows reader-dev Index.vue `.night`.
+  const layout = source('layouts/AppLayout.vue')
+  const wrapper = layout.match(/\n\.setting-select :deep\(\.el-select__wrapper\) \{([^}]*)\}/)
+  assert.ok(wrapper, 'AppLayout keeps its sidebar select surface rule')
+  assert.match(wrapper[1], /background: #fffdf8;/)
+  assert.match(wrapper[1], /--el-input-text-color: var\(--el-text-color-regular\);/)
+  assert.match(wrapper[1], /--el-select-multiple-input-color: var\(--el-text-color-regular\);/)
 })
 
 test('OpenReader-only catalog tag, empty states and loading masks get the decided night look', () => {

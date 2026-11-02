@@ -3,8 +3,10 @@
 // reader-dev App.vue#setTheme hangs its Element night overrides (App.vue 939–1141) off
 // body.night-theme for every page and dialog (user decision 2026-10-30: global). This
 // contract checks the home workspace: the book management dialog (table, checkbox,
-// search input, buttons, row dropdown, selection counter) and a sidebar message box,
-// day -> night -> day. docs/compat/night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md
+// search input, buttons, row dropdown, selection counter), a sidebar message box and a
+// sidebar select dropdown, day -> night -> day. The light sidebar select surface (D5) and
+// the standalone login page (D6) keep their day colors at night.
+// docs/compat/night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md
 
 import { appendFileSync } from 'node:fs'
 import { openSmokeBrowser } from './playwright-runtime.mjs'
@@ -95,6 +97,18 @@ async function homeElementSnapshot(page, viewport) {
   const snapshot = { body: await renderedStyle(page, 'body', ['background-color']) }
 
   await ensureNavigation(page, viewport)
+  const sidebarSelect = '.app-sidebar .setting-select'
+  snapshot.sidebarSelect = await renderedStyle(page, `${sidebarSelect} .el-select__wrapper`, ['background-color', 'box-shadow'])
+  snapshot.sidebarSelectText = await renderedStyle(page, `${sidebarSelect} .el-select__placeholder`, ['color'])
+  await page.locator(`${sidebarSelect} .el-select__wrapper`).first().click()
+  const option = '.el-select__popper .el-select-dropdown__item'
+  await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(node => node.getClientRects().length), option, { timeout: 10000 })
+  await page.waitForTimeout(300)
+  snapshot.sidebarDropdown = await renderedStyle(page, '.el-select__popper', ['background-color', 'border-top-color'])
+  snapshot.sidebarOption = await renderedStyle(page, `${option}:not(.is-selected)`, ['color'])
+  await page.keyboard.press('Escape')
+  await page.waitForFunction(selector => ![...document.querySelectorAll(selector)].some(node => node.getClientRects().length), option, { timeout: 10000 })
+
   await page.getByRole('button', { name: '书籍管理', exact: true }).click()
   const dialog = '.global-book-manage-dialog'
   await page.waitForSelector(`${dialog} .book-manage-table tbody tr`, { timeout: 10000 })
@@ -160,7 +174,11 @@ const NIGHT = {
   messageContent: { color: 'rgb(119, 119, 119)' },
   messageCancel: plainButton,
   messageConfirm: { 'background-color': 'rgb(43, 103, 187)', color: 'rgb(255, 255, 255)', 'border-top-color': 'rgb(43, 103, 187)' },
+  sidebarDropdown: { 'background-color': 'rgb(51, 51, 51)', 'border-top-color': 'rgb(51, 51, 51)' },
+  sidebarOption: { color: 'rgb(221, 221, 221)' },
 }
+// D5: the sidebar keeps its light look until it follows reader-dev Index.vue `.night`.
+const DAY_AT_NIGHT = ['sidebarSelect', 'sidebarSelectText']
 
 async function toggleTheme(page, viewport, night) {
   await ensureNavigation(page, viewport)
@@ -197,12 +215,52 @@ async function runViewport(browser, viewport) {
       assert(night[element][property] === value, `${viewport.width}: night ${element} ${property} expected ${value}, got ${night[element][property]}`)
     }
   }
+  for (const element of DAY_AT_NIGHT) {
+    assert(JSON.stringify(night[element]) === JSON.stringify(day[element]), `${viewport.width}: night ${element} must keep its day colors: ${JSON.stringify(day[element])} -> ${JSON.stringify(night[element])}`)
+  }
   await toggleTheme(page, viewport, false)
   const restored = await homeElementSnapshot(page, viewport)
   assert(JSON.stringify(restored) === JSON.stringify(day), `${viewport.width}: day Element Plus colors must restore exactly: ${JSON.stringify(day)} -> ${JSON.stringify(restored)}`)
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
   return `${viewport.width}x${viewport.height}`
+}
+
+// D6: the standalone login page keeps its light design at night; only the in-app login
+// dialog follows the night theme.
+async function loginSnapshot(browser, viewport, colorScheme) {
+  const mobile = viewport.width <= 750
+  const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, colorScheme })
+  const page = await context.newPage()
+  const failures = []
+  page.on('pageerror', error => failures.push(`pageerror: ${error.message}`))
+  await installApiMocks(page)
+  await page.goto(`${targetUrl.replace(/\/$/, '')}/login`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.auth-card .el-input__wrapper', { timeout: 10000 })
+  await page.mouse.move(1, 1)
+  const box = ['background-color', 'color', 'border-top-color']
+  const snapshot = {
+    classes: await page.evaluate(() => ({
+      darkReader: document.documentElement.classList.contains('dark-reader'),
+      nightTheme: document.body.classList.contains('night-theme'),
+    })),
+    input: await renderedStyle(page, '.auth-card .el-input__wrapper', ['background-color', 'box-shadow']),
+    inputText: await renderedStyle(page, '.auth-card .el-input__inner', ['color']),
+    submit: await renderedStyle(page, '.auth-card .el-button--primary', box),
+  }
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+  return snapshot
+}
+
+async function runLoginViewport(browser, viewport) {
+  const day = await loginSnapshot(browser, viewport, 'light')
+  const night = await loginSnapshot(browser, viewport, 'dark')
+  assert(night.classes.darkReader && !day.classes.darkReader, `${viewport.width}: login page must follow the device color scheme: ${JSON.stringify([day.classes, night.classes])}`)
+  assert(!night.classes.nightTheme, `${viewport.width}: the login page must not take body.night-theme`)
+  for (const element of ['input', 'inputText', 'submit']) {
+    assert(JSON.stringify(night[element]) === JSON.stringify(day[element]), `${viewport.width}: login ${element} must keep its day colors: ${JSON.stringify(day[element])} -> ${JSON.stringify(night[element])}`)
+  }
 }
 
 async function run() {
@@ -219,7 +277,10 @@ async function run() {
           { width: 1366, height: 1024 },
         ]
     const checks = []
-    for (const viewport of viewports) checks.push(await runViewport(browser, viewport))
+    for (const viewport of viewports) {
+      checks.push(await runViewport(browser, viewport))
+      await runLoginViewport(browser, viewport)
+    }
     console.log(`night-element-theme: ok ${checks.join(', ')}`)
   } finally {
     await browser.close()
