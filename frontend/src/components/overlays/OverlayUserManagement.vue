@@ -242,7 +242,11 @@ function formatUserTime(value, emptyLabel = '') {
   justify-content: space-between;
 }
 
-.check-tip,
+.check-tip {
+  color: var(--check-tip-text, var(--app-text-muted));
+  font-size: 12px;
+}
+
 .protected-user-label {
   color: var(--app-text-muted);
   font-size: 12px;

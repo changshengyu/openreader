@@ -133,6 +133,17 @@ watch(
   { immediate: true },
 )
 
+// reader-dev App.vue#setTheme: Element's night overrides hang off body.night-theme.
+// The standalone login page keeps its light design (the login dialog follows night).
+watch(
+  () => readerStore.themeType === 'night' && !isLoginRoute.value,
+  (night) => {
+    if (typeof document === 'undefined') return
+    document.body.classList.toggle('night-theme', night)
+  },
+  { immediate: true },
+)
+
 watch(
   () => readerStore.autoTheme,
   () => applyAutoThemeFromSystem(),

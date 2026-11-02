@@ -580,7 +580,6 @@ function readError(error, fallback) {
 }
 
 .rss-dialog-title-text {
-  color: var(--app-text);
   font-size: var(--el-dialog-title-font-size);
   line-height: var(--el-dialog-font-line-height);
 }

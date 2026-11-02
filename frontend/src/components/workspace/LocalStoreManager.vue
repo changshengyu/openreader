@@ -331,7 +331,7 @@ function readError(err, fallback) {
 
 .check-tip {
   margin-right: auto;
-  color: var(--app-text-muted);
+  color: var(--check-tip-text, var(--app-text-muted));
   font-size: 13px;
 }
 

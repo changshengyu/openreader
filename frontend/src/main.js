@@ -3,6 +3,8 @@ import { createPinia } from 'pinia'
 import persistedState from 'pinia-plugin-persistedstate'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+// Before the components, like reader-dev's bundle: component styles win ties with it.
+import './styles/night-element.css'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 import App from './App.vue'

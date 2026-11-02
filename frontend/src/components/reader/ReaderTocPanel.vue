@@ -14,7 +14,7 @@
         <span>{{ item.title }}</span>
         <small v-if="!desktopGrid">第 {{ item.index + 1 }} 章<template v-if="showMeta"> · {{ isCached(item) ? '已缓存' : '未缓存' }}</template></small>
       </span>
-      <el-tag v-if="!showMeta && isCached(item)" size="small" type="success" effect="plain">{{ browserCachedMap[item.index] ? '本地' : '已缓存' }}</el-tag>
+      <el-tag v-if="!showMeta && isCached(item)" size="small" type="success" :effect="isNight ? 'dark' : 'plain'">{{ browserCachedMap[item.index] ? '本地' : '已缓存' }}</el-tag>
     </button>
     <el-empty v-if="searchable && keyword && !filteredChapters.length" description="没有匹配章节" />
   </div>
@@ -57,6 +57,10 @@ const props = defineProps({
     default: () => ({}),
   },
   desktopGrid: {
+    type: Boolean,
+    default: false,
+  },
+  isNight: {
     type: Boolean,
     default: false,
   },

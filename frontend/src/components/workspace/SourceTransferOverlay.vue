@@ -286,7 +286,7 @@ function readError(error, fallback) {
 }
 
 .source-import-footer .check-tip {
-  color: var(--app-text-muted);
+  color: var(--check-tip-text, var(--app-text-muted));
   white-space: nowrap;
 }
 

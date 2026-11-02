@@ -1158,6 +1158,9 @@ function readError(err, fallback) {
   background: #fffdf8;
   border-radius: 4px;
   box-shadow: 0 0 0 1px #e6e6e6 inset;
+  /* The sidebar stays light at night until it follows reader-dev Index.vue `.night`. */
+  --el-input-text-color: var(--el-text-color-regular);
+  --el-select-multiple-input-color: var(--el-text-color-regular);
 }
 
 .sidebar-recent {

@@ -248,7 +248,7 @@ function readError(error, fallback) {
 }
 
 .replace-manager-footer span {
-  color: var(--app-text-muted);
+  color: var(--check-tip-text, var(--app-text-muted));
 }
 
 .replace-rule-checks {

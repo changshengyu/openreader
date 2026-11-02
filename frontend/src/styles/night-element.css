@@ -1,0 +1,222 @@
+/*
+ * reader-dev App.vue `.night-theme` (939–1141) on Element Plus. App.vue puts `night-theme` on
+ * <body> for every night scheme, like reader-dev's setTheme, so this covers every page and
+ * dialog except the standalone login page. main.js loads it before the component styles.
+ * Values are reader-dev's rendered results on Element UI 2.15 in its bundle order,
+ * where Element's own rules load after App.vue and win ties: disabled buttons keep Element's
+ * surface, selected items stay Element blue.
+ * docs/compat/night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md
+ */
+.night-theme {
+  background-color: #222;
+  --check-tip-text: #bbb;
+}
+
+.night-theme .el-message-box {
+  --el-messagebox-title-color: #888;
+  --el-messagebox-content-color: #777;
+  /* Native controls in message bodies (the EPUB catalog rule picker) follow the night inputs. */
+  --el-input-bg-color: #444;
+  --el-input-text-color: #ddd;
+  --el-input-border-color: #444;
+  background-color: #212121;
+  border: 1px solid #212121;
+}
+
+.night-theme .el-dialog {
+  --el-dialog-bg-color: #222;
+}
+
+/* reader-dev custom title slots reuse span.el-dialog__title; OpenReader's inherit from the header. */
+.night-theme .el-dialog__header,
+.night-theme .el-dialog__title {
+  color: #bbb;
+}
+
+/* Buttons. Text and link buttons keep Element's colors, as reader-dev's type="text" does. */
+.night-theme .el-button {
+  --el-button-disabled-text-color: #666;
+}
+
+.night-theme .el-button:not(.el-button--primary, .el-button--success, .el-button--warning, .el-button--danger, .el-button--info, .is-text, .is-link) {
+  --el-button-text-color: #ddd;
+  --el-button-bg-color: #888;
+  --el-button-border-color: #888;
+  --el-button-hover-text-color: #eee;
+  --el-button-hover-bg-color: #bbb;
+  --el-button-hover-border-color: #bbb;
+  --el-button-active-text-color: #eee;
+  --el-button-active-bg-color: #bbb;
+  --el-button-active-border-color: #bbb;
+}
+
+.night-theme .el-button--primary:not(.is-plain, .is-text, .is-link) {
+  --el-button-bg-color: #185798;
+  --el-button-border-color: #185798;
+  --el-button-hover-bg-color: #2b67bb;
+  --el-button-hover-border-color: #2b67bb;
+  --el-button-active-bg-color: #2b67bb;
+  --el-button-active-border-color: #2b67bb;
+}
+
+/* reader-dev's generic `.el-button:hover` outranks Element's typed hovers. */
+.night-theme :is(.el-button--success, .el-button--warning, .el-button--danger, .el-button--info):not(.is-plain, .is-text, .is-link) {
+  --el-button-hover-text-color: #eee;
+  --el-button-hover-bg-color: #bbb;
+  --el-button-hover-border-color: #bbb;
+  --el-button-active-text-color: #eee;
+  --el-button-active-bg-color: #bbb;
+  --el-button-active-border-color: #bbb;
+}
+
+/* reader-dev styles :focus like :hover. */
+.night-theme .el-button:not(.is-text, .is-link, .is-disabled):focus {
+  color: var(--el-button-hover-text-color);
+  background-color: var(--el-button-hover-bg-color);
+  border-color: var(--el-button-hover-border-color);
+}
+
+.night-theme .el-button.is-text:not(.is-disabled):is(:hover, :focus),
+.night-theme .el-button.is-link:not(.is-disabled):is(:hover, :focus) {
+  color: #66b1ff;
+  background-color: transparent;
+  border-color: transparent;
+}
+
+/* Inputs and selects: #444 in every state; disabled keeps Element's surface. */
+.night-theme .el-input,
+.night-theme .el-textarea {
+  --el-input-bg-color: #444;
+  --el-input-text-color: #ddd;
+  --el-input-border-color: #444;
+  --el-input-hover-border-color: #444;
+  --el-input-focus-border-color: #444;
+  --el-disabled-border-color: #444;
+}
+
+.night-theme .el-select {
+  --el-input-text-color: #ddd;
+  --el-select-multiple-input-color: #ddd;
+  --el-select-disabled-border: #444;
+}
+
+.night-theme .el-select__wrapper:not(.is-disabled) {
+  background-color: #444;
+}
+
+.night-theme .el-select__wrapper,
+.night-theme .el-select__wrapper.is-hovering,
+.night-theme .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px #444 inset;
+}
+
+.night-theme .el-select .el-tag.el-tag--info {
+  --el-tag-bg-color: #777;
+  --el-tag-border-color: #777;
+  --el-tag-text-color: #ddd;
+}
+
+.night-theme .el-input-number__increase,
+.night-theme .el-input-number__decrease {
+  color: #fff;
+  background-color: #909399;
+  border-color: #909399;
+}
+
+.night-theme .el-input-number__increase:hover,
+.night-theme .el-input-number__decrease:hover {
+  color: var(--el-color-primary);
+}
+
+/* Select dropdowns and dropdown menus; every popper arrow is #333 like reader-dev's `.popper__arrow`. */
+.night-theme .el-select__popper.el-popper {
+  --el-bg-color-overlay: #333;
+  --el-border-color-light: #333;
+  --el-fill-color-light: #444;
+  --el-text-color-regular: #ddd;
+}
+
+.night-theme .el-select-dropdown.is-multiple .el-select-dropdown__item.is-selected {
+  background-color: #444;
+}
+
+.night-theme .el-select-dropdown.is-multiple .el-select-dropdown__item.is-hovering {
+  background-color: #555;
+}
+
+.night-theme .el-popper > .el-popper__arrow::before {
+  background: #333;
+  border-color: #333;
+}
+
+.night-theme .el-dropdown__popper.el-popper {
+  --el-bg-color-overlay: #444;
+  --el-border-color-light: #444;
+}
+
+.night-theme .el-dropdown-menu {
+  --el-dropdown-menuItem-hover-fill: #666;
+  --el-dropdown-menuItem-hover-color: #66b1ff;
+  --el-text-color-regular: #bbb;
+}
+
+.night-theme .el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: #222;
+  --el-table-header-bg-color: #222;
+  --el-table-expanded-cell-bg-color: transparent;
+  --el-table-text-color: #888;
+  --el-table-border-color: #555;
+  --el-table-row-hover-bg-color: #444;
+}
+
+.night-theme .el-table__inner-wrapper::before {
+  background-color: transparent;
+}
+
+.night-theme .el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  color: #ccc;
+}
+
+.night-theme .el-checkbox {
+  --el-checkbox-bg-color: #bbb;
+}
+
+.night-theme .el-tabs__item {
+  --el-text-color-primary: #ddd;
+}
+
+.night-theme .el-tabs__nav-next:not(.is-disabled),
+.night-theme .el-tabs__nav-prev:not(.is-disabled) {
+  color: #aaa;
+}
+
+.night-theme .el-tabs__nav-wrap::after {
+  background-color: #444;
+}
+
+.night-theme .el-pagination {
+  --el-pagination-bg-color: #444;
+  --el-pagination-button-color: #ddd;
+  --el-pagination-button-disabled-color: #ddd;
+  --el-pagination-button-disabled-bg-color: #444;
+}
+
+/* OpenReader additions without a reader-dev counterpart (user decision D3): Element Plus's own
+   dark empty illustration and reader-dev's night loading background (Index.vue $loading). */
+.night-theme .el-empty {
+  --el-empty-fill-color-0: #000;
+  --el-empty-fill-color-1: #4b4b52;
+  --el-empty-fill-color-2: #36383d;
+  --el-empty-fill-color-3: #1e1e20;
+  --el-empty-fill-color-4: #262629;
+  --el-empty-fill-color-5: #202124;
+  --el-empty-fill-color-6: #212224;
+  --el-empty-fill-color-7: #1b1c1f;
+  --el-empty-fill-color-8: #1c1d1f;
+  --el-empty-fill-color-9: #18181a;
+}
+
+.night-theme .el-loading-mask {
+  background-color: #222;
+}

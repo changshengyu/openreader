@@ -241,7 +241,7 @@ function readError(error, fallback) {
 
 .reader-dialog-footer span {
   flex: 1;
-  color: var(--el-text-color-secondary);
+  color: var(--check-tip-text, var(--el-text-color-secondary));
   text-align: left;
 }
 

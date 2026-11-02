@@ -73,6 +73,7 @@
         :reverse="tocReverse"
         :locate-key="tocLocateKey"
         :browser-cached-map="browserCachedChapters"
+        :is-night="isNightTheme"
         desktop-grid
         @jump="jumpFromToc"
       />
@@ -312,6 +313,7 @@
           :reverse="tocReverse"
           :locate-key="tocLocateKey"
           :browser-cached-map="browserCachedChapters"
+          :is-night="isNightTheme"
           @jump="jumpFromToc"
         />
       </div>

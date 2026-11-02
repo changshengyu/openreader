@@ -98,7 +98,7 @@ const emit = defineEmits([
 
 .check-tip {
   margin-left: 5px;
-  color: var(--app-text-muted);
+  color: var(--check-tip-text, var(--app-text-muted));
   font-size: 13px;
   white-space: nowrap;
 }

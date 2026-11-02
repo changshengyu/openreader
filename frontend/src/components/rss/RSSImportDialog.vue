@@ -94,6 +94,7 @@ function riskText(source) {
 }
 
 .rss-import-count {
+  color: var(--check-tip-text, var(--app-text));
   font-size: 14px;
 }
 
