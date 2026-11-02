@@ -6,7 +6,8 @@
 `html.dark-reader` 只改 `--app-*`，夜间 Element Plus 组件全是浅色；上游 `body.night-theme`（`App.vue` 939–1141）全局改写，并按打包层叠顺序
 实测为准。用户确认全局同上游：N1–N19 must-fix（页面底 `#222`、消息框、默认/主要/禁用/类型按钮、输入框与选择框、选择下拉、对话框、
 表格、复选框、“已选择 N 个”、多选标签、数字输入框、标签页、分页、下拉菜单）；O1 目录标签夜间 `effect="dark"`、O2/O3 空状态暗色填充与
-遮罩 `#222`（intentional-redesign）；N21/N22 acceptable-change；首页侧栏现有夜间面与其它组件级 `.night-theme` 不重开。
+遮罩 `#222`（intentional-redesign）；N21/N22 acceptable-change；其它组件级 `.night-theme` 不重开。2026-11-02 补充：首页侧栏夜间样式
+与书籍信息书名 `#eee` 的 `:global(html.dark-reader) .x` 写法从未生效；D5 侧栏保持原样、D6 登录页保持原样，侧栏另起切片。
 计划红测：`body.night-theme` 切换、`night-element.css` 每个映射值等于上游实测、D2–D4；浏览器五个视口阅读页 + 首页对话框/消息框夜间
 computed style，日间前后一致。状态 contract-only。
 

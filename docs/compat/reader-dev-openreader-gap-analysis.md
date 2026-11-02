@@ -10,8 +10,10 @@ Element Plus 组件（消息框、按钮、输入框、选择下拉、对话框�
 + 摊平的 `.night-theme` 在 Chromium 实测（禁用按钮仍白底 `#666` 字、类型按钮悬停 `#bbb`、选中项/选中标签页/选中复选框保持 `#409eff`）。
 当前与上游有 128 个测量属性不同。用户确认：全局，同上游（N1–N19 **`must-fix`**，所有夜间方案）；目录“本地/已缓存”标签夜间用上游
 标签惯例 `effect="dark"`；空状态插图用 Element Plus 暗色填充、`v-loading` 遮罩夜间 `#222`（O1–O3 `intentional-redesign`）；照上游实际
-渲染层叠结果（D4）。占位/禁用等未覆盖状态的 Element Plus 默认色差、内阴影环与键盘焦点轮廓为 `acceptable-change`；首页侧栏现有夜间面、
-`Index.vue`/RSS/朗读组件自己的 `.night-theme` 规则、日间配色不重开。完整合同见
+渲染层叠结果（D4）。占位/禁用等未覆盖状态的 Element Plus 默认色差、内阴影环与键盘焦点轮廓为 `acceptable-change`；`Index.vue`/RSS/朗读
+组件自己的 `.night-theme` 规则、日间配色不重开。2026-11-02 实现中发现首页侧栏夜间样式（`AppLayout.vue`）与书籍信息书名 `#eee` 都写成
+`:global(html.dark-reader) .x`，被 Vue 编译成只作用于 `<html>`，从未生效；用户补充决定 D5 首页侧栏保持原样（另起切片按上游 `Index.vue`
+`.night`）、D6 登录页保持原样（登录路由不加 `night-theme`）。完整合同见
 [`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 

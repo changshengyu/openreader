@@ -1,6 +1,6 @@
 # 夜间 Element Plus 组件外观合同（P1，上游 `App.vue` `.night-theme`）
 
-状态：**contract-only**（用户 2026-10-30 确认第 5 节：全局，同上游；目录标签用上游标签惯例；空状态与遮罩改深色；照上游实际渲染）。审查日期：2026-10-30。审查基线：`OpenReader@6193f79`。
+状态：**contract-only**（用户 2026-10-30 确认第 5 节 D1–D4：全局，同上游；目录标签用上游标签惯例；空状态与遮罩改深色；照上游实际渲染。2026-11-02 实现中补充 D5/D6：首页侧栏与登录页保持原样）。审查日期：2026-10-30。审查基线：`OpenReader@6193f79`。
 
 ## 1. 来源与范围
 
@@ -46,7 +46,7 @@
 也不用 `v-loading`：`$loading` 每次自己给底色——阅读正文 `rgba(0,0,0,0)`（`Reader.vue:880`、`1002`），首页书架 `isNight ? "#222" : "#fff"`
 （`Index.vue:1264`）。
 
-组件自己的 `.night-theme` 规则（不在 `App.vue`）：`BookInfo.vue` `.book-name #eee`（OpenReader `BookInfoPanel.vue:291` 已对齐）、RSS 三个组件
+组件自己的 `.night-theme` 规则（不在 `App.vue`）：`BookInfo.vue` `.book-name #eee`（OpenReader `BookInfoPanel.vue:291` 的写法从未生效，见第 3 节）、RSS 三个组件
 （`#aaa`/`#333`/`#666`）、阅读页朗读语音单选（`Reader.vue:3762`）、`Index.vue` `.popper-intro`/`.el-popover__title`（3663–3680）、
 `Index.vue` `.night` 里的 `.el-input__inner` `#444`/`#aaa`（3407）。本切片只处理 `App.vue` 那一块。
 
@@ -100,9 +100,15 @@ Element Plus 组件都是默认浅色。用同一批组件在 Element Plus 2.14 
 | 标签页 / 分页 / 下拉菜单 / 数字输入框 | Element Plus 默认浅色 |
 | “已选择 N 个” | 继承正文（`.check-tip` 或无类名的 `span`） |
 
-已有的 OpenReader 夜间 Element 处理（不在本切片改动）：首页侧栏搜索框与设置下拉 `#2a2927`/`#aaa`/`#39352f`（`AppLayout.vue:1050–1058`）；
-首页书架搜索 `#444`/`#aaa`（`home-shelf.css:396–403`，对应上游 `Index.vue` `.night`）；首页书架加载遮罩 `#222`（`Home.vue:151`，对应上游
-`Index.vue:1264`）；书籍信息与远程结果的 `el-tag` 夜间 `effect="dark"`（`BookInfoPanel.vue:64`、`RemoteBookResultList.vue:33`，对应上游）。
+已有的 OpenReader 夜间 Element 处理（不在本切片改动）：首页书架搜索 `#444`/`#aaa`（`home-shelf.css:396–403`，对应上游 `Index.vue`
+`.night`）；首页书架加载遮罩 `#222`（`Home.vue:151`，对应上游 `Index.vue:1264`）；书籍信息与远程结果的 `el-tag` 夜间 `effect="dark"`
+（`BookInfoPanel.vue:64`、`RemoteBookResultList.vue:33`，对应上游）。
+
+实现中发现（2026-11-02）：`AppLayout.vue:1023–1071` 的首页侧栏夜间样式与 `BookInfoPanel.vue:291` 的 `.book-name #eee` 都写成
+`:global(html.dark-reader) .x`。Vue 3 的 `:global()` 会把整个选择器替换成括号里的部分，构建产物里只剩 `html.dark-reader { … }`
+（作用在 `<html>` 上），这些规则**从未生效**：夜间首页侧栏一直是日间浅色（侧栏设置下拉 `#fffdf8` 底、`#e6e6e6` 环、`#606266` 字，
+搜索框 `#fffdf8`），书籍信息书名是 `--app-text`（夜间 `#d8d4c8`）。登录页（`Login.vue`）是固定浅色的独立页面（`#faf8f2` 底、`#fff`
+卡片），上游是夜间会变深的登录对话框。
 
 阅读页里 OpenReader 新增、上游没有的 Element 元素：目录 `el-tag`（`ReaderTocPanel.vue:17`，`type="success" effect="plain"`，白底绿字）；书架与
 换源面板 `el-empty`（`ReaderShelfPanel.vue:18`、`SourceSwitchPanel.vue:40`，浅色插图）；书架刷新 `v-loading`（`Reader.vue:43`、`279`，白色 90%
@@ -143,8 +149,10 @@ Element Plus 组件都是默认浅色。用同一批组件在 Element Plus 2.14 
 
 **不重开（另起切片）**：
 
-- 首页侧栏搜索框与设置下拉现有的 `#2a2927` 夜间面（上游 `Index.vue` `.night` 为 `#444`/`#aaa`）、侧栏/书架其它夜间配色，`Index.vue`
-  的 `.popper-intro`/`.el-popover__title`、RSS 组件与朗读语音单选的 `.night-theme` 规则。它们不在 `App.vue` 那一块，各自另起。
+- 首页侧栏整体（底色、文字、搜索框、设置下拉的输入面）按 D5 保持现状，与失效的 `:global()` 写法一起另起切片按上游 `Index.vue`
+  `.night`（导航 `#121212` 底与 `#555` 边、标题 `#bbb`、输入框 `#444`/`#aaa` 等）处理；书籍信息书名 `#eee` 一并。`Index.vue` 的
+  `.popper-intro`/`.el-popover__title`、RSS 组件与朗读语音单选的 `.night-theme` 规则也不在 `App.vue` 那一块，各自另起。
+- 登录页按 D6 保持现状（固定浅色），夜间登录页另起。
 - 文字/链接按钮日间与上游 `type="text"` 的配色差异、其它日间 Element 差异；对话框尺寸、圆角、间距等 Element Plus 结构差异。
 - 书源调试页在上游是独立静态页（`public/bookSourceDebug`，没有夜间）；按 D1 全局，它的 Element 组件随 `body.night-theme` 一起变暗，属于随全局
   规则的 `acceptable-change`，不另做对齐。
@@ -166,12 +174,18 @@ Element Plus 组件都是默认浅色。用同一批组件在 Element Plus 2.14 
   `#a0cfff`）；危险、成功、警告、信息等类型按钮悬停/聚焦为 `#bbb` 底与边、`#eee` 字。未采用的备选：禁用按钮 `#888`/`#185798` 底、类型按钮
   悬停保持本色。
 
+- **D5（首页侧栏，2026-11-02 实现中补充）= 侧栏保持原样，另起切片**：侧栏设置下拉的输入面保持现在的浅色（`#fffdf8`/`#e6e6e6`/
+  `#606266`），展开浮层作为全局浮层照常按 N10 夜间；侧栏其余部分本来就不受本切片影响。未采用的备选：下拉框先按上游 `#444`/`#aaa`
+  变深；本切片一起按上游改整个侧栏。
+- **D6（登录页，2026-11-02 实现中补充）= 登录页保持原样**：登录路由不加 `night-theme`，登录页完全保持现在的浅色；应用内弹出的
+  “重新登录”对话框（`AuthDialog.vue`）照常夜间。未采用的备选：登录页按上游登录对话框改成夜间；接受浅色卡片里的深色控件。
+
 ## 6. 目标行为
 
-1. `App.vue`：在现有 `dark-reader` 监听旁给 `document.body` 切换 `night-theme`（`themeType === 'night'`，D1），与上游 `setTheme` 同名；
-   `dark-reader` 与 `--app-*` 不变。
-2. 新增 `frontend/src/styles/night-element.css`，在 `element-plus/dist/index.css` 之后加载，所有规则都以 `.night-theme` 开头（日间没有这个类，
-   日间渲染不变）。Element Plus 的类名和 CSS 变量与 Element UI 不同，按第 2.1 节**实测结果**映射，而不是逐条照抄选择器：
+1. `App.vue`：新增一个监听，在 `themeType === 'night'` 且不在登录路由时给 `document.body` 切换 `night-theme`（D1、D6），与上游
+   `setTheme` 同名；`dark-reader` 的监听与 `--app-*` 不变。
+2. 新增 `frontend/src/styles/night-element.css`，在 `main.js` 里紧跟 `element-plus/dist/index.css` 引入、排在 `App.vue` 等组件样式之前
+   （与上游打包顺序一样，组件自己的样式同权重时赢），所有规则都以 `.night-theme` 开头（日间没有这个类，日间渲染不变）。Element Plus 的类名和 CSS 变量与 Element UI 不同，按第 2.1 节**实测结果**映射，而不是逐条照抄选择器：
    - 消息框：`--el-messagebox-title-color` `#888`、`--el-messagebox-content-color` `#777`，底 `#212121`、`1px solid #212121`。
    - 按钮：无类型按钮（不含 `is-text`/`is-link`）设 `--el-button-*` 为 `#888`/`#ddd`、悬停 `#bbb`/`#eee`；主要按钮（不含朴素）`#185798`、
      悬停 `#2b67bb`；`--el-button-disabled-text-color` `#666`，禁用底边不设（D4）；其它类型按钮（不含朴素）悬停 `#bbb`/`#eee`（D4）。
@@ -182,6 +196,8 @@ Element Plus 组件都是默认浅色。用同一批组件在 Element Plus 2.14 
    - `.el-empty` 的 `--el-empty-fill-color-0…9` 取 Element Plus 暗色值，`.el-loading-mask` 底 `#222`（D3）。
 3. `ReaderTocPanel.vue` 的目录标签夜间 `effect="dark"`、日间 `plain`（D2），只多一个夜间判断，类型与文字不变。
 4. `useReaderLocalTocRulePicker.js` 的原生 `select` 改为跟随输入框夜间色（N9），日间仍是现在的变量值。
+5. `AppLayout.vue` 的侧栏设置下拉在自己的输入面规则里固定 Element 的常规文字色（`--el-input-text-color`、`--el-select-multiple-input-color`
+   = `var(--el-text-color-regular)`，与日间取值相同），夜间不随全局选择框文字变成 `#ddd`（D5）。
 
 ## 7. 计划测试（先红）
 
@@ -196,5 +212,8 @@ Element Plus 组件都是默认浅色。用同一批组件在 Element Plus 2.14 
 换源面板分组选择框与展开后的下拉浮层（选项、悬停、选中）；目录标签；设置面板“新增方案”消息框（底、标题、内容、输入框、取消/确定按钮，
 之后取消）；空状态与遮罩（D3）；从阅读页打开的一个对话框（底、标题、表格、按钮）。日间在切换前后各读一次同一批元素，要求逐项相同。
 另在首页工作台夜间打开一个对话框（底、标题、表格、按钮、输入框）与一个消息框读取同样的值，日间同样前后一致（D1）。
+D5/D6（2026-11-02 补充）：单元测试断言 `night-theme` 监听排除登录路由、`night-element.css` 排在 `App.vue` 之前、侧栏设置下拉固定常规
+文字色；首页合同读取侧栏设置下拉的输入面（夜间与日间逐项相同）与它展开后的浮层（夜间 `#333`/`#ddd`），以及登录页（夜间不带
+`night-theme`，输入框与按钮与日间逐项相同）。
 
 另用第 2.1 节的方法在 Element Plus 2.14 上渲染同一批组件（OpenReader 的 CSS + 新样式表）与上游实测逐项比对，作为实现自检。
