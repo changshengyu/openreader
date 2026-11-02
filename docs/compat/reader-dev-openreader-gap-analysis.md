@@ -11,16 +11,18 @@ Element Plus 组件（消息框、按钮、输入框、选择下拉、对话框�
 当前与上游有 128 个测量属性不同。用户确认：全局，同上游（N1–N19 **`must-fix`**，所有夜间方案）；目录“本地/已缓存”标签夜间用上游
 标签惯例 `effect="dark"`；空状态插图用 Element Plus 暗色填充、`v-loading` 遮罩夜间 `#222`（O1–O3 `intentional-redesign`）；照上游实际
 渲染层叠结果（D4）。占位/禁用等未覆盖状态的 Element Plus 默认色差、内阴影环与键盘焦点轮廓为 `acceptable-change`；`Index.vue`/RSS/朗读
-组件自己的 `.night-theme` 规则、日间配色不重开。2026-11-02 实现中发现首页侧栏夜间样式（`AppLayout.vue`）与书籍信息书名 `#eee` 都写成
-`:global(html.dark-reader) .x`，被 Vue 编译成只作用于 `<html>`，从未生效；用户补充决定 D5 首页侧栏保持原样（另起切片按上游 `Index.vue`
-`.night`）、D6 登录页保持原样（登录路由不加 `night-theme`）。
+组件自己的 `.night-theme` 规则、日间配色不重开。完整合同见
+[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+2026-11-02 补充：实现中发现首页侧栏夜间样式（`AppLayout.vue`）与书籍信息书名 `#eee` 都写成 `:global(html.dark-reader) .x`，被 Vue 编译成
+只作用于 `<html>`，从未生效；用户补充决定 D5 首页侧栏保持原样（另起切片按上游 `Index.vue` `.night`）、D6 登录页保持原样（登录路由不加
+`night-theme`）。
 2026-11-02 记录（合同第 8 节）：合同 `038af4e`、红测 `e7ce35c`、D5/D6 `622445e`/`2a110b7`、实现 `30ef60c`、浏览器合同重构 `226c9a1`；
 回归时发现新公告 GHSA-mrwp-f3q8-3g9p，`15f7f73` 把 follow-redirects 精确覆盖改为 1.16.2。阅读页（五个视口，独立页面）与首页工作台合同的
 夜间值逐项为上游实测值，日间与改前构建完全相同（阅读页 346 个值、首页 195 个值）；侧栏设置下拉与登录页保持原样；前端 855/855 与
-build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go 服务导入 TXT 的夜间对照、真实接口合同（书籍信息“追更”一项在改前构建同样失败，另起）通过。状态 **implementation-complete /
-regression-validated**，待可信 Actions。完整合同见
-[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
-状态 **contract-only**。
+build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go 服务导入 TXT 的夜间对照、真实接口合同（书籍信息“追更”一项在改前构建同样
+失败，另起）通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
+2026-11-02 发布：main 快进到 `0ce2bff`（ls-remote 核验，未强推）；可信 Actions run `41450840714` 全部成功（13:11–13:35Z）。`ghcr.io/changshengyu/openreader:0ce2bff` 与 `latest` 为 OCI index `sha256:4e17ce2b55ce3e3c999df31ddfa9571a6cc3f9331f325feaa5d5e7f27e43821a`（linux/amd64 `sha256:d9309c69…`、linux/arm64 `sha256:237abbf5…`），两平台 `org.opencontainers.image.revision` 均为 `0ce2bffd082b117059ed6fd292df4e5b110b933e`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
 ## 2026-10-30 P1 Reader 夜间目录/书架/换源列表文字
 

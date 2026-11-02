@@ -6,15 +6,17 @@
 `html.dark-reader` 只改 `--app-*`，夜间 Element Plus 组件全是浅色；上游 `body.night-theme`（`App.vue` 939–1141）全局改写，并按打包层叠顺序
 实测为准。用户确认全局同上游：N1–N19 must-fix（页面底 `#222`、消息框、默认/主要/禁用/类型按钮、输入框与选择框、选择下拉、对话框、
 表格、复选框、“已选择 N 个”、多选标签、数字输入框、标签页、分页、下拉菜单）；O1 目录标签夜间 `effect="dark"`、O2/O3 空状态暗色填充与
-遮罩 `#222`（intentional-redesign）；N21/N22 acceptable-change；其它组件级 `.night-theme` 不重开。2026-11-02 补充：首页侧栏夜间样式
-与书籍信息书名 `#eee` 的 `:global(html.dark-reader) .x` 写法从未生效；D5 侧栏保持原样、D6 登录页保持原样，侧栏另起切片。
+遮罩 `#222`（intentional-redesign）；N21/N22 acceptable-change；其它组件级 `.night-theme` 不重开。
+计划红测：`body.night-theme` 切换、`night-element.css` 每个映射值等于上游实测、D2–D4；浏览器五个视口阅读页 + 首页对话框/消息框夜间
+computed style，日间前后一致。状态 contract-only。
+2026-11-02 补充：首页侧栏夜间样式与书籍信息书名 `#eee` 的 `:global(html.dark-reader) .x` 写法从未生效；D5 侧栏保持原样、D6 登录页保持
+原样，侧栏另起切片。
 记录（2026-11-02，取代上段的状态）：合同 `038af4e`、红测 `e7ce35c`（10 项单元断言失败，浏览器五个视口在夜间页面底失败）、D5/D6 `622445e`/
 `2a110b7`、实现 `30ef60c`、依赖公告 `15f7f73`（GHSA-mrwp-f3q8-3g9p，follow-redirects 1.16.2）、浏览器合同重构 `226c9a1`（Element 快照移到
 独立页面，避免拖慢内置夜间段后打乱后面的设置检查）。阅读页与首页夜间逐项为上游实测值，日间与改前构建完全相同（346 + 195 个值）；前端
-855/855 与 build、后端全量/vet、公告门、16 个模拟浏览器合同、真实服务夜间对照、真实接口合同（书籍信息“追更”一项在改前构建同样失败，另起）通过。状态 implementation-complete /
-regression-validated，待可信 Actions。
-计划红测：`body.night-theme` 切换、`night-element.css` 每个映射值等于上游实测、D2–D4；浏览器五个视口阅读页 + 首页对话框/消息框夜间
-computed style，日间前后一致。状态 contract-only。
+855/855 与 build、后端全量/vet、公告门、16 个模拟浏览器合同、真实服务夜间对照、真实接口合同（书籍信息“追更”一项在改前构建同样失败，
+另起）通过。状态 implementation-complete / regression-validated，待可信 Actions。
+发布（2026-11-02）：main 快进到 `0ce2bff`（ls-remote 核验，未强推），run `41450840714` 全部成功；`0ce2bff`/`latest` = index `4e17ce2b…821a`（amd64 `d9309c69…`、arm64 `237abbf5…`，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-10-30 当前切片：Reader 夜间目录/书架/换源列表文字（P1，L1–L16）
 

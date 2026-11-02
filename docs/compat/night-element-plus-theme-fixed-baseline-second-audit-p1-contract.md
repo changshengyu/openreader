@@ -1,6 +1,6 @@
 # 夜间 Element Plus 组件外观合同（P1，上游 `App.vue` `.night-theme`）
 
-状态：**implementation-complete / regression-validated**，待可信 Actions（记录见第 8 节；用户 2026-10-30 确认第 5 节 D1–D4：全局，同上游；目录标签用上游标签惯例；空状态与遮罩改深色；照上游实际渲染。2026-11-02 实现中补充 D5/D6：首页侧栏与登录页保持原样）。审查日期：2026-10-30。审查基线：`OpenReader@6193f79`。
+状态：**aligned / Docker-published / awaiting-device-verification**（发布见文末；记录见第 8 节；用户 2026-10-30 确认第 5 节 D1–D4：全局，同上游；目录标签用上游标签惯例；空状态与遮罩改深色；照上游实际渲染。2026-11-02 实现中补充 D5/D6：首页侧栏与登录页保持原样）。审查日期：2026-10-30。审查基线：`OpenReader@6193f79`。
 
 ## 1. 来源与范围
 
@@ -268,3 +268,7 @@ D5/D6（2026-11-02 补充）：单元测试断言 `night-theme` 监听排除登�
   等待 `PUT /api/books/:id` 时超时，改前构建（`6193f79`）同样失败，与本切片无关，另起排查。
 - 观察到但未改动（另起）：首页侧栏整体与书籍信息书名 `#eee`（D5，失效的 `:global()` 写法）；登录页夜间（D6）；对话框内容里 OpenReader
   自己用 `--app-*` 的文字夜间是浅色（如书架管理“章节”列、书籍信息正文），上游这些位置是表格 `#888`、对话框正文 `#606266`。
+
+## 发布（2026-11-02）
+
+main 快进到 `0ce2bff`（ls-remote 核验，未强推）；可信 Actions run `41450840714` 全部成功（13:11–13:35Z）。`ghcr.io/changshengyu/openreader:0ce2bff` 与 `latest` 为 OCI index `sha256:4e17ce2b55ce3e3c999df31ddfa9571a6cc3f9331f325feaa5d5e7f27e43821a`（linux/amd64 `sha256:d9309c69…`、linux/arm64 `sha256:237abbf5…`），两平台 `org.opencontainers.image.revision` 均为 `0ce2bffd082b117059ed6fd292df4e5b110b933e`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认。
