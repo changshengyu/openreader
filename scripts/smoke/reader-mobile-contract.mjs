@@ -1757,6 +1757,9 @@ async function readerElementSnapshot(page, { mobile }) {
   let tool = panelTool('书源')
   await tool.click()
   await page.waitForSelector('.source-item.selected', { timeout: 10000 })
+  // The group select is disabled while the first source load is opening; let it settle.
+  await page.waitForSelector('.source-group-select .el-select__wrapper:not(.is-disabled)', { timeout: 10000 })
+  await page.waitForTimeout(350)
   await page.mouse.move(1, 1)
   snapshot.sourceGroupSelect = await renderedStyle(page, '.source-group-select .el-select__wrapper', ['background-color', 'box-shadow'])
   await page.locator('.source-group-select .el-select__wrapper').click()
@@ -1856,11 +1859,10 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   const dayMarkBackground = await markBackground()
   const dayChrome = await readerChromeSnapshot(page, { mobile })
   const dayLists = await readerListSnapshot(page, { mobile })
-  const dayElements = await readerElementSnapshot(page, { mobile })
   if (process.env.SMOKE_DAY_SNAPSHOT) {
     // Evidence for "day unchanged": compare these lines between builds.
     const viewportKey = `${viewport.width}x${viewport.height}`
-    appendFileSync(process.env.SMOKE_DAY_SNAPSHOT, `${JSON.stringify({ viewport: viewportKey, dayChrome, dayLists, dayElements })}\n`)
+    appendFileSync(process.env.SMOKE_DAY_SNAPSHOT, `${JSON.stringify({ viewport: viewportKey, scope: 'surface', dayChrome, dayLists })}\n`)
   }
   assertChromeSnapshot(viewport, 'day lists', dayLists, {
     fontPreview: { color: 'rgb(44, 42, 36)', 'border-top-color': 'rgb(234, 223, 202)', 'background-color': 'rgb(255, 250, 240)' },
@@ -1901,7 +1903,6 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(await markBackground() === dayMarkBackground, `${viewport.width}: built-in night must not take over inline mark surfaces`)
   await assertBuiltInNightChrome(page, viewport, { mobile })
   await assertBuiltInNightLists(page, viewport, { mobile })
-  await assertBuiltInNightElements(page, viewport, { mobile })
 
   const dayToggle = mobile
     ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
@@ -1919,11 +1920,6 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   assert(
     JSON.stringify(restoredDayLists) === JSON.stringify(dayLists),
     `${viewport.width}: day lists must restore exactly: ${JSON.stringify(dayLists)} -> ${JSON.stringify(restoredDayLists)}`,
-  )
-  const restoredDayElements = await readerElementSnapshot(page, { mobile })
-  assert(
-    JSON.stringify(restoredDayElements) === JSON.stringify(dayElements),
-    `${viewport.width}: day Element Plus colors must restore exactly: ${JSON.stringify(dayElements)} -> ${JSON.stringify(restoredDayElements)}`,
   )
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
@@ -2251,6 +2247,50 @@ async function runNightSurfaceViewport(browser, viewport) {
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
   await assertBuiltInNightTextSurface(page, viewport, { mobile: viewport.width <= 750 })
+  assert(failures.length === 0, failures.join('\n'))
+  await context.close()
+}
+
+// The Element Plus checks open panels, a prompt and a dialog, so they run in a page of
+// their own and leave the longer flows' settings timing untouched.
+async function runNightElementsViewport(browser, viewport) {
+  const mobile = viewport.width <= 750
+  const context = await browser.newContext({ viewport })
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('openreader_token', token)
+  }, fakeToken())
+  const page = await context.newPage()
+  const failures = []
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (text.includes('/ws/sync') && text.includes('WebSocket connection')) return
+    failures.push(text)
+  })
+  page.on('pageerror', error => failures.push(error.message))
+  await installApiMocks(page)
+  await page.goto(readerUrl, { waitUntil: 'networkidle' })
+  await page.waitForSelector('.reader-body [data-reader-block]', { timeout: 10000 })
+  if (mobile) await page.waitForSelector('.reader-mobile-top.visible', { timeout: 10000 })
+
+  const dayElements = await readerElementSnapshot(page, { mobile })
+  if (process.env.SMOKE_DAY_SNAPSHOT) {
+    const viewportKey = `${viewport.width}x${viewport.height}`
+    appendFileSync(process.env.SMOKE_DAY_SNAPSHOT, `${JSON.stringify({ viewport: viewportKey, scope: 'elements', dayElements })}\n`)
+  }
+  const toggle = title => (mobile
+    ? page.locator(`.reader-mobile-float-right.visible button[title="${title}"]`)
+    : page.locator(`.reader-right-rail button[title="${title}"]`))
+  await toggle('夜间模式').click()
+  await page.waitForFunction(() => window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
+  await assertBuiltInNightElements(page, viewport, { mobile })
+  await toggle('日间模式').click()
+  await page.waitForFunction(() => !window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
+  const restoredDayElements = await readerElementSnapshot(page, { mobile })
+  assert(
+    JSON.stringify(restoredDayElements) === JSON.stringify(dayElements),
+    `${viewport.width}: day Element Plus colors must restore exactly: ${JSON.stringify(dayElements)} -> ${JSON.stringify(restoredDayElements)}`,
+  )
   assert(failures.length === 0, failures.join('\n'))
   await context.close()
 }
@@ -2634,6 +2674,7 @@ async function main() {
     if (process.env.SMOKE_NIGHT_ONLY === '1' && process.env.SMOKE_VIEWPORT) {
       const [width, height] = process.env.SMOKE_VIEWPORT.split('x').map(Number)
       await runNightSurfaceViewport(browser, { width, height })
+      await runNightElementsViewport(browser, { width, height })
       console.log(`reader built-in night surface contract smoke passed at ${width}x${height}`)
       return
     }
@@ -2644,7 +2685,11 @@ async function main() {
         { width: 360, height: 800 },
       ]) {
         await runNightSurfaceViewport(browser, viewport)
+        await runNightElementsViewport(browser, viewport)
         await runCustomBlackNightViewport(browser, viewport)
+      }
+      for (const viewport of [{ width: 1024, height: 1366 }, { width: 1366, height: 1024 }]) {
+        await runNightElementsViewport(browser, viewport)
       }
       await runCustomBlackNightViewport(browser, { width: 390, height: 844 }, 'day')
       console.log('reader built-in/custom black night surface contract smoke passed')
@@ -2660,7 +2705,16 @@ async function main() {
     await runIPadAdaptiveViewport(browser, { width: 1024, height: 1366 })
     await runIPadAdaptiveViewport(browser, { width: 1366, height: 1024 })
     await runIPadForcedMobileViewport(browser, { width: 1024, height: 1366 })
-    console.log('reader desktop/mobile/adaptive-iPad/forced-mobile-iPad contract smoke passed')
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+      { width: 360, height: 800 },
+      { width: 1024, height: 1366 },
+      { width: 1366, height: 1024 },
+    ]) {
+      await runNightElementsViewport(browser, viewport)
+    }
+    console.log('reader desktop/mobile/adaptive-iPad/forced-mobile-iPad/night-elements contract smoke passed')
   } finally {
     await browser.close()
   }
