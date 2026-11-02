@@ -13,7 +13,12 @@ Element Plus 组件（消息框、按钮、输入框、选择下拉、对话框�
 渲染层叠结果（D4）。占位/禁用等未覆盖状态的 Element Plus 默认色差、内阴影环与键盘焦点轮廓为 `acceptable-change`；`Index.vue`/RSS/朗读
 组件自己的 `.night-theme` 规则、日间配色不重开。2026-11-02 实现中发现首页侧栏夜间样式（`AppLayout.vue`）与书籍信息书名 `#eee` 都写成
 `:global(html.dark-reader) .x`，被 Vue 编译成只作用于 `<html>`，从未生效；用户补充决定 D5 首页侧栏保持原样（另起切片按上游 `Index.vue`
-`.night`）、D6 登录页保持原样（登录路由不加 `night-theme`）。完整合同见
+`.night`）、D6 登录页保持原样（登录路由不加 `night-theme`）。
+2026-11-02 记录（合同第 8 节）：合同 `038af4e`、红测 `e7ce35c`、D5/D6 `622445e`/`2a110b7`、实现 `30ef60c`、浏览器合同重构 `226c9a1`；
+回归时发现新公告 GHSA-mrwp-f3q8-3g9p，`15f7f73` 把 follow-redirects 精确覆盖改为 1.16.2。阅读页（五个视口，独立页面）与首页工作台合同的
+夜间值逐项为上游实测值，日间与改前构建完全相同（阅读页 346 个值、首页 195 个值）；侧栏设置下拉与登录页保持原样；前端 855/855 与
+build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go 服务导入 TXT 的夜间对照、真实接口合同（书籍信息“追更”一项在改前构建同样失败，另起）通过。状态 **implementation-complete /
+regression-validated**，待可信 Actions。完整合同见
 [`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 

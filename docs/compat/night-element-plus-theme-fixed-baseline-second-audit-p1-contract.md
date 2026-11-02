@@ -1,6 +1,6 @@
 # 夜间 Element Plus 组件外观合同（P1，上游 `App.vue` `.night-theme`）
 
-状态：**contract-only**（用户 2026-10-30 确认第 5 节 D1–D4：全局，同上游；目录标签用上游标签惯例；空状态与遮罩改深色；照上游实际渲染。2026-11-02 实现中补充 D5/D6：首页侧栏与登录页保持原样）。审查日期：2026-10-30。审查基线：`OpenReader@6193f79`。
+状态：**implementation-complete / regression-validated**，待可信 Actions（记录见第 8 节；用户 2026-10-30 确认第 5 节 D1–D4：全局，同上游；目录标签用上游标签惯例；空状态与遮罩改深色；照上游实际渲染。2026-11-02 实现中补充 D5/D6：首页侧栏与登录页保持原样）。审查日期：2026-10-30。审查基线：`OpenReader@6193f79`。
 
 ## 1. 来源与范围
 
@@ -217,3 +217,54 @@ D5/D6（2026-11-02 补充）：单元测试断言 `night-theme` 监听排除登�
 `night-theme`，输入框与按钮与日间逐项相同）。
 
 另用第 2.1 节的方法在 Element Plus 2.14 上渲染同一批组件（OpenReader 的 CSS + 新样式表）与上游实测逐项比对，作为实现自检。
+（实现时：阅读页夹具没有空列表、遮罩只在刷新瞬间出现，D3 的空状态与遮罩没有放进浏览器合同，由单元合同与上面的测量台覆盖。）
+
+## 8. 记录（2026-11-02）
+
+提交（分支 `claude/reader-night-element-plus`，基于 `6193f79`）：合同 `038af4e`；红测 `e7ce35c`；D5/D6 合同补充 `622445e`；D5/D6 红测
+`2a110b7`；实现 `30ef60c`；依赖公告 `15f7f73`（`build:`，见下）；浏览器合同重构 `226c9a1`。
+
+- 红测：`e7ce35c` 在 `6193f79` 上新单元合同 10 项失败、对照 1 项通过（前端 854 项中 844 通过）；浏览器合同在改前构建上五个视口都在
+  第一项夜间值失败：阅读页 `night elements body background-color expected rgb(34, 34, 34), got rgb(24, 23, 21)`，首页
+  `night body background-color …` 同值（之前的夜间工具栏/列表断言照常通过）。
+- 实现中修订：
+  1. D5/D6（用户 2026-11-02 决定，`622445e` → `2a110b7` → `30ef60c`）：实现第一版后发现首页侧栏与书籍信息书名的夜间样式是失效的
+     `:global(html.dark-reader) .x`（第 3 节），全局规则让浅色侧栏里的设置下拉变成 `#444`、登录页白卡片里出现深色控件。修订红测在第一版
+     实现上 4 项单元断言失败、首页合同 `1440: night sidebarSelect must keep its day colors … -> {"background-color":"rgb(68, 68, 68)", …}`
+     失败。实现：`night-theme` 监听排除登录路由；`night-element.css` 紧跟 Element Plus CSS 引入（组件样式同权重时赢，同上游打包顺序）；
+     侧栏设置下拉固定常规文字色；选择框悬停环选择器去掉 `:not(.is-focused)`，权重与侧栏自己的规则相同。
+  2. N7 文字/链接按钮：OpenReader 的 `text`/`link` 按钮在 Element Plus 里悬停会出现 `#f5f7fa` 浅底，夜间按上游
+     `.el-button--text:focus/:hover` 改成透明底与边、`#66b1ff` 字；常态颜色不变（原写“夜间不改”）。
+  3. N11 自定义标题：OpenReader 的对话框自定义标题插槽没有用 `.el-dialog__title`，夜间标题色同时写在 `.el-dialog__header` 上让它们继承
+     `#bbb`；RSS 管理标题去掉显式的 `--app-text`，日间实测仍是 `rgb(36, 32, 27)`，夜间 `rgb(187, 187, 187)`（改前夜间 `#d8d4c8`）。
+  4. N14 计数：九处“已选择 N 个”各自的样式都带日间色（权重不低于全局规则、且后加载），改为 `var(--check-tip-text, 原日间色)`，
+     `--check-tip-text: #bbb` 只定义在 `.night-theme` 上。
+  5. 浏览器合同（`226c9a1`）：阅读页的 Element 快照第一次放在内置夜间段里，三次打开面板、提示框和对话框多出的时间让一次去抖的设置保存
+     在段末重载前落地，移动流程后面的自定义背景图夜间检查读到翻页模式、无背景图而失败；改前脚本在新构建上整套通过。同样的断言改到独立
+     页面 `runNightElementsViewport`（五个视口，完整与夜间模式都跑），并等换源分组选择框离开首次加载的禁用态再读。
+- 依赖公告（`15f7f73`）：回归时前端公告扫描在 `6193f79` 的依赖上发现新公告 GHSA-mrwp-f3q8-3g9p（follow-redirects 1.16.1，high，经
+  axios 1.20.0）。main 与其它分支都没有修复；精确覆盖改为 1.16.2，lock 只动 follow-redirects，浏览器包里没有它，扫描 exit 0。
+- 测试：前端 855/855 与 build（新单元合同 12/12）；后端 `go test ./...` 31 个包与 `go vet ./...`（后端未改动；race 门跳过：没有触及
+  db/api/services）；公告门自测 109/109，Go 与前端扫描 exit 0。
+- 上游测量台：Element Plus 2.14 + 最终样式表与第 2.1 节逐项一致，只剩已分类的差异：N21 默认色差（占位、禁用字与边、朴素主要边、
+  下拉禁用项）、文字按钮常态色（日间映射，不重开）、多选标签边框（与底同色，看不出）、Element Plus 多选浮层打开即悬停（`#555`）、
+  D2（标签由组件按夜间切换）与 D3（空状态填充 `#fcfcfd` → `#4b4b52`，遮罩白色 90% → `#222`，转圈色不变）。
+- 真实浏览器（`vite preview` 分别服务改前与改后两份构建，接口由合同脚本模拟）：
+  - `reader-mobile-contract.mjs` 全量通过（桌面、两种手机、自定义纯黑夜间、iPad 自适应与强制手机，以及五个视口的夜间 Element 页）：
+    夜间页面底 `#222`；换源分组选择框 `#444` 底与环，下拉 `#333`，选项 `#ddd`，悬停 `#444`；目录标签 `#67c23a` 底白字；“新增方案”
+    消息框 `#212121`/`#888`/`#777`，输入框 `#444`/`#ddd`，取消 `#888`/`#ddd`/`#888`，确定 `#185798`；书签对话框 `#222`、标题 `#bbb`，
+    表头 `#222`/`#909399`/`#555`，行 `#222`，正文 `#888`/`#555`，计数 `#bbb`，取消 `#888`，批量删除 `#185798`。改前构建五个视口都在
+    第一项夜间值失败。日间（工具栏、三块列表、Element 快照）五个视口 346 个值与改前构建完全相同。
+  - `night-element-theme-contract.mjs` 五个视口通过：书架管理对话框 `#222`/`#bbb`、搜索框 `#444`/`#ddd`、表格、复选框 `#bbb`、计数 `#bbb`、
+    批量按钮 `#185798`、取消 `#888`、行内“缓存”菜单 `#444`/`#bbb`、“备份用户配置”消息框（确定按钮获得焦点 `#2b67bb`）、侧栏下拉浮层
+    `#333`/`#ddd`；侧栏设置下拉输入面夜间与日间相同（D5）；登录页在深色设备下有 `dark-reader`、没有 `night-theme`，输入框与按钮与日间
+    相同（D6）。日间五个视口 195 个值与改前构建完全相同。
+  - 其余模拟合同通过：`book-management-dialog`、`index-workspace`、`user-management`、`replace-rule-fixed-baseline`、`rss-workspace`、
+    `source-workspace`、`reader-source-switch`、`document-title`、`reader-settings-position`、`index-settings-action-surface`、
+    `workspace-operation`、`index-mobile-sidebar`、`bookshelf-visible-layout`、`reader-desktop-panel-controls`（108 组）。
+- 真实 Go 服务（新数据目录、新构建）：注册账号并导入 TXT，1440×900 与 390×844 夜间目录“本地”标签深色、“新增方案”消息框 `#212121`、
+  输入框 `#444`、书签对话框与表头 `#222`/`#555`，切回日间逐项相同，无页面错误。真实接口合同：`reader-epub-contract`、`bookshelf-refresh-progress-contract`、
+  `book-management-real-api-contract`、`book-group-real-api-contract` 通过；`bookinfo-shelf-mutations-real-api-contract` 在书籍信息“追更”开关
+  等待 `PUT /api/books/:id` 时超时，改前构建（`6193f79`）同样失败，与本切片无关，另起排查。
+- 观察到但未改动（另起）：首页侧栏整体与书籍信息书名 `#eee`（D5，失效的 `:global()` 写法）；登录页夜间（D6）；对话框内容里 OpenReader
+  自己用 `--app-*` 的文字夜间是浅色（如书架管理“章节”列、书籍信息正文），上游这些位置是表格 `#888`、对话框正文 `#606266`。

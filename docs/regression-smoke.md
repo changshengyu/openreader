@@ -34,6 +34,18 @@ For the mocked mobile Reader contract:
 TARGET_URL=http://127.0.0.1:5173 node scripts/smoke/reader-mobile-contract.mjs
 ```
 
+For the night Element Plus contract (reader-dev `App.vue` `.night-theme`: home workspace dialog,
+message box, sidebar select dropdown and the light login page):
+
+```bash
+TARGET_URL=http://127.0.0.1:5173 node scripts/smoke/night-element-theme-contract.mjs
+```
+
+To compare day computed styles between two builds, both scripts take `SMOKE_DAY_SNAPSHOT=<file>`: each
+viewport appends its day snapshot as a JSON line before any night assertion runs.
+`reader-mobile-contract.mjs` also accepts `SMOKE_NIGHT_ONLY=1 SMOKE_VIEWPORT=<width>x<height>` to run only
+the built-in night segment at one viewport.
+
 The repository tooling package pins the Playwright version used by the shared runtime, independently
 from the frontend dependencies copied into Docker. On macOS the browser process
 may need to run outside a restricted sandbox so it can register its Mach rendezvous port.
