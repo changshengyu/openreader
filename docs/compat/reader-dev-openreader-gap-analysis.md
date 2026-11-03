@@ -9,6 +9,10 @@
 与上游和本合同一致，不改产品；断言还停在 `54a528f` 写成时的内联背景写法，`ceb4baa` 未迁移（R3 **`must-fix`（测试工具）**）。目标：
 等待 `.list-cover img.loaded`，`src` 精确等于恢复 URL、图片 1×1。完整合同见
 [`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md) 第 9 节。状态 **contract-only**。
+2026-11-03 记录（合同第 9 节）：合同 `2727bc9`、断言迁移 `df0ac15`（产品无改动，没有 `fix:` 提交）。旧断言在 `69c27bc` 构建 1440×900 失败；
+新断言在同一构建与 Reader 菜单分支 `3bc8788` 上三视口通过，三项临时变异（忽略 `customCoverUrl`、封面 404、可加载的 `?stale` 地址）都被
+拦下；前端 855/855 与 build、后端全量/vet、公告门自测 109/109 通过。状态 **implementation-complete / regression-validated**（仅测试工具）；
+未合入 main。
 
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 

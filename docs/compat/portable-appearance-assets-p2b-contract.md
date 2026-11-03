@@ -297,3 +297,13 @@ portable v1 既有“逻辑 transaction + 每本 archive rehydrate/补偿”保�
 
 不重开：书架布局与封面几何（`bookshelf-visible-layout`）、封面代理与 capability（`book-cover-proxy-p2`）、portable v2
 格式与恢复事务。`claude/reader-menu-alignment` 改了本脚本 343 行的设置按钮选择器，与 376–377 行不冲突。
+
+记录（2026-11-03，取代本节状态）：合同 `2727bc9`、断言迁移 `df0ac15`（`test:`；产品无改动，没有 `fix:` 提交）。
+红：旧断言在 `69c27bc` 构建上于 1440×900 失败（本节开头的确切信息），从未走到另外两个视口。绿：同一构建上新断言
+1440×900、390×844、360×800 全部通过；`claude/reader-menu-alignment`（`3bc8788`）加上本断言迁移（自动合并，与 343 行
+改动不冲突）三视口同样通过。临时变异（未提交）都在 1440×900 被拦下：M1 忽略 `customCoverUrl`、M2 封面地址加
+`/api` 前缀而 404，都停在 “shelf cover image did not load: 暂无封面”；追加的 M3 可加载的 `?stale` 地址停在
+“shelf cover does not use restored URL”，旧的子串断言会放过它。前端 855/855 与 build、后端 `go test ./...`（31 个包
+通过、7 个无测试）与 `go vet ./...`、公告门自测 109/109 通过；实时公告扫描未跑：本节不涉及依赖，Go 实时门被
+GO-2026-5932 阻塞，另案处理。状态 **implementation-complete / regression-validated**（仅测试工具）。本分支只改文档与
+该脚本，都不在 `docker-publish.yml` 路径过滤内，单独合入 main 不会触发镜像发布。
