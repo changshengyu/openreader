@@ -8,8 +8,9 @@ import {fileURLToPath} from 'node:url'
 
 const scanner = 'golang.org/x/vuln/cmd/govulncheck@v1.9.0'
 const openpgp = 'golang.org/x/crypto/openpgp'
-const advisory = 'GO-2026-5932'
-const reviewUntil = Date.parse('2026-11-16T00:00:00Z')
+// x/crypto 2f1f834330b2 is v0.58.0 with only openpgp/ deleted, the GO-2026-5932 fix; no tagged release has it yet.
+const cryptoPin = 'v0.58.1-0.20261009181718-2f1f834330b2'
+const cryptoPinReviewUntil = Date.parse('2026-12-16T00:00:00Z')
 const day = 86_400_000
 const isOpenPGP = path => path === openpgp || path.startsWith(`${openpgp}/`)
 
@@ -73,7 +74,9 @@ export function evaluateSourceScan(raw, evidence, {now = Date.now()} = {}) {
   }
   assert.ok(modules.has('openreader/backend'))
   assert.equal(modules.get('golang.org/x/crypto'), evidence.cryptoVersion)
-  assert.match(evidence.cryptoVersion, /^v\d+\.\d+\.\d+$/)
+  // Tagged releases only, except the reviewed fix pin until its review date.
+  if (evidence.cryptoVersion === cryptoPin) assert.ok(now < cryptoPinReviewUntil, 'x/crypto fix pin expired: move to a tagged release')
+  else assert.match(evidence.cryptoVersion, /^v\d+\.\d+\.\d+$/, 'x/crypto must be a tagged release or the reviewed fix pin')
   assert.ok(['darwin','linux'].includes(evidence.goos), 'unsupported host OS')
   assert.ok(['amd64','arm64'].includes(evidence.goarch), 'unsupported host architecture')
   assert.equal(evidence.cgoEnabled, '1', 'CGO source selection required')
@@ -83,6 +86,7 @@ export function evaluateSourceScan(raw, evidence, {now = Date.now()} = {}) {
       && packages.every(path => typeof path === 'string' && path.length > 0), `invalid ${target} import graph`)
     assert.ok(packages.includes('openreader/backend') && packages.includes('golang.org/x/crypto/bcrypt'),
       `missing main/bcrypt in ${target} import graph`)
+    assert.ok(!packages.some(isOpenPGP), `OpenPGP imported in ${target} import graph`)
   }
   const osvs = new Map()
   for (const osv of grouped.osv) {
@@ -90,47 +94,14 @@ export function evaluateSourceScan(raw, evidence, {now = Date.now()} = {}) {
     if (osvs.has(osv.id)) assert.deepEqual(osv, osvs.get(osv.id), 'conflicting repeated OSV')
     osvs.set(osv.id, osv)
   }
-  const notApplicable = new Set()
-  for (const finding of grouped.finding) {
-    const osv = osvs.get(finding.osv)
-    assert.ok(osv, 'finding without OSV metadata')
-    assert.ok(Array.isArray(finding.trace) && finding.trace.length > 0, 'empty trace')
-    const frame = finding.trace[0]
-    assert.ok(frame && typeof frame.module === 'string' && frame.module, 'missing finding module')
-    assert.ok(typeof frame.version === 'string' && frame.version, 'missing finding version')
-    // No generic module-only ignore. Unknown findings require maintenance/review even if not called.
-    assert.equal(finding.osv, advisory, `unreviewed advisory ${finding.osv}`)
-    assert.ok(now < reviewUntil, 'OpenPGP applicability review expired')
-    assert.equal(finding.trace.length, 1, 'not a pure module finding')
-    assert.ok(!frame.package && !frame.function && !frame.receiver && !frame.position,
-      'package/symbol finding blocks release')
-    assert.equal(frame.module, 'golang.org/x/crypto')
-    assert.equal(frame.version, evidence.cryptoVersion)
-    assert.ok(!finding.fixed_version && !osv.withdrawn, 'advisory changed: review required')
-    assert.ok(Array.isArray(osv.affected) && osv.affected.length > 0, 'missing affected metadata')
-    for (const affected of osv.affected) {
-      assert.equal(affected.package?.ecosystem, 'Go')
-      assert.equal(affected.package?.name, 'golang.org/x/crypto')
-      assert.ok(Array.isArray(affected.ranges) && affected.ranges.length > 0, 'missing affected ranges')
-      for (const range of affected.ranges) {
-        assert.ok(Array.isArray(range.events) && range.events.length > 0, 'missing affected events')
-        assert.ok(range.events.every(event => !event.fixed), 'new fix requires review')
-      }
-      const imports = affected.ecosystem_specific?.imports
-      assert.ok(Array.isArray(imports) && imports.length > 0, 'missing affected imports')
-      assert.ok(imports.every(item => typeof item.path === 'string' && isOpenPGP(item.path)),
-        'affected package scope changed')
-    }
-    for (const packages of Object.values(evidence.graphs)) {
-      assert.ok(!packages.some(isOpenPGP), 'OpenPGP imported: exception revoked')
-    }
-    notApplicable.add(advisory)
-  }
-  return {status:notApplicable.size ? 'pass-with-not-applicable' : 'pass',
-    scanMode:'source', scanLevel:'symbol', goVersion:evidence.goVersion,
+  // No not-applicable exceptions remain: every finding blocks, whatever its precision, fix or OSV metadata.
+  assert.equal(grouped.finding.length, 0,
+    `advisory findings block release: ${[...new Set(grouped.finding.map(finding => finding.osv))].join(', ')}`)
+  return {status:'pass', scanMode:'source', scanLevel:'symbol', goVersion:evidence.goVersion,
     goos:evidence.goos, goarch:evidence.goarch, cgoEnabled:evidence.cgoEnabled,
     dbLastModified:config.db_last_modified, advisories:osvs.size, findings:grouped.finding.length,
-    notApplicable:[...notApplicable], reviewUntil:new Date(reviewUntil).toISOString(),
+    crypto:{version:evidence.cryptoVersion,
+      pinReviewUntil:evidence.cryptoVersion === cryptoPin ? new Date(cryptoPinReviewUntil).toISOString() : null},
     limitations:['C/OS/Node/frontend not scanned', 'target import graphs are not cross-platform binary scans']}
 }
 
