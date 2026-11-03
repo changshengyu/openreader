@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-03 当前切片：可移植外观资产书架封面浏览器断言（P2-B 门禁 4 维护，R1–R3）
+
+见[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)第 9 节。真实接口合同在 1440×900 读取书架
+`.list-cover` 的 CSS 背景而失败；上游书架封面是 `el-image`（`<img>`），OpenReader 自 `ceb4baa` 起也是 `BookCover` 的 `<img>`，`69c27bc`
+三视口实测恢复封面已加载且为目标用户新 URL。R1 渲染、R2 恢复映射与上游和本合同一致，不改产品；R3 断言过时，must-fix（测试工具）：改为
+等待 `.list-cover img.loaded`，`src` 精确等于恢复 URL、1×1。计划：旧断言在改前构建的失败即红，新断言三视口通过，两项临时变异（忽略
+`customCoverUrl`、封面 404）证明有效。状态 contract-only。
+
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 
 见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
