@@ -188,7 +188,7 @@ async function runViewport(browser, viewport) {
   assert(await page.evaluate(() => window.__remoteReaderSessionCreates()) === 1, `${viewport.width}: result body must create exactly one temporary reader session`)
 
   const temporaryReaderURL = await page.url()
-  const bookInfoButton = page.locator('button[title="书籍信息"]:visible').first()
+  const bookInfoButton = page.locator('button[aria-label="书籍信息"]:visible').first()
   await bookInfoButton.click()
   await page.waitForSelector('.book-info-dialog', { timeout: 10000 })
   const temporaryReaderBookInfo = page.locator('.book-info-dialog')

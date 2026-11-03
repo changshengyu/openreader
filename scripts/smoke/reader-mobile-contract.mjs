@@ -582,9 +582,7 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
     const workspace = workspaces.at(-1)
     const rect = workspace.getBoundingClientRect()
     const header = workspace.querySelector('.reader-mobile-workspace-head')
-    const primaryBody = workspace.querySelector('.reader-mobile-primary-popover-body')
-    const primaryBodyRect = primaryBody?.getBoundingClientRect()
-    const primaryBodyStyle = primaryBody ? window.getComputedStyle(primaryBody) : null
+    const workspaceStyle = window.getComputedStyle(workspace)
     const shelfListRect = workspace.querySelector('.reader-shelf-list')?.getBoundingClientRect()
     const shelfCards = Array.from(workspace.querySelectorAll('.reader-shelf-card'))
     const shelfCardRect = shelfCards[0]?.getBoundingClientRect()
@@ -611,12 +609,8 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
       hasGenericHeader: Boolean(header),
       paddingTop: window.getComputedStyle(workspace).paddingTop,
       paddingBottom: window.getComputedStyle(workspace).paddingBottom,
-      hasPrimaryBody: Boolean(workspace.querySelector('.reader-mobile-primary-popover-body')),
-      primaryBodyWidth: Math.round(primaryBodyRect?.width || 0),
-      primaryBodyLeft: Math.round(primaryBodyRect?.left || 0),
-      primaryBodyRightInset: Math.round(window.innerWidth - (primaryBodyRect?.right || 0)),
-      primaryBodyPaddingLeft: Number.parseFloat(primaryBodyStyle?.paddingLeft || '0'),
-      primaryBodyPaddingRight: Number.parseFloat(primaryBodyStyle?.paddingRight || '0'),
+      paddingLeft: Number.parseFloat(workspaceStyle.paddingLeft || '0'),
+      paddingRight: Number.parseFloat(workspaceStyle.paddingRight || '0'),
       shelfListWidth: Math.round(shelfListRect?.width || 0),
       shelfListLeft: Math.round(shelfListRect?.left || 0),
       shelfListRightInset: Math.round(window.innerWidth - (shelfListRect?.right || 0)),
@@ -639,30 +633,25 @@ async function assertWorkspaceOpen(page, viewport, label, { primary = false, con
   assert(workspaceState.hasLabel, `${viewport.width}: mobile workspace missing label ${label}`)
   if (primary) {
     assert(workspaceState.hasGenericHeader === false, `${viewport.width}: ${label} primary popover must not render generic workspace header`)
-    assert(parseFloat(workspaceState.paddingTop) >= 58, `${viewport.width}: ${label} primary root must reserve the mobile tool strip, padding ${workspaceState.paddingTop}`)
-    assert(workspaceState.paddingBottom === '0px', `${viewport.width}: ${label} primary root bottom padding ${workspaceState.paddingBottom}`)
-    assert(workspaceState.hasPrimaryBody, `${viewport.width}: ${label} primary popover missing owned content body`)
+    // reader-dev mini popover: pinned at the top over the toolbar, 20px inset and 23px foot.
+    assert(workspaceState.paddingTop === '20px', `${viewport.width}: ${label} primary popover top inset ${workspaceState.paddingTop}`)
+    assert(workspaceState.paddingBottom === '23px', `${viewport.width}: ${label} primary popover bottom inset ${workspaceState.paddingBottom}`)
+    assert(workspaceState.paddingLeft === 20 && workspaceState.paddingRight === 20, `${viewport.width}: ${label} primary popover side insets ${workspaceState.paddingLeft}/${workspaceState.paddingRight}`)
     assert(workspaceState.zIndex > 8, `${viewport.width}: ${label} primary popover must paint above reader content`)
-    assert(workspaceState.toolbarZIndex > workspaceState.zIndex, `${viewport.width}: ${label} mobile toolbar must stay interactive above the primary popover`)
+    assert(workspaceState.zIndex > workspaceState.toolbarZIndex, `${viewport.width}: ${label} primary popover must cover the mobile toolbar like reader-dev`)
     if (label === '书架') {
-      assert(workspaceState.primaryBodyWidth === viewport.width, `${viewport.width}: reader shelf primary body width ${workspaceState.primaryBodyWidth}`)
-      assert(workspaceState.primaryBodyLeft === 0 && workspaceState.primaryBodyRightInset === 0, `${viewport.width}: reader shelf primary body bounds ${workspaceState.primaryBodyLeft}/${workspaceState.primaryBodyRightInset}`)
-      assert(workspaceState.primaryBodyPaddingLeft === 20, `${viewport.width}: reader shelf body left inset ${workspaceState.primaryBodyPaddingLeft}`)
-      assert(workspaceState.primaryBodyPaddingRight === 20, `${viewport.width}: reader shelf body right inset ${workspaceState.primaryBodyPaddingRight}`)
       assert(workspaceState.shelfListLeft === 20 && workspaceState.shelfListRightInset === 20, `${viewport.width}: reader shelf list insets ${workspaceState.shelfListLeft}/${workspaceState.shelfListRightInset}`)
       const expectedShelfWidth = viewport.width - 40
       assert(workspaceState.shelfListWidth === expectedShelfWidth, `${viewport.width}: reader shelf list width ${workspaceState.shelfListWidth}/${expectedShelfWidth}`)
-      if (viewport.width < 900) {
-        assert(workspaceState.shelfCardWidth === workspaceState.shelfListWidth, `${viewport.width}: reader shelf card width ${workspaceState.shelfCardWidth}/${workspaceState.shelfListWidth}`)
+      // reader-dev BookShelf.vue stays one column at every width (its four-column rule never matches).
+      assert(workspaceState.shelfCardWidth === workspaceState.shelfListWidth, `${viewport.width}: reader shelf card width ${workspaceState.shelfCardWidth}/${workspaceState.shelfListWidth}`)
+      {
         assert(workspaceState.shelfCardCount >= 12, `${viewport.width}: reader shelf contract must exercise a populated scroll list`)
         assert(workspaceState.shelfCardHeight >= 60, `${viewport.width}: reader shelf card height collapsed to ${workspaceState.shelfCardHeight}`)
         assert(workspaceState.shelfTitleHeight >= 20, `${viewport.width}: reader shelf title height ${workspaceState.shelfTitleHeight}`)
         assert(workspaceState.shelfChapterHeight >= 16, `${viewport.width}: reader shelf chapter height ${workspaceState.shelfChapterHeight}`)
         assert(workspaceState.shelfCardGap === 16, `${viewport.width}: reader shelf row gap ${workspaceState.shelfCardGap}`)
         assert(workspaceState.shelfListScrollHeight > workspaceState.shelfListClientHeight, `${viewport.width}: populated reader shelf must scroll instead of shrinking rows`)
-      } else {
-        const expectedCardWidth = Math.round((workspaceState.shelfListWidth - (3 * 24)) / 4)
-        assert(workspaceState.shelfCardWidth === expectedCardWidth, `${viewport.width}: reader shelf four-column card width ${workspaceState.shelfCardWidth}/${expectedCardWidth}`)
       }
     }
   }
@@ -686,7 +675,7 @@ function mobileTopTool(page, label) {
 
 async function assertMobileTopToolContract(page, viewport) {
   const state = await page.evaluate(() => [...document.querySelectorAll('.reader-mobile-top.visible .mobile-tool-button')].map(button => ({
-    label: button.innerText.trim(),
+    label: button.innerText.replace(/[\ue000-\uf8ff]/g, '').trim(),
     disabled: button.disabled,
   })))
   assert(
@@ -700,7 +689,7 @@ async function assertMobileFloatNavigationContract(page, viewport, initialGeomet
   const state = await page.evaluate(() => {
     const buttons = [...document.querySelectorAll('.reader-mobile-float-left.visible button')]
     return {
-      titles: buttons.map(button => button.title),
+      titles: buttons.map(button => button.getAttribute('aria-label')),
       rects: buttons.map(button => {
         const rect = button.getBoundingClientRect()
         return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
@@ -729,7 +718,7 @@ async function assertMobileFloatNavigationContract(page, viewport, initialGeomet
   })
   assert(scrollState.max > 100, `${viewport.width}: fixture must be scrollable for top/bottom controls`)
 
-  await page.locator('.reader-mobile-float-left.visible button[title="底部"]').click()
+  await page.locator('.reader-mobile-float-left.visible button[aria-label="底部"]').click()
   await page.waitForFunction(() => {
     const element = document.querySelector('.reader-shell.document-scroll')
       ? (document.scrollingElement || document.documentElement)
@@ -739,7 +728,7 @@ async function assertMobileFloatNavigationContract(page, viewport, initialGeomet
   })
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: bottom action must keep toolbar visible`)
 
-  await page.locator('.reader-mobile-float-left.visible button[title="顶部"]').click()
+  await page.locator('.reader-mobile-float-left.visible button[aria-label="顶部"]').click()
   await page.waitForFunction(() => {
     const element = document.querySelector('.reader-shell.document-scroll')
       ? (document.scrollingElement || document.documentElement)
@@ -755,7 +744,7 @@ async function assertMobileFloatNavigationContract(page, viewport, initialGeomet
 async function assertMobilePageProgressContract(page, viewport, initialGeometry) {
   await page.waitForFunction(() => {
     const input = document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider')
-    return input && Number(input.max) > 1 && /^第 \d+\/\d+ 页$/.test(input.parentElement?.innerText || '')
+    return input && Number(input.max) > 1 && /^第 \d+\/\d+ 页$/.test(document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row .progress-tip')?.textContent?.trim() || '')
   })
   const initial = await page.evaluate(() => {
     const input = document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider')
@@ -767,7 +756,7 @@ async function assertMobilePageProgressContract(page, viewport, initialGeometry)
       min: Number(input.min),
       max: Number(input.max),
       value: Number(input.value),
-      label: input.parentElement?.querySelector('span')?.textContent?.trim() || '',
+      label: document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row .progress-tip')?.textContent?.trim() || '',
       scrollTop: content?.scrollTop || 0,
       progressText: progressButton?.textContent?.trim() || '',
     }
@@ -785,7 +774,7 @@ async function assertMobilePageProgressContract(page, viewport, initialGeometry)
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
   await page.waitForFunction((max) => (
-    document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row span')?.textContent?.trim()
+    document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row .progress-tip')?.textContent?.trim()
       === `第 ${max}/${max} 页`
   ), initial.max)
   assert(await page.evaluate(() => {
@@ -830,23 +819,23 @@ async function assertWorkspaceClosed(page, viewport, label) {
   assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: toolbar should remain visible after closing ${label}`)
 }
 
-async function assertPrimaryPopoverKeepsChromeInteractive(page, viewport, label) {
+// reader-dev pins the mini popover over the toolbar: the tool cannot be pressed while it is open, and a tap
+// outside it closes it without reaching the page.
+async function assertPrimaryPopoverCoversToolbar(page, viewport, label) {
   const toolLabel = label === '来源' ? '书源' : label
-  const activeTool = mobileTopTool(page, toolLabel)
   const state = await page.evaluate(() => {
-    const active = document.querySelector('.reader-mobile-top.visible .mobile-tool-button')
-    const rect = active?.getBoundingClientRect()
+    const tool = document.querySelector('.reader-mobile-top.visible .mobile-tool-button')
+    const rect = tool?.getBoundingClientRect()
     const hit = rect && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
     return {
-      hitIsTool: hit === active || active?.contains(hit),
+      hitIsPanel: Boolean(hit?.closest('.reader-mobile-workspace')),
       dismissVisible: Boolean(document.querySelector('.reader-mobile-primary-dismiss')),
     }
   })
   assert(state.dismissVisible, `${viewport.width}: ${label} must install a click-away layer`)
-  assert(state.hitIsTool === true, `${viewport.width}: ${label} toolbar tool must remain above the primary popover`)
-  await activeTool.click()
-  await assertWorkspaceClosed(page, viewport, label)
-  await activeTool.click()
+  assert(state.hitIsPanel === true, `${viewport.width}: ${label} primary popover must cover the toolbar`)
+  await closePrimaryWorkspace(page, viewport, label)
+  await mobileTopTool(page, toolLabel).click()
   await assertWorkspaceOpen(page, viewport, label, { primary: true })
 }
 
@@ -1101,7 +1090,8 @@ async function assertDesktopReaderDialog(page, viewport, selector, label) {
   assert(state.width >= 760, `desktop: ${label} dialog width ${state.width}`)
   assert(state.height > 200, `desktop: ${label} dialog height ${state.height}`)
   assert(state.visibleDrawers === 0, `desktop: ${label} must not use a drawer`)
-  assert(state.settingsOpen === 1, `desktop: ${label} must not close the active settings workspace`)
+  // reader-dev runs a right-column tool and closes the open popover.
+  assert(state.settingsOpen === 0, `desktop: ${label} must close the open settings panel`)
   if (label === '书签') {
     await assertBookmarkDialogGeometry(page, viewport, selector, { fullscreen: false })
   } else if (label === '搜索正文') {
@@ -1135,9 +1125,10 @@ async function assertDesktopPrimaryPopover(page, label, [minHeight, maxHeight]) 
   assert(state.count === 1, `desktop: ${label} must have exactly one primary popover`)
   assert(state.panel === expectedPanel, `desktop: ${label} must expose ${expectedPanel}, received ${state.panel}`)
   assert(state.top === 0, `desktop: ${label} popover top ${state.top}`)
-  assert(state.left >= state.railRight + 10, `desktop: ${label} must begin after the left rail (${state.left}/${state.railRight})`)
-  assert(Math.abs(state.left - (state.pageLeft + 5)) <= 1, `desktop: ${label} left ${state.left}, expected reader frame + 5 (${state.pageLeft})`)
-  assert(Math.abs((state.left + state.width) - (state.pageRight - 6)) <= 1, `desktop: ${label} right ${state.left + state.width}, expected reader frame - 6 (${state.pageRight})`)
+  // reader-dev's visible popover face covers the reading frame inside its 1px border (x 320…1119 at 1440).
+  assert(state.left >= state.railRight, `desktop: ${label} must begin after the left rail (${state.left}/${state.railRight})`)
+  assert(Math.abs(state.left - (state.pageLeft + 1)) <= 1, `desktop: ${label} left ${state.left}, expected reader frame + 1 (${state.pageLeft})`)
+  assert(Math.abs((state.left + state.width) - (state.pageRight - 2)) <= 1, `desktop: ${label} right ${state.left + state.width}, expected reader frame - 2 (${state.pageRight})`)
   assert(state.height >= minHeight && state.height <= maxHeight, `desktop: ${label} height ${state.height}, expected ${minHeight}-${maxHeight}`)
   assert(state.height < 560, `desktop: ${label} must be a content-sized Popover, not a full-height workspace (${state.height})`)
 }
@@ -1416,8 +1407,8 @@ async function exerciseContentSearch(page, viewport, { mobile }) {
     if (element) element.scrollTop = 0
   })
   const openSearch = mobile
-    ? page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]')
-    : page.locator('.reader-right-rail button[title="搜索正文"]')
+    ? page.locator('.reader-mobile-float-left.visible button[aria-label="搜索正文"]')
+    : page.locator('.reader-right-rail button[aria-label="搜索正文"]')
   await openSearch.click()
   await dialog.waitFor({ state: 'visible', timeout: 10000 })
   assert(await input.inputValue() === '契约段落', `${viewport.width}: reopening the same book must retain the search query`)
@@ -1509,6 +1500,14 @@ async function assertInlineDesktopCacheZone(page) {
 // body_6 outside, #171717 + content_6 page, #666 text — without the pure-black
 // inline takeover, which stays for custom pure-black night (runCustomBlackNightViewport).
 // Computed chrome colors, keyed by element, for the reader-dev night palette contract.
+// reader-dev covers the mobile toolbar with an open primary panel, so it closes by a tap outside it.
+async function tapOutsideMobilePanel(page) {
+  const bottom = await page.locator('.reader-mobile-workspace').evaluate(element => element.getBoundingClientRect().bottom)
+  const viewport = page.viewportSize()
+  await page.mouse.click(Math.round(viewport.width / 2), Math.min(viewport.height - 130, Math.ceil(bottom + 24)))
+  await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+}
+
 async function readerChromeSnapshot(page, { mobile, settings = false }) {
   return page.evaluate(({ mobile, settings }) => {
     const pick = (selector, properties) => {
@@ -1538,19 +1537,22 @@ async function readerChromeSnapshot(page, { mobile, settings = false }) {
     if (mobile) {
       return {
         topTool: pick('.reader-mobile-top.visible .mobile-tool-button', ['color']),
-        floatTool: pick('.reader-mobile-float-left.visible button', ['color', 'border-top-color']),
+        floatTool: pick('.reader-mobile-float-left.visible button', ['color', 'border-top-width']),
         chapterStep: pick('.reader-mobile-bottom.visible .mobile-chapter-step', ['color']),
-        progress: pick('.reader-mobile-bottom.visible .mobile-chapter-progress span', ['color']),
-        sliderRow: pick('.reader-mobile-bottom.visible .mobile-progress-slider-row', ['color']),
-        slider: pick('.reader-mobile-bottom.visible .mobile-progress-slider', ['accent-color', 'appearance', '--page-slider-progress']),
+        progress: pick('.reader-mobile-bottom.visible .mobile-chapter-progress', ['color']),
+        pageTip: pick('.reader-mobile-bottom.visible .mobile-progress-slider-row .progress-tip', ['color']),
+        slider: pick('.reader-mobile-bottom.visible .mobile-progress-slider', ['appearance']),
+        // The el-slider runway and bar are drawn behind the transparent native range.
+        sliderRunway: (() => {
+          const bar = document.querySelector('.reader-mobile-bottom.visible .mobile-progress-slider-row .progress-bar')
+          return bar ? { 'background-image': window.getComputedStyle(bar, '::before').backgroundImage } : null
+        })(),
       }
     }
     return {
-      rail: pick('.reader-left-rail', ['border-left-color', 'border-right-color']),
       railItem: pick('.reader-left-rail .rail-item', ['color', 'border-bottom-color']),
-      railHome: pick('.reader-left-rail .rail-home', ['color']),
-      roundTool: pick('.reader-right-rail .round-tool', ['color', 'border-top-color']),
-      progressBar: pick('.reader-page-control', ['border-top-color']),
+      railHome: pick('.reader-left-rail .rail-item[aria-label="返回首页"]', ['color']),
+      roundTool: pick('.reader-right-rail .round-tool', ['color', 'border-top-width']),
       progressBox: pick('.reader-page-control .progress-box', ['color', 'border-bottom-color']),
       chapterStep: pick('.reader-page-control .chapter-step', ['color']),
     }
@@ -1580,25 +1582,24 @@ async function assertBuiltInNightChrome(page, viewport, { mobile }) {
   assertChromeSnapshot(viewport, 'night chrome', await readerChromeSnapshot(page, { mobile }), mobile
     ? {
         topTool: { color: gray },
-        floatTool: { color: gray, 'border-top-color': transparent },
+        floatTool: { color: gray, 'border-top-width': '0px' },
         chapterStep: { color: gray },
         progress: { color: gray },
-        sliderRow: { color: gray },
-        slider: { 'accent-color': 'rgb(24, 87, 152)', appearance: 'none', '--page-slider-progress': '0%' },
+        pageTip: { color: gray },
+        slider: { appearance: 'none' },
+        sliderRunway: { 'background-image': 'linear-gradient(to right, rgb(24, 87, 152) 0%, rgb(40, 40, 40) 0%)' },
       }
     : {
-        rail: { 'border-left-color': border, 'border-right-color': border },
         railItem: { color: gray, 'border-bottom-color': border },
         railHome: { color: gray },
-        roundTool: { color: gray, 'border-top-color': transparent },
-        progressBar: { 'border-top-color': border },
+        roundTool: { color: gray, 'border-top-width': '0px' },
         progressBox: { color: gray, 'border-bottom-color': border },
         chapterStep: { color: gray },
       })
 
   const settingsTool = mobile
     ? mobileTopTool(page, '设置')
-    : page.locator('.reader-left-rail button[title="设置"]')
+    : page.locator('.reader-left-rail button[aria-label="设置"]')
   await settingsTool.click()
   await page.waitForSelector('.settings-body', { timeout: 10000 })
   assertChromeSnapshot(viewport, 'night settings', await readerChromeSnapshot(page, { mobile, settings: true }), {
@@ -1618,7 +1619,7 @@ async function assertBuiltInNightChrome(page, viewport, { mobile }) {
     divider: { 'background-color': gray },
   })
   if (mobile) {
-    await settingsTool.click()
+    await tapOutsideMobilePanel(page)
   } else {
     await page.locator('.reader-desktop-workspace-close').click()
   }
@@ -1638,14 +1639,12 @@ async function readerListSnapshot(page, { mobile }) {
   for (const [label, panel, ready] of panels) {
     const tool = mobile
       ? mobileTopTool(page, label)
-      : page.locator(`.reader-left-rail button[title="${label}"]`)
+      : page.locator(`.reader-left-rail button[aria-label="${label}"]`)
     await tool.click()
     await page.waitForSelector(ready, { timeout: 10000 })
     if (panel === 'toc') {
-      // The preload marks the second chapter browser-cached (its tag reads 本地).
-      await page.waitForFunction(() => (
-        document.querySelector('.toc-item[data-chapter-index="1"] .el-tag')?.textContent?.trim() === '本地'
-      ), null, { timeout: 10000 })
+      // The preload marks the second chapter browser-cached (reader-dev dims its name).
+      await page.waitForSelector('.toc-item[data-chapter-index="1"] .log-text.cached', { timeout: 10000 })
     }
     // Keep hover states out of the snapshot.
     await page.mouse.move(1, 1)
@@ -1677,9 +1676,9 @@ async function readerListSnapshot(page, { mobile }) {
       if (panel === 'toc') {
         return {
           tocItem: pick('.toc-item[data-chapter-index="3"]', ['color', 'border-bottom-color', 'background-color']),
-          tocCached: pick('.toc-item[data-chapter-index="1"]', ['color']),
-          tocActive: pick('.toc-item.active', ['color', 'background-color']),
-          tocMeta: pick('.toc-item[data-chapter-index="1"] small', ['color']),
+          tocCached: pick('.toc-item[data-chapter-index="1"] .log-text', ['color']),
+          tocActive: pick('.toc-item.active .log-text', ['color']),
+          tocActiveRow: pick('.toc-item.active', ['background-color']),
         }
       }
       return {
@@ -1687,8 +1686,7 @@ async function readerListSnapshot(page, { mobile }) {
       }
     }, panel))
     if (mobile) {
-      await tool.click()
-      await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+      await tapOutsideMobilePanel(page)
     } else {
       await page.locator('.reader-desktop-workspace-close').click()
       await page.waitForSelector('.reader-desktop-workspace', { state: 'detached', timeout: 10000 })
@@ -1704,10 +1702,11 @@ async function assertBuiltInNightLists(page, viewport, { mobile }) {
   const shelfTitle = 'rgb(136, 136, 136)'
   const shelfChapter = 'rgb(85, 85, 85)'
   const border = 'rgb(51, 51, 51)'
-  const accent = 'rgb(237, 66, 89)'
+  // reader-dev marks the current book, source and chapter #eb4259 (the titles use #ed4259).
+  const accent = 'rgb(235, 66, 89)'
   const transparent = 'rgba(0, 0, 0, 0)'
   assertChromeSnapshot(viewport, 'night lists', await readerListSnapshot(page, { mobile }), {
-    shelfCard: { color: shelfTitle, 'border-bottom-color': border },
+    shelfCard: { color: listText, 'border-bottom-color': border },
     shelfTitle: { color: shelfTitle },
     shelfUnread: { color: shelfTitle },
     shelfChapter: { color: shelfChapter },
@@ -1719,8 +1718,8 @@ async function assertBuiltInNightLists(page, viewport, { mobile }) {
     sourceSelectedName: { color: accent },
     tocItem: { color: listText, 'border-bottom-color': border, 'background-color': transparent },
     tocCached: { color: 'rgb(68, 68, 68)' },
-    tocActive: { color: accent, 'background-color': transparent },
-    ...(mobile ? { tocMeta: { color: shelfChapter } } : {}),
+    tocActive: { color: accent },
+    tocActiveRow: { 'background-color': transparent },
     fontPreview: { color: listText, 'border-top-color': 'rgb(102, 102, 102)', 'background-color': 'rgba(45, 45, 45, 0.5)' },
   })
 }
@@ -1742,11 +1741,10 @@ async function readerElementSnapshot(page, { mobile }) {
   const box = ['background-color', 'color', 'border-top-color']
   const panelTool = label => (mobile
     ? mobileTopTool(page, label)
-    : page.locator(`.reader-left-rail button[title="${label}"]`))
-  const closePanel = async (tool) => {
+    : page.locator(`.reader-left-rail button[aria-label="${label}"]`))
+  const closePanel = async () => {
     if (mobile) {
-      await tool.click()
-      await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'), null, { timeout: 10000 })
+      await tapOutsideMobilePanel(page)
     } else {
       await page.locator('.reader-desktop-workspace-close').click()
       await page.waitForSelector('.reader-desktop-workspace', { state: 'detached', timeout: 10000 })
@@ -1757,31 +1755,32 @@ async function readerElementSnapshot(page, { mobile }) {
   let tool = panelTool('书源')
   await tool.click()
   await page.waitForSelector('.source-item.selected', { timeout: 10000 })
-  // The group select is disabled while the first source load is opening; let it settle.
+  // The group select is disabled while the first source load is opening; let it settle. On phones the
+  // panel opens over the toolbar, so the pointer that pressed 书源 rests on the select: move it off first
+  // and let the hover transition finish.
   await page.waitForSelector('.source-group-select .el-select__wrapper:not(.is-disabled)', { timeout: 10000 })
-  await page.waitForTimeout(350)
   await page.mouse.move(1, 1)
+  await page.waitForTimeout(350)
   snapshot.sourceGroupSelect = await renderedStyle(page, '.source-group-select .el-select__wrapper', ['background-color', 'box-shadow'])
   await page.locator('.source-group-select .el-select__wrapper').click()
   const optionSelector = '.el-select__popper .el-select-dropdown__item'
   await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(node => node.getClientRects().length), optionSelector, { timeout: 10000 })
   snapshot.sourceGroupDropdown = await renderedStyle(page, '.el-select__popper', ['background-color', 'border-top-color'])
-  snapshot.sourceGroupOption = await renderedStyle(page, optionSelector, ['color'])
-  await page.locator(optionSelector).filter({ visible: true }).first().hover()
+  // reader-dev selects 全部分组 (N) by default; Element keeps the selected option #409eff at night.
+  snapshot.sourceGroupOption = await renderedStyle(page, `${optionSelector}:not(.is-selected)`, ['color'])
+  snapshot.sourceGroupOptionSelected = await renderedStyle(page, `${optionSelector}.is-selected`, ['color'])
+  await page.locator(`${optionSelector}:not(.is-selected)`).filter({ visible: true }).first().hover()
   await page.waitForTimeout(300)
   snapshot.sourceGroupOptionHover = await renderedStyle(page, `${optionSelector}.is-hovering`, ['background-color'])
   await page.locator('.title-zone .title').filter({ visible: true }).first().click()
   await page.waitForFunction(selector => ![...document.querySelectorAll(selector)].some(node => node.getClientRects().length), optionSelector, { timeout: 10000 })
   await closePanel(tool)
 
+  // User decision D1 (reader-menu contract): the catalog has no cache tag, as in reader-dev.
   tool = panelTool('目录')
   await tool.click()
   await page.waitForSelector('.toc-item.active', { timeout: 10000 })
-  await page.waitForFunction(() => (
-    document.querySelector('.toc-item[data-chapter-index="1"] .el-tag')?.textContent?.trim() === '本地'
-  ), null, { timeout: 10000 })
-  await page.mouse.move(1, 1)
-  snapshot.tocTag = await renderedStyle(page, '.toc-item[data-chapter-index="1"] .el-tag', box)
+  snapshot.tocTagCount = { count: String(await page.locator('.toc-item .el-tag').count()) }
   await closePanel(tool)
 
   tool = panelTool('设置')
@@ -1802,8 +1801,8 @@ async function readerElementSnapshot(page, { mobile }) {
   await closePanel(tool)
 
   const bookmarkTool = mobile
-    ? page.locator('.reader-mobile-float-left.visible button[title="书签"]')
-    : page.locator('.reader-right-rail button[title="书签"]')
+    ? page.locator('.reader-mobile-float-left.visible button[aria-label="书签"]')
+    : page.locator('.reader-right-rail button[aria-label="书签"]')
   await bookmarkTool.click()
   const dialog = '.global-bookmark-dialog'
   await page.waitForSelector(`${dialog} .el-table__body-wrapper tbody tr`, { timeout: 10000 })
@@ -1833,8 +1832,9 @@ async function assertBuiltInNightElements(page, viewport, { mobile }) {
     sourceGroupSelect: { 'background-color': 'rgb(68, 68, 68)', 'box-shadow': inputRing },
     sourceGroupDropdown: { 'background-color': 'rgb(51, 51, 51)', 'border-top-color': 'rgb(51, 51, 51)' },
     sourceGroupOption: { color: 'rgb(221, 221, 221)' },
+    sourceGroupOptionSelected: { color: 'rgb(64, 158, 255)' },
     sourceGroupOptionHover: { 'background-color': 'rgb(68, 68, 68)' },
-    tocTag: { 'background-color': 'rgb(103, 194, 58)', color: 'rgb(255, 255, 255)', 'border-top-color': 'rgb(103, 194, 58)' },
+    tocTagCount: { count: '0' },
     messageBox: { 'background-color': 'rgb(33, 33, 33)', 'border-top-color': 'rgb(33, 33, 33)' },
     messageTitle: { color: 'rgb(136, 136, 136)' },
     messageContent: { color: 'rgb(119, 119, 119)' },
@@ -1868,8 +1868,8 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
     fontPreview: { color: 'rgb(44, 42, 36)', 'border-top-color': 'rgb(234, 223, 202)', 'background-color': 'rgb(255, 250, 240)' },
   })
   const nightToggle = mobile
-    ? page.locator('.reader-mobile-float-right.visible button[title="夜间模式"]')
-    : page.locator('.reader-right-rail button[title="夜间模式"]')
+    ? page.locator('.reader-mobile-float-right.visible button[aria-label="夜间模式"]')
+    : page.locator('.reader-right-rail button[aria-label="夜间模式"]')
   await nightToggle.click()
   await page.waitForFunction(() => window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
 
@@ -1905,8 +1905,8 @@ async function assertBuiltInNightTextSurface(page, viewport, { mobile }) {
   await assertBuiltInNightLists(page, viewport, { mobile })
 
   const dayToggle = mobile
-    ? page.locator('.reader-mobile-float-right.visible button[title="日间模式"]')
-    : page.locator('.reader-right-rail button[title="日间模式"]')
+    ? page.locator('.reader-mobile-float-right.visible button[aria-label="日间模式"]')
+    : page.locator('.reader-right-rail button[aria-label="日间模式"]')
   await dayToggle.click()
   await page.waitForFunction(() => !window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
   const restoredMarkBackground = await markBackground()
@@ -2021,7 +2021,7 @@ async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}
     const title = document.querySelector('.settings-title')
     const list = document.querySelector('.settings-list')
     const outer = desktop
-      ? document.querySelector('.reader-desktop-workspace .reader-workspace-body')
+      ? document.querySelector('.reader-desktop-workspace')
       : document.querySelector('.reader-mobile-primary-settings')
     const titleRect = title?.getBoundingClientRect()
     const listRect = list?.getBoundingClientRect()
@@ -2037,6 +2037,7 @@ async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}
       listScrollHeight: list?.scrollHeight ?? 0,
       listOverflowY: listStyle?.overflowY ?? '',
       outerOverflowY: outerStyle?.overflowY ?? '',
+      outerScrollable: outer ? outer.scrollHeight > outer.clientHeight + 1 : true,
       titleFontSize: titleStyle?.fontSize ?? '',
       titleLineHeight: titleStyle?.lineHeight ?? '',
       titleFontWeight: titleStyle?.fontWeight ?? '',
@@ -2047,7 +2048,11 @@ async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}
   assert(Math.abs(state.listHeight - state.listClientHeight) <= 1, `${viewport.width}: settings list must not have a nested height mismatch`)
   assert(state.listScrollHeight > state.listClientHeight + 20, `${viewport.width}: settings fixture must require list scrolling`)
   assert(state.listOverflowY === 'auto', `${viewport.width}: settings list overflow ${state.listOverflowY}`)
-  assert(state.outerOverflowY === 'visible', `${viewport.width}: outer settings shell overflow ${state.outerOverflowY}`)
+  // reader-dev's mini popover sets overflow-x: hidden, so its overflow-y computes to auto; it never gets a
+  // scroll range of its own.
+  const expectedOuterOverflowY = desktop ? 'visible' : 'auto'
+  assert(state.outerOverflowY === expectedOuterOverflowY, `${viewport.width}: outer settings shell overflow ${state.outerOverflowY}`)
+  assert(state.outerScrollable === false, `${viewport.width}: outer settings shell must not have its own scroll range`)
   assert(state.titleFontSize === '18px', `${viewport.width}: settings title font size ${state.titleFontSize}`)
   assert(state.titleLineHeight === '22px', `${viewport.width}: settings title line height ${state.titleLineHeight}`)
   assert(state.titleFontWeight === '400', `${viewport.width}: settings title font weight ${state.titleFontWeight}`)
@@ -2064,7 +2069,7 @@ async function assertSettingsFixedTitle(page, viewport, { desktop = false } = {}
     const title = document.querySelector('.settings-title')
     const list = document.querySelector('.settings-list')
     const outer = desktop
-      ? document.querySelector('.reader-desktop-workspace .reader-workspace-body')
+      ? document.querySelector('.reader-desktop-workspace')
       : document.querySelector('.reader-mobile-primary-settings')
     return {
       titleTop: title?.getBoundingClientRect().top ?? null,
@@ -2191,13 +2196,13 @@ async function runDesktopViewport(browser) {
   await assertBuiltInNightTextSurface(page, viewport, { mobile: false })
   await assertSelectedTextReplaceRuleEditor(page, viewport, { fullscreen: false })
   const selectedBookmarkText = await createBookmarkFromSelectedText(page, viewport, { fullscreen: false })
-  await page.locator('.reader-left-rail button[title="书架"]').click()
+  await page.locator('.reader-left-rail button[aria-label="书架"]').click()
   await assertDesktopPrimaryPopover(page, '书架', [380, 410])
-  await page.locator('.reader-left-rail button[title="书源"]').click()
+  await page.locator('.reader-left-rail button[aria-label="书源"]').click()
   await assertDesktopPrimaryPopover(page, '书源', [380, 410])
-  await page.locator('.reader-left-rail button[title="目录"]').click()
+  await page.locator('.reader-left-rail button[aria-label="目录"]').click()
   await assertDesktopPrimaryPopover(page, '目录', [380, 410])
-  await page.locator('.reader-left-rail button[title="设置"]').click()
+  await page.locator('.reader-left-rail button[aria-label="设置"]').click()
   await assertDesktopPrimaryPopover(page, '设置', [470, 520])
   await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 10000 })
   await assertSettingsRowGeometry(page, viewport)
@@ -2211,14 +2216,14 @@ async function runDesktopViewport(browser) {
   await themeModeButtons.filter({ hasText: '黑夜' }).click()
   await page.waitForFunction(() => document.documentElement.classList.contains('dark-reader'))
   assert(await page.locator('.reader-desktop-workspace .settings-body').count() === 1, 'desktop: switching custom night mode must keep settings open')
-  assert(await page.locator('.reader-right-rail button[title="日间模式"]').count() === 1, 'desktop: semantic night mode must update the rail toggle')
-  await page.locator('.reader-right-rail button[title="书签"]').click()
+  assert(await page.locator('.reader-right-rail button[aria-label="日间模式"]').count() === 1, 'desktop: semantic night mode must update the rail toggle')
+  await page.locator('.reader-right-rail button[aria-label="书签"]').click()
   await assertDesktopReaderDialog(page, viewport, '.global-bookmark-dialog', '书签')
   await exerciseBookmarkManager(page, viewport, { fullscreen: false, selectedText: selectedBookmarkText })
-  await page.locator('.reader-right-rail button[title="搜索正文"]').click()
+  await page.locator('.reader-right-rail button[aria-label="搜索正文"]').click()
   await assertDesktopReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')
   await exerciseContentSearch(page, viewport, { mobile: false })
-  await page.locator('.reader-right-rail button[title="书籍信息"]').click()
+  await page.locator('.reader-right-rail button[aria-label="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })
   await closeReaderBookInfoDialog(page)
   await page.locator('.reader-page-control .progress-box').click()
@@ -2279,8 +2284,8 @@ async function runNightElementsViewport(browser, viewport) {
     appendFileSync(process.env.SMOKE_DAY_SNAPSHOT, `${JSON.stringify({ viewport: viewportKey, scope: 'elements', dayElements })}\n`)
   }
   const toggle = title => (mobile
-    ? page.locator(`.reader-mobile-float-right.visible button[title="${title}"]`)
-    : page.locator(`.reader-right-rail button[title="${title}"]`))
+    ? page.locator(`.reader-mobile-float-right.visible button[aria-label="${title}"]`)
+    : page.locator(`.reader-right-rail button[aria-label="${title}"]`))
   await toggle('夜间模式').click()
   await page.waitForFunction(() => window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
   await assertBuiltInNightElements(page, viewport, { mobile })
@@ -2336,21 +2341,21 @@ async function runViewport(browser, viewport) {
   await assertMobilePageProgressContract(page, viewport, initialGeometry)
 
   await mobileTopTool(page, '书架').click()
-  await assertWorkspaceOpen(page, viewport, '书架', { primary: true, contentSized: true, heightRange: [418, 488] })
-  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '书架')
+  await assertWorkspaceOpen(page, viewport, '书架', { primary: true, contentSized: true, heightRange: [380, 400] })
+  await assertPrimaryPopoverCoversToolbar(page, viewport, '书架')
   await closePrimaryWorkspace(page, viewport, '书架')
 
   await mobileTopTool(page, '书源').click()
-  await assertWorkspaceOpen(page, viewport, '来源', { primary: true, contentSized: true, heightRange: [418, 488] })
-  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '来源')
+  await assertWorkspaceOpen(page, viewport, '来源', { primary: true, contentSized: true, heightRange: [380, 400] })
+  await assertPrimaryPopoverCoversToolbar(page, viewport, '来源')
   await closePrimaryWorkspace(page, viewport, '来源')
   await mobileTopTool(page, '目录').click()
-  await assertWorkspaceOpen(page, viewport, '目录', { primary: true, contentSized: true, heightRange: [418, 488] })
-  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '目录')
+  await assertWorkspaceOpen(page, viewport, '目录', { primary: true, contentSized: true, heightRange: [380, 400] })
+  await assertPrimaryPopoverCoversToolbar(page, viewport, '目录')
   await closePrimaryWorkspace(page, viewport, '目录')
   await mobileTopTool(page, '设置').click()
-  await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [488, 588] })
-  await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, '设置')
+  await assertWorkspaceOpen(page, viewport, '设置', { primary: true, contentSized: true, heightRange: [440, 485] })
+  await assertPrimaryPopoverCoversToolbar(page, viewport, '设置')
   await assertSettingsRowGeometry(page, viewport)
   await assertSettingsFirstScreenDensity(page, viewport)
   await assertSettingsFixedTitle(page, viewport)
@@ -2362,19 +2367,19 @@ async function runViewport(browser, viewport) {
   assert(afterPanelCenterTap === 1, `${viewport.width}: center tap with panel open must not hide toolbar`)
 
   await closePrimaryWorkspace(page, viewport, '设置')
-  await page.locator('.reader-mobile-float-left.visible button[title="书签"]').click()
+  await page.locator('.reader-mobile-float-left.visible button[aria-label="书签"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-bookmark-dialog', '书签')
   await exerciseBookmarkManager(page, viewport, { fullscreen: true, selectedText: selectedBookmarkText })
-  await page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]').click()
+  await page.locator('.reader-mobile-float-left.visible button[aria-label="搜索正文"]').click()
   await assertGlobalReaderDialog(page, viewport, '.global-content-search-dialog', '搜索正文')
   await exerciseContentSearch(page, viewport, { mobile: true })
-  await page.locator('.reader-mobile-float-left.visible button[title="书籍信息"]').click()
+  await page.locator('.reader-mobile-float-left.visible button[aria-label="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: true })
   await closeReaderBookInfoDialog(page)
   await assertMobileFloatNavigationContract(page, viewport, initialGeometry)
-  await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
+  await page.locator('.reader-mobile-bottom.visible .mobile-chapter-progress').click()
   await assertInlineMobileCacheZone(page, viewport)
-  await page.locator('.reader-mobile-bottom.visible button[title="缓存章节"]').click()
+  await page.locator('.reader-mobile-bottom.visible .mobile-chapter-progress').click()
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-bottom.visible .mobile-cache-zone.reader-cache-zone'), null, { timeout: 10000 })
 
   await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
@@ -2590,7 +2595,7 @@ async function runIPadAdaptiveViewport(browser, viewport) {
   await assertBuiltInNightTextSurface(page, viewport, { mobile: false })
 
   for (const label of ['书架', '书源', '目录', '设置']) {
-    const tool = page.locator(`.reader-left-rail button[title="${label}"]`)
+    const tool = page.locator(`.reader-left-rail button[aria-label="${label}"]`)
     await tool.click()
     await assertIPadAdaptiveWorkspace(page, viewport, label)
     await closeIPadWorkspaceByVisibleControl(page, viewport, label)
@@ -2603,7 +2608,7 @@ async function runIPadAdaptiveViewport(browser, viewport) {
     await page.waitForFunction(() => !document.querySelector('.reader-desktop-workspace'))
   }
 
-  await page.locator('.reader-right-rail button[title="书签"]').click()
+  await page.locator('.reader-right-rail button[aria-label="书签"]').click()
   await page.waitForSelector('.global-bookmark-dialog', { timeout: 10000 })
   await assertBookmarkDialogGeometry(page, viewport, '.global-bookmark-dialog', { fullscreen: false })
   const adaptiveBookmarkRow = page.locator('.global-bookmark-dialog .el-table__body-wrapper tbody tr').filter({ hasText: '原笔记' })
@@ -2614,11 +2619,11 @@ async function runIPadAdaptiveViewport(browser, viewport) {
   await page.locator('.global-bookmark-form-dialog').waitFor({ state: 'hidden', timeout: 10000 })
   assert(await page.locator('.global-bookmark-dialog').isVisible(), `${viewport.width}: closing iPad bookmark form must retain manager`)
   await closeDesktopDialogWithHeader(page, '.global-bookmark-dialog', viewport, '书签')
-  await page.locator('.reader-right-rail button[title="搜索正文"]').click()
+  await page.locator('.reader-right-rail button[aria-label="搜索正文"]').click()
   await page.waitForSelector('.global-content-search-dialog', { timeout: 10000 })
   await assertContentSearchDialogGeometry(page, viewport, { fullscreen: false })
   await closeDesktopDialogWithHeader(page, '.global-content-search-dialog', viewport, '搜索正文')
-  await page.locator('.reader-right-rail button[title="书籍信息"]').click()
+  await page.locator('.reader-right-rail button[aria-label="书籍信息"]').click()
   await assertReaderBookInfoDialog(page, viewport, { fullscreen: false })
   await closeDesktopDialogWithHeader(page, '.book-info-dialog', viewport, '书籍信息')
 
@@ -2650,9 +2655,8 @@ async function runIPadForcedMobileViewport(browser, viewport) {
   ]) {
     await mobileTopTool(page, toolLabel).click()
     await assertWorkspaceOpen(page, viewport, panelLabel, { primary: true, contentSized: true })
-    await assertPrimaryPopoverKeepsChromeInteractive(page, viewport, panelLabel)
-    await mobileTopTool(page, toolLabel).click()
-    await assertWorkspaceClosed(page, viewport, panelLabel)
+    await assertPrimaryPopoverCoversToolbar(page, viewport, panelLabel)
+    await closePrimaryWorkspace(page, viewport, panelLabel)
   }
   await context.close()
 }

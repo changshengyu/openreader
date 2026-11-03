@@ -174,8 +174,8 @@ async function runViewport(browser, viewport, archive, requestedMode) {
       bodyColumnWidth: getComputedStyle(body).columnWidth,
       bodyColumnCount: getComputedStyle(body).columnCount,
       mobileChromeVisible: Boolean(document.querySelector('.reader-mobile-top.visible')),
-      autoButton: Boolean(document.querySelector('button[title="自动阅读"]')),
-      ttsButton: Boolean(document.querySelector('button[title="朗读"]')),
+      autoButton: Boolean(document.querySelector('button[aria-label="自动阅读"]')),
+      ttsButton: Boolean(document.querySelector('button[aria-label="朗读"]')),
     }
   })
   assert.equal(state.titleCount, 0, `${viewport.width}: CBZ chapter heading must stay hidden`)
@@ -199,10 +199,10 @@ async function runViewport(browser, viewport, archive, requestedMode) {
 
   if (requestedMode === 'flip') {
     assert.ok(state.imageHeight > 0 && state.bodyScrollHeight >= state.imageHeight, `flip CBZ image must remain rendered: ${JSON.stringify(state)}`)
-    const autoButton = page.locator('.reader-mobile-float-right.visible button[title="自动阅读"]')
+    const autoButton = page.locator('.reader-mobile-float-right.visible button[aria-label="自动阅读"]')
     await autoButton.click()
     await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('page'))
-    await page.locator('.reader-mobile-float-right.visible button[title="自动阅读"]').click()
+    await page.locator('.reader-mobile-float-right.visible button[aria-label="自动阅读"]').click()
     await page.waitForFunction(() => document.querySelector('.reader-shell')?.classList.contains('flip'))
   }
 

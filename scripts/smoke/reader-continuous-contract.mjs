@@ -448,11 +448,11 @@ async function runProgressTransaction(browser) {
 }
 
 // The mouse variant is the original 390x844 check. The banded variants press the inline 重新加载 with a
-// real pointer at 88% of the viewport: on a phone that is outside the center tap region, on the desktop it
-// is inside the lower tap zone (error surface contract R7).
+// real pointer low in the viewport: on a phone 84% is outside the center tap region and above reader-dev's
+// 103px bottom bar, on the desktop 88% is inside the lower tap zone (error surface contract R7).
 const FAILURE_RETRY_VARIANTS = [
   { name: '390x844 mouse', viewport: { width: 390, height: 844 } },
-  { name: '390x844 touch at 88%', viewport: { width: 390, height: 844 }, touch: true, band: 0.88 },
+  { name: '390x844 touch at 84%', viewport: { width: 390, height: 844 }, touch: true, band: 0.84 },
   { name: '1440x900 mouse at 88% (lower tap zone)', viewport: { width: 1440, height: 900 }, band: 0.88 },
 ]
 

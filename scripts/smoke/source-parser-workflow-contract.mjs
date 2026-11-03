@@ -393,7 +393,7 @@ async function assertWorkflow(browser, root, token, definition) {
   assert(Array.isArray(session?.chapters) && session.chapters.length === 3, `${definition.mode}: expected three parsed chapters`)
   assert(session.chapters[0]?.title === definition.chapterTitle, `${definition.mode}: first chapter = ${session.chapters[0]?.title}, want ${definition.chapterTitle}`)
 
-  await page.locator('.reader-left-rail button[title="目录"]').click()
+  await page.locator('.reader-left-rail button[aria-label="目录"]').click()
   const toc = page.locator('.reader-desktop-workspace.workspace-panel-toc')
   await toc.waitFor({ state: 'visible', timeout: 10_000 })
   assert(await toc.locator('.toc-item').count() === 3, `${definition.mode}: reader directory did not render three chapters`)

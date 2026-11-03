@@ -202,7 +202,7 @@ async function verifyIncompleteSpeechAPI(browser) {
   await installApiMocks(page)
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 10_000 })
-  assert(await page.locator('button[title="朗读"]').count() === 0, `${viewport.width}: incomplete speech API must hide the TTS entry`)
+  assert(await page.locator('button[aria-label="朗读"]').count() === 0, `${viewport.width}: incomplete speech API must hide the TTS entry`)
   assert(failures.length === 0, `${viewport.width}: incomplete speech API crashed Reader:\n${failures.join('\n')}`)
   await context.close()
 }
@@ -225,8 +225,8 @@ async function verifyTTSContract(browser) {
   await page.goto(readerUrl, { waitUntil: 'networkidle' })
   await page.waitForSelector('.reader-body p', { timeout: 10_000 })
   const ttsTrigger = isMobileViewport
-    ? '.reader-mobile-float-tools button[title="朗读"]'
-    : '.reader-right-rail button[title="朗读"]'
+    ? '.reader-mobile-float-tools button[aria-label="朗读"]'
+    : '.reader-right-rail button[aria-label="朗读"]'
 
   if (isMobileViewport) {
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, 'mobile reader tools should be visible by default')

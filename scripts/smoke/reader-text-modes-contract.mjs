@@ -165,7 +165,9 @@ async function setRuntimeAnimationDuration(page, viewport, duration) {
   await input.press('Enter')
   assert((await valueButton.textContent())?.trim() === String(duration), `runtime duration did not update to ${duration}`)
 
-  await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' }).click()
+  // reader-dev's open panel covers the toolbar on phones; a tap below it closes it.
+  const panelBottom = await page.locator('.reader-mobile-primary-settings').evaluate(element => element.getBoundingClientRect().bottom)
+  await page.mouse.click(Math.round(viewport.width / 2), Math.min(viewport.height - 130, Math.ceil(panelBottom + 24)))
   await page.waitForFunction(() => !document.querySelector('.reader-mobile-primary-settings'))
 }
 

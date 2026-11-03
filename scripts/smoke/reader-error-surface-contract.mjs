@@ -7,7 +7,8 @@
 // - E3: after the source recovers, a real pointer press (desktop mouse, phone touch, narrow-window mouse)
 //   reloads only the failed chapter: the route, the tool layer and the progress stay on that chapter;
 // - E5 (adjacent-chapter part): the continuous inline 重新加载 is the hit target at 12%/50%/88% of the
-//   viewport and a press only retries that chapter, without paging or toggling the tool layer.
+//   viewport (84% on phones, where reader-dev's 103px bottom bar covers the foot while the tool layer shows)
+//   and a press only retries that chapter, without paging or toggling the tool layer.
 // E1, E4, E6, E7 and the target-chapter part of E5 belong to the R1-R6/R8 slices.
 // Every case runs to the end and reports all of its failed checks; SMOKE_CASES=<regex> limits the cases.
 
@@ -325,6 +326,9 @@ async function pressInline(page, behavior, input, band) {
   return { before, hit, mark, wanted }
 }
 
+// reader-dev's mini bottom bar is 103px tall, so on phones the lowest pressable band sits above it.
+const lowBand = viewport => (viewport.width <= 750 ? 0.84 : 0.88)
+
 async function runInlineCase(browser, viewport, input, mode) {
   const behavior = newBehavior()
   const failures = []
@@ -335,7 +339,7 @@ async function runInlineCase(browser, viewport, input, mode) {
     await page.waitForSelector(INLINE_BUTTON, { timeout: 10_000 })
     await page.waitForTimeout(1200)
 
-    for (const band of [0.12, 0.5, 0.88]) {
+    for (const band of [0.12, 0.5, lowBand(viewport)]) {
       const wanted = await placeButton(page, INLINE_BUTTON, band)
       await page.waitForTimeout(350)
       const hit = await hitTest(page, INLINE_BUTTON)
@@ -344,7 +348,7 @@ async function runInlineCase(browser, viewport, input, mode) {
     }
 
     // The source still fails: a press must retry once and change nothing else.
-    for (const band of [0.12, 0.88]) {
+    for (const band of [0.12, lowBand(viewport)]) {
       const { before, hit, mark } = await pressInline(page, behavior, input, band)
       await waitUntil(() => since(behavior.responses, mark).some(row => row.index === ADJACENT_FAIL_INDEX), 2500)
       await page.waitForTimeout(700)

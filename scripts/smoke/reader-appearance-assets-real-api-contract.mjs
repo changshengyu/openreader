@@ -192,7 +192,7 @@ async function waitForCondition(predicate, description, timeout = 10_000) {
 async function openSettings(page, viewport) {
   const button = viewport.width <= 750
     ? page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '设置' })
-    : page.locator('.reader-left-rail button[title="设置"]')
+    : page.locator('.reader-left-rail button[aria-label="设置"]')
   await button.click()
   await page.locator('.settings-body').waitFor({ state: 'visible', timeout: 10_000 })
 }
