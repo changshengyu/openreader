@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-03 当前切片：发布门依赖公告 GO-2026-5932 出现修复（P1，发布阻塞）
+
+见[`dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](dependency-advisory-x-crypto-openpgp-fix-p1-contract.md)。
+GO-2026-5932 增加修复版本，唯一不适用项的前提失效，Go 公告门在 main 上失败关闭（`advisory changed: review required`）。
+must-fix：x/crypto 精确固定到 `v0.58.1-0.20261009181718-2f1f834330b2`（`v0.58.0` 只删 `openpgp/`），门只接受该伪版本到 2026-12-16；
+退役不适用项（任何 finding 阻止发布），openpgp 族无条件禁止。计划红测：门合同测试 9 项。状态 contract-only。
+
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 
 见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。

@@ -1,5 +1,15 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-03 P1 发布门依赖公告：GO-2026-5932（`x/crypto/openpgp`）出现修复版本
+
+Go 公告门在 main `69c27bc` 上失败关闭：`advisory changed: review required`。唯一不适用项 GO-2026-5932（不再维护的
+`x/crypto/openpgp`，OpenReader 从未导入）的 OSV 于 2026-11-02 增加修复版本 `v0.58.1-0.20261009181718-2f1f834330b2`
+（x/crypto 提交 `2f1f834330b2`，相对 `v0.58.0` 只删除 `openpgp/`），并新增无修复的独立模块 `golang.org/x/crypto/openpgp`，
+不适用项“无已修复版本”的前提失效；还没有包含修复的标签版本。CI 在构建镜像前跑同一门，main 当前无法发布。裁决
+**`must-fix`（发布阻塞）**，用户选方案 A：x/crypto 精确固定到该伪版本；门只接受这一个伪版本，期限 2026-12-16，之后必须是
+标签版本；退役不适用项，任何 finding 都阻止发布；openpgp 族出现在任一依赖图即失败。完整合同见
+[`dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](dependency-advisory-x-crypto-openpgp-fix-p1-contract.md)。状态 **contract-only**。
+
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
 前两个夜间切片（`24511c0`、`21d78ab`）只改了 Reader 自己画的工具栏、设置与列表；`html.dark-reader` 只改 `--app-*`，夜间所有
