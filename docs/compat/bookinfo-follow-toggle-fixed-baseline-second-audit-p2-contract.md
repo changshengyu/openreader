@@ -4,7 +4,7 @@
 
 审计日期：2026-11-03。
 
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（第 7 节；完整模式封面一步的偶发失败另起，见第 8 节）。
 
 本合同是 [`bookinfo-fixed-baseline-second-audit-p2-contract.md`](bookinfo-fixed-baseline-second-audit-p2-contract.md)
 第 5 节“追更……覆盖远程与本地书架书”的补齐，并修正真实接口浏览器合同
@@ -81,3 +81,36 @@ Element Plus 记录已注明“改前构建同样失败，另起”。
 ## 6. 允许差异
 
 只保留 A1、A2 与第二轮复审第 9 节已列的差异。
+
+## 7. 记录（2026-11-03）
+
+分支 `claude/bookinfo-follow-update-toggle`，从 `origin/main` `69c27bc` 切出：合同 `1f6cced`、红测 `b8a106d`、实现 `408cf1a`。
+
+- 红测（`69c27bc` 构建）：T1、T2 在 `assert.deepEqual(fixture.calls[0], ['update-book', 2, { canUpdate: false }])` 失败（实际
+  `undefined`），其余 9 项通过。浏览器合同 1440×900 远程分支全部通过（远程添加种子、书源名、无本地“更新”、远程追更精确/持久化/
+  开关为关，以及封面、分组、已存在远程书再加入），停在本地追更（第 508 行）：15 秒内没有 `PUT /api/books/<本地书 id>`。
+- 实现：`toggleBookCanUpdate` 只要求书有 `id`。同一断言转绿，单元 11/11。
+- 回归（本分支）：frontend `npm test` 857/857 与 `npm run build`；backend `go test ./...` 31 个包通过、7 个无测试（api 124.5s），
+  `go vet ./...` 无输出；公告门自测 109/109；实际前端公告门通过；`docker compose config` 通过；真实接口合同 `BOOK_PATCH_ONLY=1`、
+  `LOCAL_REFRESH_ONLY=1` 三视口通过，完整模式五个视口通过（封面一步的偶发失败见第 8 节）。实际 Go 公告门在本分支报
+  “advisory changed: review required”：这是 GO-2026-5932 的变化，本分支基于 `69c27bc`，早于 main 上的 `544b980` x/crypto 固定，
+  与本切片无关。
+- 合入预检（临时把本分支合并到 `origin/main` `636b1ff`，未提交、已删除）：只有 `reader-dev-openreader-gap-analysis.md` 与
+  `refactor-audit-matrix.md` 顶部条目冲突（两边都保留，新的在前）；frontend 872/872 与 build、实际 Go 公告门通过、完整模式五个视口
+  与 `LOCAL_REFRESH_ONLY=1` 三视口通过。
+- 状态 **implementation-complete / regression-validated**，完整模式的封面一步在第 8 节修复前会偶发失败；待合入与可信 Actions。
+  镜像未构建、未发布；生产未动。
+
+## 8. 新发现（另起）：并发认证请求让 `PUT /api/books/:id` 返回 500
+
+回归中完整模式偶发在“cover state persisted”超时。抓到的每一次失败里，封面 `PUT /api/books/:id` 都返回
+`500 {"error":"failed to update book"}`，服务端日志为 `api/books.go:599 database is locked`（事务里的 `Updates`）。
+
+- 原因：`a0edce3`（2026-08-26）起每个认证请求都会在 `authsession.Service.renew` 里提交一次 `UPDATE user_sessions`。SQLite 为 WAL、
+  连接池不限、事务默认 deferred（DSN 没有 `_txlock`）。`updateBook` 的事务先读书籍行、校验封面文件、再写；这期间另一个认证请求
+  提交了写入，读快照就无法升级为写，SQLite 立即返回 busy，不等 5 秒的 busy_timeout（浏览器日志里这个 500 在请求发出约 16ms 后返回）。
+- 只用接口复现：每次 `PUT` 同时发 4 个认证 `GET /api/books/:id`，封面 150 次里 60 次 500（不并发 0/150）；`{canUpdate}` 300 次里
+  58 次 500（不并发 0/300）。真实用户在多标签、多设备或页面并发请求时同样会看到“操作失败”。
+- 真实接口合同在浏览器发出 `PUT` 后立即用 `GET` 轮询持久化结果，正好制造了这种并发：完整模式 18 次中 14 次通过、4 次失败，失败都在
+  封面一步，追更一步没有出现。
+- 本切片不修改也不掩盖：合同轮询保持原样，修复需要单独的后端/SQLite 切片（按 CLAUDE.md 不禁用 WAL、不改单连接）。

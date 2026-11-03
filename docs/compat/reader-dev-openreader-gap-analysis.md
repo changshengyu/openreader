@@ -10,6 +10,12 @@
 `acceptable-change`；`POST /api/books` 收窄与后端不重开。完整合同见
 [`bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md`](bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md)。
 状态 **contract-only**。
+2026-11-03 记录（合同第 7、8 节）：合同 `1f6cced`、红测 `b8a106d`（单元 T1/T2 失败；浏览器远程分支通过、停在本地追更）、实现 `408cf1a`
+（`toggleBookCanUpdate` 只要求 `id`）。frontend 857/857 与 build、后端全量 31 个包与 vet、公告门自测 109/109、前端公告门、真实接口合同
+完整五视口与两个聚焦模式三视口通过；合入 `636b1ff` 的预检只在两份文档顶部冲突，frontend 872/872、Go 公告门与真实接口合同通过。新发现
+（另起）：`a0edce3` 起每个认证请求都写 `user_sessions`，并发时 `PUT /api/books/:id` 的 deferred 事务读后写失败，500 `database is locked`
+（接口复现：封面 60/150、追更 58/300；不并发 0），真实接口合同的封面一步因此偶发失败（18 次中 4 次）。状态
+**implementation-complete / regression-validated**，待合入与可信 Actions。
 
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
