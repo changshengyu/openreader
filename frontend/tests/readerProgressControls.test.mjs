@@ -50,7 +50,8 @@ function createControls(overrides = {}) {
 test('derives whole-book label plus upstream 1-based mobile page controls', () => {
   const { controls } = createControls()
   assert.equal(controls.bookProgress.value, 0.3125)
-  assert.equal(controls.bookProgressLabel.value, '31%')
+  // reader-dev readingProgress counts chapters reached: (1 + 1) / 4.
+  assert.equal(controls.bookProgressLabel.value, '50%')
   assert.equal(controls.mobilePageSliderValue.value, 2)
   assert.equal(controls.mobilePageSliderMax.value, 5)
   assert.equal(controls.mobilePageProgressLabel.value, '第 2/5 页')
@@ -97,12 +98,14 @@ test('seeks a mobile vertical page without navigating to another chapter', () =>
     }),
     page: ref(0),
     pageCount: ref(4),
+    windowTarget: { innerHeight: 800 },
     getMode: () => 'scroll',
   })
+  // reader-dev showPage: (window height - 10) * (page - 1), held inside the scroll range.
   fixture.controls.handleMobilePageProgressChange({ target: { value: '3' } })
-  assert.equal(fixture.options.contentEl.value.scrollTop, 1067)
+  assert.equal(fixture.options.contentEl.value.scrollTop, 1580)
   assert.deepEqual(fixture.animations.map(({ top, duration }) => ({ top, duration })), [
-    { top: 1067, duration: 300 },
+    { top: 1580, duration: 300 },
   ])
   assert.deepEqual(fixture.navigated, [])
   assert.equal(fixture.local.length, 1)

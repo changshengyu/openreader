@@ -1,10 +1,6 @@
 <template>
   <section
-    class="reader-mobile-workspace"
-    :class="{
-      'reader-mobile-workspace-no-header': !showHeader,
-      'reader-mobile-workspace-primary': primary,
-    }"
+    class="reader-mobile-workspace reader-mobile-workspace-primary"
     role="dialog"
     aria-modal="false"
     :aria-label="title"
@@ -13,16 +9,7 @@
     @touchmove.stop
     @touchend.stop
   >
-    <div v-if="showHeader" class="reader-mobile-workspace-head">
-      <div class="reader-mobile-workspace-title">{{ title }}</div>
-      <div class="reader-mobile-workspace-actions">
-        <slot name="actions" />
-        <button type="button" class="reader-mobile-workspace-close" @click="$emit('close')">关闭</button>
-      </div>
-    </div>
-    <div class="reader-mobile-workspace-body">
-      <slot />
-    </div>
+    <slot />
   </section>
 </template>
 
@@ -32,115 +19,33 @@ defineProps({
     type: String,
     required: true,
   },
-  showHeader: {
-    type: Boolean,
-    default: true,
-  },
-  primary: {
-    type: Boolean,
-    default: false,
-  },
 })
-
-defineEmits(['close'])
 </script>
 
 <style scoped>
-.reader-mobile-workspace {
+/* reader-dev App.vue mini `.popper-component`: pinned at the top over the toolbar, 100vw wide, no border
+   or shadow, with el-popover's text defaults. The inset is the panels' `.popup-wrapper` 24px less its
+   4px overhang, measured at 20px around and 23px below. */
+.reader-mobile-workspace-primary {
   position: fixed;
-  inset: 0;
-  z-index: 7;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  top: 0;
+  left: 0;
+  z-index: 13;
   box-sizing: border-box;
   width: 100vw;
-  height: 100dvh;
-  padding: calc(58px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom));
-  color: var(--reader-popup-text, var(--reader-text));
+  max-height: 100dvh;
+  padding: calc(20px + env(safe-area-inset-top)) 20px 23px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #606266;
   background-color: var(--reader-popup-bg);
   background-image: var(--reader-popup-bg-image);
   background-repeat: repeat;
-  backdrop-filter: blur(2px);
-}
-
-.reader-mobile-workspace-no-header {
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.reader-mobile-workspace-primary {
-  inset: 0 0 auto;
-  z-index: 10;
-  display: block;
-  width: 100vw;
-  height: auto;
-  min-height: 0;
-  max-height: 100dvh;
-  /* Keep primary-panel content below the interactive mobile tool strip.
-     The surface remains full-width, while the strip above it can toggle or
-     switch the open panel just like reader-dev's anchored popovers. */
-  padding: calc(58px + env(safe-area-inset-top)) 0 0;
-  overflow-x: hidden;
-  overflow-y: visible;
-  background-color: color-mix(in srgb, var(--reader-popup-bg) 97%, transparent);
-  backdrop-filter: none;
-}
-
-.reader-mobile-workspace-primary .reader-mobile-workspace-body {
-  width: 100%;
-  height: auto;
-  min-height: 0;
-  max-height: 100dvh;
-  overflow: visible;
-}
-
-.reader-mobile-workspace-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  margin-bottom: 10px;
-}
-
-.reader-mobile-workspace-title {
-  min-width: 0;
-  color: var(--reader-accent, #ed4259);
-  border-bottom: 1px solid var(--reader-accent, #ed4259);
-  font-size: 18px;
-  line-height: 1.6;
-  white-space: nowrap;
-}
-
-.reader-mobile-workspace-actions {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-  min-width: 0;
-}
-
-.reader-mobile-workspace-actions :deep(button),
-.reader-mobile-workspace-close {
-  padding: 0;
-  color: var(--reader-accent, #ed4259);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
+  font-family: initial;
   font-size: 14px;
-  line-height: 28px;
-}
-
-.reader-mobile-workspace-actions :deep(button:disabled),
-.reader-mobile-workspace-close:disabled {
-  color: color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 62%, transparent);
-  cursor: default;
-}
-
-.reader-mobile-workspace-body {
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
+  line-height: 1.4;
+  text-align: justify;
+  word-break: break-all;
 }
 </style>

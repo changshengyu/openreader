@@ -1,8 +1,19 @@
 import { unref } from 'vue'
 import {
   readerFlipPageLayout,
-  readerVerticalPageLayout,
+  readerVerticalCurrentPage,
+  readerVerticalPageCount,
 } from '../utils/readerPagination.js'
+
+// reader-dev computePages measures the rendered Content element, not the scroller with its
+// bars and bottom spacing; continuous modes span every rendered chapter.
+function chapterContentHeight(body) {
+  const blocks = body.querySelectorAll?.('.chapter-content') || []
+  if (!blocks.length) return Number(body.scrollHeight) || 0
+  const first = blocks[0].getBoundingClientRect()
+  const last = blocks[blocks.length - 1].getBoundingClientRect()
+  return Math.max(0, last.bottom - first.top)
+}
 
 export function useReaderLayout(options) {
   const windowTarget = options.windowTarget ?? window
@@ -52,15 +63,25 @@ export function useReaderLayout(options) {
       return
     }
     if (['page', 'scroll', 'scroll2'].includes(options.reader.mode)) {
-      const layout = readerVerticalPageLayout({
-        scrollHeight: viewportElement.scrollHeight,
-        clientHeight: viewportElement.clientHeight,
-        scrollTop: viewportElement.scrollTop,
-        pageHeight: options.getScrollStep(),
+      const typography = {
+        fontSize: options.reader.fontSize,
+        lineHeight: options.reader.lineHeight,
+        paragraphSpace: options.reader.paragraphSpace,
+      }
+      const viewportHeight = windowTarget.innerHeight || viewportElement.clientHeight
+      const pageCount = readerVerticalPageCount({
+        contentHeight: chapterContentHeight(body),
+        viewportHeight,
+        ...typography,
       })
-      options.pageHeight.value = layout.pageHeight
-      options.pageCount.value = layout.pageCount
-      options.page.value = layout.page
+      options.pageHeight.value = options.getScrollStep()
+      options.pageCount.value = pageCount
+      options.page.value = readerVerticalCurrentPage({
+        scrollTop: viewportElement.scrollTop,
+        viewportHeight,
+        pageCount,
+        ...typography,
+      }) - 1
       return
     }
     options.pageCount.value = 1

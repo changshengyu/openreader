@@ -7,11 +7,8 @@
   >
     <ReaderDesktopTools
       v-if="!isMobileReader"
-      :auto-reading="autoReading"
       :auto-reading-supported="autoReadingSupportedForChapter"
-      :tts-playing="tts.state.playing"
       :tts-supported="ttsSupportedForChapter"
-      :active-panel="desktopWorkspacePanel"
       :is-night="isNightTheme"
       @action="handleDesktopToolAction"
     />
@@ -22,30 +19,15 @@
       :title="desktopWorkspaceTitle"
       @close="closeDesktopWorkspace"
     >
-      <template #actions>
-        <template v-if="desktopWorkspacePanel === 'shelf'">
-          <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
-            {{ shelfLoading ? '刷新中...' : '刷新' }}
-          </button>
-        </template>
-        <template v-else-if="desktopWorkspacePanel === 'toc'">
-          <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
-          <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
-          <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
-          <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
-          <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
-        </template>
-      </template>
-
       <ReaderShelfPanel
         v-if="desktopWorkspacePanel === 'shelf'"
         ref="shelfPanelRef"
-        v-loading="shelfLoading"
         :books="filteredShelfBooks"
         :current-book-id="bookId"
         :progress-by-book="reader.progressByBook"
         :loading="shelfLoading"
         @select="changeBookFromShelf"
+        @refresh="refreshReaderShelf"
       />
       <SourceSwitchPanel
         v-else-if="desktopWorkspacePanel === 'source'"
@@ -60,6 +42,7 @@
         :group="sourceGroup"
         :groups="sourceGroups"
         :has-more="sourceHasMore"
+        :source-total="sourceGroupOptions.length"
         @refresh="refreshSourceCandidates"
         @load-more="loadMoreSourceCandidates"
         @group-change="changeSourceGroup"
@@ -73,9 +56,12 @@
         :reverse="tocReverse"
         :locate-key="tocLocateKey"
         :browser-cached-map="browserCachedChapters"
-        :is-night="isNightTheme"
-        desktop-grid
+        :can-change-rule="canChangeLocalTocRule"
+        :refreshing="tocRefreshing"
         @jump="jumpFromToc"
+        @toggle-reverse="toggleTocReverse"
+        @change-rule="changeReaderLocalTocRule"
+        @refresh="refreshTocDrawer"
       />
       <ReaderSettingsPanel
         v-else-if="desktopWorkspacePanel === 'settings'"
@@ -100,9 +86,7 @@
     <ReaderMobileChrome
       v-if="isMobileReader"
       :visible="mobileChromeVisible"
-      :auto-reading="autoReading"
       :auto-reading-supported="autoReadingSupportedForChapter"
-      :tts-playing="tts.state.playing"
       :tts-supported="ttsSupportedForChapter"
       :is-night="isNightTheme"
       :book-progress-label="bookProgressLabel"
@@ -113,13 +97,11 @@
       :cache-visible="showCacheContentZone"
       :caching="isCachingContent"
       :cache-status-text="cachingContentTip"
-      :previous-disabled="currentIndex <= 0"
-      :next-disabled="currentIndex >= chapters.length - 1"
       @action="handleMobileChromeAction"
-      @cache="cacheFollowingChapters"
-      @cache-cancel="cancelCachingContent"
+      @cache="runWithPrimaryPanelsClosed(() => cacheFollowingChapters($event))"
+      @cache-cancel="runWithPrimaryPanelsClosed(cancelCachingContent)"
       @page-progress-input="handleMobilePageProgressInput"
-      @page-progress-change="handleMobilePageProgressChange"
+      @page-progress-change="runWithPrimaryPanelsClosed(() => handleMobilePageProgressChange($event))"
     />
 
     <button
@@ -221,13 +203,11 @@
       :cache-visible="showCacheContentZone"
       :caching="isCachingContent"
       :cache-status-text="cachingContentTip"
-      :previous-disabled="currentIndex <= 0"
-      :next-disabled="currentIndex >= chapters.length - 1"
-      @cache-toggle="toggleCacheContentZone"
-      @cache="cacheFollowingChapters"
-      @cache-cancel="cancelCachingContent"
-      @previous="goChapter(currentIndex - 1)"
-      @next="goChapter(currentIndex + 1)"
+      @cache-toggle="handleDesktopToolAction('cache')"
+      @cache="runWithPrimaryPanelsClosed(() => cacheFollowingChapters($event))"
+      @cache-cancel="runWithPrimaryPanelsClosed(cancelCachingContent)"
+      @previous="handleDesktopToolAction('previous')"
+      @next="handleDesktopToolAction('next')"
     />
 
     <!-- TTS 朗读条 -->
@@ -258,123 +238,87 @@
     <!-- Toast -->
     <div v-if="toastMsg" class="reader-toast">{{ toastMsg }}</div>
 
-    <!-- ===== 移动端书架面板 ===== -->
+    <!-- ===== 移动端主面板：reader-dev mini popover，盖住顶栏 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showShelfDrawer"
-      primary
-      :show-header="false"
       :title="`书架(${filteredShelfBooks.length})`"
-      @close="showShelfDrawer = false"
     >
-      <div class="reader-mobile-primary-popover-body reader-mobile-primary-shelf">
-        <div class="reader-mobile-primary-title-zone">
-          <div class="reader-mobile-primary-title">书架({{ filteredShelfBooks.length }})</div>
-          <div class="reader-mobile-primary-actions">
-            <button type="button" :disabled="shelfLoading" @click="refreshReaderShelf">
-              {{ shelfLoading ? '刷新中...' : '刷新' }}
-            </button>
-          </div>
-        </div>
-        <ReaderShelfPanel
-          ref="shelfPanelRef"
-          v-loading="shelfLoading"
-          :books="filteredShelfBooks"
-          :current-book-id="bookId"
-          :progress-by-book="reader.progressByBook"
-          :loading="shelfLoading"
-          @select="changeBookFromShelf"
-        />
-      </div>
+      <ReaderShelfPanel
+        ref="shelfPanelRef"
+        :books="filteredShelfBooks"
+        :current-book-id="bookId"
+        :progress-by-book="reader.progressByBook"
+        :loading="shelfLoading"
+        @select="changeBookFromShelf"
+        @refresh="refreshReaderShelf"
+      />
     </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 移动端目录面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showTocDrawer"
-      primary
-      :show-header="false"
       :title="`目录(${chapters.length})`"
-      @close="showTocDrawer = false"
     >
-      <div class="reader-mobile-primary-popover-body reader-mobile-primary-toc">
-        <div class="reader-mobile-primary-title-zone">
-          <div class="reader-mobile-primary-title">目录<span v-if="chapters.length">({{ chapters.length }})</span></div>
-          <div class="reader-mobile-primary-actions">
-            <button v-if="chapters.length" type="button" @click="toggleTocReverse">{{ tocReverse ? '顺序' : '倒序' }}</button>
-            <button v-if="chapters.length" type="button" @click="scrollTocTop">顶部</button>
-            <button v-if="chapters.length" type="button" @click="scrollTocBottom">底部</button>
-            <button v-if="canChangeLocalTocRule" type="button" :disabled="tocRefreshing" @click="changeReaderLocalTocRule">修改规则</button>
-            <button type="button" :disabled="tocRefreshing" @click="refreshTocDrawer">{{ tocRefreshing ? '刷新中...' : '刷新' }}</button>
-          </div>
-        </div>
-        <ReaderTocPanel
-          ref="tocPanelRef"
-          :chapters="chapters"
-          :current-index="currentIndex"
-          :reverse="tocReverse"
-          :locate-key="tocLocateKey"
-          :browser-cached-map="browserCachedChapters"
-          :is-night="isNightTheme"
-          @jump="jumpFromToc"
-        />
-      </div>
+      <ReaderTocPanel
+        ref="tocPanelRef"
+        :chapters="chapters"
+        :current-index="currentIndex"
+        :reverse="tocReverse"
+        :locate-key="tocLocateKey"
+        :browser-cached-map="browserCachedChapters"
+        :can-change-rule="canChangeLocalTocRule"
+        :refreshing="tocRefreshing"
+        @jump="jumpFromToc"
+        @toggle-reverse="toggleTocReverse"
+        @change-rule="changeReaderLocalTocRule"
+        @refresh="refreshTocDrawer"
+      />
     </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 移动端书源面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSourceDrawer"
-      primary
-      :show-header="false"
       title="书源"
-      @close="showSourceDrawer = false"
     >
-      <div class="reader-mobile-primary-popover-body reader-mobile-primary-source">
-        <SourceSwitchPanel
-          :book="book"
-          :sources="sourceCandidates"
-          :loading="loadingSources"
-          :opening="openingSources"
-          :refreshing="refreshingSources"
-          :loading-more="loadingMoreSources"
-          :changing-source="changingSource"
-          :current-source-name="currentSourceName"
-          :group="sourceGroup"
-          :groups="sourceGroups"
-          :has-more="sourceHasMore"
-          @refresh="refreshSourceCandidates"
-          @load-more="loadMoreSourceCandidates"
-          @group-change="changeSourceGroup"
-          @change="changeSource"
-        />
-      </div>
+      <SourceSwitchPanel
+        :book="book"
+        :sources="sourceCandidates"
+        :loading="loadingSources"
+        :opening="openingSources"
+        :refreshing="refreshingSources"
+        :loading-more="loadingMoreSources"
+        :changing-source="changingSource"
+        :current-source-name="currentSourceName"
+        :group="sourceGroup"
+        :groups="sourceGroups"
+        :has-more="sourceHasMore"
+        :source-total="sourceGroupOptions.length"
+        @refresh="refreshSourceCandidates"
+        @load-more="loadMoreSourceCandidates"
+        @group-change="changeSourceGroup"
+        @change="changeSource"
+      />
     </ReaderMobileWorkspacePanel>
 
-    <!-- ===== 移动端设置面板 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSettingsDrawer"
-      primary
       title="设置"
-      :show-header="false"
-      @close="showSettingsDrawer = false"
     >
-      <div class="reader-mobile-primary-popover-body reader-mobile-primary-settings">
-        <ReaderSettingsPanel
-          v-model:custom-bg="customBg"
-          v-model:line-height="sliderLineHeight"
-          :reader="reader"
-          :font-options="fontOptions"
-          :theme-presets="themePresets"
-          :mini-interface="isMobileReader"
-          :viewport-width="windowWidth"
-          @mode-change="onModeChange"
-          @theme-change="setTheme"
-          @pick-bg-image="pickBgImage"
-          @clear-bg-image="clearBgImage"
-          @pick-font-file="pickFontFile"
-          @clear-font-file="clearFontFile"
-          @open-replace-rules="openReplaceRules"
-          @show-click-zone="showClickZone"
-        />
-      </div>
+      <ReaderSettingsPanel
+        v-model:custom-bg="customBg"
+        v-model:line-height="sliderLineHeight"
+        :reader="reader"
+        :font-options="fontOptions"
+        :theme-presets="themePresets"
+        :mini-interface="isMobileReader"
+        :viewport-width="windowWidth"
+        @mode-change="onModeChange"
+        @theme-change="setTheme"
+        @pick-bg-image="pickBgImage"
+        @clear-bg-image="clearBgImage"
+        @pick-font-file="pickFontFile"
+        @clear-font-file="clearFontFile"
+        @open-replace-rules="openReplaceRules"
+        @show-click-zone="showClickZone"
+      />
     </ReaderMobileWorkspacePanel>
 
     <el-image-viewer
@@ -487,6 +431,7 @@ import {
   shouldUseDocumentReaderScroll,
 } from '../utils/readerScrollViewport'
 import {
+  readerReadWidthConfig,
   readerScrollBehaviorForDuration,
   readerScrollStep,
 } from '../utils/readerPagination'
@@ -729,8 +674,6 @@ const {
   open: openTocDrawer,
   locateCurrentChapter: locateTocCurrentChapter,
   toggleReverse: toggleTocReverse,
-  scrollTop: scrollTocTop,
-  scrollBottom: scrollTocBottom,
   jump: jumpFromToc,
   refresh: refreshTocDrawer,
   runRefreshing: runTocRefreshing,
@@ -945,6 +888,9 @@ const effectiveReaderState = {
   },
   get lineHeight() {
     return reader.lineHeight
+  },
+  get paragraphSpace() {
+    return reader.paragraphSpace
   },
   get animateDuration() {
     return reader.animateDuration
@@ -1280,7 +1226,6 @@ const effectiveReaderTextShadow = computed(() => readerTextShadow({
 const NIGHT_CHROME_STYLE = Object.freeze({
   '--reader-chrome-text': '#666',
   '--reader-chrome-border': '#444',
-  '--reader-float-border': 'transparent',
   '--reader-slider-accent': '#185798',
   '--reader-slider-runway': '#282828',
   '--reader-settings-text': '#606266',
@@ -1297,11 +1242,16 @@ const NIGHT_LIST_STYLE = Object.freeze({
   '--reader-list-text': '#606266',
   '--reader-list-cached-text': '#444',
   '--reader-list-border': '#333',
-  '--reader-list-active-text': '#ed4259',
-  '--reader-list-active-bg': 'transparent',
   '--reader-shelf-title-text': '#888',
   '--reader-shelf-chapter-text': '#555',
   '--reader-source-chapter-text': '#888',
+})
+
+// reader-dev Reader.vue `.kindle-page .day`: the Kindle (简洁) page type in day light tool borders and
+// darker labels, page and cache tips and running title.
+const KINDLE_DAY_CHROME_STYLE = Object.freeze({
+  '--reader-chrome-label': '#444',
+  '--reader-chrome-border': '#fefefefe',
 })
 
 const readerStyle = computed(() => ({
@@ -1322,15 +1272,15 @@ const readerStyle = computed(() => ({
   '--reader-control-bg': reader.themeType === 'night' ? 'rgba(45, 45, 45, 0.5)' : 'rgba(255, 255, 255, 0.5)',
   '--reader-control-border': reader.themeType === 'night' ? '#666' : 'rgba(0, 0, 0, 0.1)',
   '--reader-accent': '#ed4259',
-  '--reader-active-text': reader.themeType === 'night' ? '#7ed8d4' : '#0f5451',
   ...(reader.themeType === 'night' ? NIGHT_CHROME_STYLE : {}),
   ...(reader.themeType === 'night' ? NIGHT_LIST_STYLE : {}),
+  ...(reader.pageType === 'kindle' && reader.themeType !== 'night' ? KINDLE_DAY_CHROME_STYLE : {}),
   '--reader-font-weight': reader.fontWeight,
   '--reader-brightness': `${reader.brightness}%`,
   '--reader-dim-opacity': Math.max(0, 1 - reader.brightness / 100),
   '--reader-line-height': reader.lineHeight,
   '--reader-paragraph-space': `${reader.paragraphSpace}em`,
-  '--reader-read-width': `${reader.columnWidth}px`,
+  '--reader-read-width': `${readerReadWidthConfig({ readWidth: reader.columnWidth, windowWidth: windowWidth.value })}px`,
   '--reader-animate-duration': `${reader.animateDuration}ms`,
   '--reader-tts-bottom-space': ttsReadBarLayoutActive.value
     ? `${ttsConfigExpanded.value ? 280 : 80}px`
@@ -1498,6 +1448,12 @@ function openDesktopToolPanel(panel, open) {
 
 function runWithDesktopWorkspaceClosed(action) {
   if (!isMobileReader.value) closeDesktopWorkspace()
+  return action?.()
+}
+
+// reader-dev's primary panels are click popovers: a press on another control also closes them.
+function runWithPrimaryPanelsClosed(action) {
+  closeReaderPrimaryPanels()
   return action?.()
 }
 
@@ -2019,9 +1975,12 @@ const {
   handleMobileChromeAction,
 } = useReaderTools({
   currentIndex,
+  chapterCount: () => chapters.value.length,
   mobileChromeVisible,
   goChapter,
   toggleChrome: toggleReaderChrome,
+  notify: message => showReaderToast(message),
+  closePrimaryPanels: closeReaderPrimaryPanels,
   actions: {
     home: () => runWithDesktopWorkspaceClosed(goShelf),
     shelf: () => openReaderPrimaryTool('shelf', openShelfPanel),
@@ -2505,10 +2464,8 @@ function readError(err, fallback) {
 <style scoped>
 /* ---- 阅读器壳 — 羊皮纸 ---- */
 .reader-shell {
-  --reader-frame-width: min(var(--reader-read-width, 800px), calc(100vw - 150px));
+  --reader-frame-width: var(--reader-read-width, 800px);
   --reader-content-width: calc(var(--reader-frame-width) - 130px);
-  --reader-left-x: calc(50vw - var(--reader-frame-width) / 2 - 68px);
-  --reader-right-x: calc(50vw + var(--reader-frame-width) / 2 + 10px);
   --reader-body-texture: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyAgMAAABjUWAiAAAADFBMVEXr5djn4dTp49bt59rT6LKxAAACnElEQVQozw3NUUwScRzA8d8R6MF8YMIx8uk47hDSJbj14IPzOGc7jPLvwTGg5uAYDbe2tt56cLtznvEnS6yDqCcEaWi91DvrbLJZz7b1aFtz1aO+2OZWvn+/+4CHeB6BMYaqBLfjPNRY6RFT2JJYby+uAk4WUTrtlmJ4hgPYb2q1XGDQjaK8pgJHvqNaAX+KyuIkDXpgQinb46nOulnn4b5laUHTxLfseeArAoNOeJlOIjdoal0n1FA7tKFv5roK+YaHOqP3P0XyKHPHY+MhTRe5uCZnKhtJKw2eSrSoBDPLtpZuNcFNJcFyiCMxOaaHIfXz1e8HQbWLySrBQ4x0x1qlhnHlnz2HQEC6TNb0gTHXa7IKhcaHqkE015hk9whA0YeWiLIXf7Fa2CZo3DjqjB4tTuF8jIcbfcEx5z/w4sXpQhXW+ju0cqh7icTFmRMaG+v6CIvTjcSpHcH8JEsF3EPh3fRthYdVLLgI2fWXm85/pGFE4l046s70L+yKCcirGFR+jbpy3kMmiCGHrSezVONsn1RBixncyk2PcVWk7DlgxHo8iZwDyq5uAUD854dZhdIFYzKoQig2haUKi1lVufz2RZUZPZ41n/hrOQB6h0Hhg8I367FNoEHgeM/KY7szSeQwD8q2WE3HM35ZLl0K1MJiOtHIkBclRQUwZnyOWcNsRQQgVLj1PSqkjF9DsoOSaSg3iinKzvfmgsNFFfpP/2T3GLGvL4fHEfwIX1sVvXcPqLztehWGcfn9nI2U9nTfCgJPe/jFPLZwgVEzimBgAm0VIyK2tt1cE/AzQdLK+SxLSQ4aDCZnnId94OG2S1XwvnTbNk/ZnhyRCQT+sZM6z9g6LXL1BOBe+zJySiFkHAINCtnQokbCJ/apCv0foqPiZVfhpywAAAAASUVORK5CYII=");
   --paper-texture: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyAgMAAABjUWAiAAAACVBMVEX28ef48+n69esoK7jYAAAB4UlEQVQozw2OsW4bQQxEhwLXkDrysGdEqRRgVShfQQq8wOr2jD0jSpXCLvwXbtKfADlFqgSwC/9ljqweZgYzQFnb/QGepYhA9jzmTc1WaSEtQpbFgjWATI00ZZtIckXx8q2Oe5yEByBy+RHOTcM+VVTadULsvxvRC/q8WTwgcWGD+Mnaqa0oy2gw2pKFzK+PzEsus5hP9AHojKslVynLlioVTBEN8cjDNnZoR1uMGTiZAAN47HxMtEkGUE9b8HWzkqNX5Lpk0yVziAJOs46rK1pG/xNuXLjz95fSDoJE5IqG23MAYPtWoeWPvfVtIV/Ng9oH3W0gGMPIOqd4MK4QZ55dV61gOb8Zxp7I9qayaGxp6Q91cmC0ZRdBwEQVHWzSAanlZwVWc9yljeTCeaHjBVvlPSLeyeBUT2rPdJegQI103jVS3uYkyIx1il6mslMDedZuOkwzolsagvPuQAfp7cYg7k9V1NOxfq64PNSvMdwONV4VYEmqlbpZy5OAakRKkjPnL4CBv5/OZRgoWHBmNbxB0LgB1I4vXFj93UoF2/0TPEsWwV9EhbIiTPqYoTHYoMn3enTDjmrFeDTIzaL1bUC/PBIMuF+vSSYSaxoVt90EO3Gu1zrMuMRGUk7Ffv3L+A931Gsb/yBoIgAAAABJRU5ErkJggg==");
   min-height: 100vh;
@@ -2671,7 +2628,7 @@ function readError(err, fallback) {
 .reader-toast {
   background: rgba(30, 41, 59, 0.92); border-radius: 8px; bottom: 96px; color: #fff;
   left: 50%; padding: 10px 18px; position: fixed;
-  transform: translateX(-50%); z-index: 5; font-size: 14px;
+  transform: translateX(-50%); z-index: 14; font-size: 14px;
 }
 
 .reader-shell :deep(.el-drawer) {
@@ -2728,9 +2685,8 @@ function readError(err, fallback) {
   padding: calc(6px + env(safe-area-inset-top)) 16px 6px;
   box-sizing: border-box;
   background: inherit;
-  color: var(--reader-text);
+  color: var(--reader-chrome-label, var(--reader-chrome-text, rgba(0, 0, 0, 0.4)));
   font-size: 12px;
-  opacity: 0.58;
 }
 
 .reader-shell.mini-interface.flip .reader-page-head {
@@ -2809,88 +2765,6 @@ function readError(err, fallback) {
   column-width: calc(100vw - 16px);
   column-gap: 16px;
   column-fill: auto;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-popover-body {
-  box-sizing: border-box;
-  width: 100%;
-  height: auto;
-  min-height: 0;
-  padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
-  color: var(--reader-popup-text, var(--reader-text));
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-shelf,
-.reader-shell.mini-interface .reader-mobile-primary-toc,
-.reader-shell.mini-interface .reader-mobile-primary-source {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 0;
-  overflow: visible;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-settings {
-  max-height: none;
-  overflow: visible;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-title-zone {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  margin: 0 0 20px;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-title {
-  width: fit-content;
-  color: var(--reader-accent, #ed4259);
-  border-bottom: 1px solid var(--reader-accent, #ed4259);
-  font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 18px;
-  font-weight: 400;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-actions {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0 15px;
-  min-width: 0;
-  color: var(--reader-accent, #ed4259);
-  font-size: 14px;
-  line-height: 26px;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-actions button {
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  line-height: inherit;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-actions button:disabled {
-  color: #606266;
-  cursor: default;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-shelf :deep(.reader-shelf-list),
-.reader-shell.mini-interface .reader-mobile-primary-toc :deep(.toc-list),
-.reader-shell.mini-interface .reader-mobile-primary-source :deep(.source-switch-list) {
-  height: 300px;
-  max-height: 300px;
-  min-height: 0;
-  padding-bottom: 0;
-}
-
-.reader-shell.mini-interface .reader-mobile-primary-source :deep(.title-zone) {
-  margin-bottom: 20px;
 }
 
 .reader-shell.mini-interface .reader-mobile-primary-dismiss {

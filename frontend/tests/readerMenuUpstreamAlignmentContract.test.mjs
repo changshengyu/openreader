@@ -41,12 +41,20 @@ function template(src) {
   return src.slice(src.indexOf('<template>'), src.lastIndexOf('</template>'))
 }
 
+// The element opened at startPattern, up to its matching close tag (same-name children nest).
 function block(src, startPattern) {
   const start = src.search(startPattern)
   assert.ok(start >= 0, `missing ${startPattern}`)
   const tag = src.slice(start).match(/^<([a-z-]+)/)[1]
-  const end = src.indexOf(`</${tag}>`, start)
-  return src.slice(start, end)
+  const tags = new RegExp(`<(/?)${tag}\\b[^>]*?(/?)>`, 'g')
+  tags.lastIndex = start
+  let depth = 0
+  for (let match = tags.exec(src); match; match = tags.exec(src)) {
+    if (match[1]) depth -= 1
+    else if (!match[2]) depth += 1
+    if (depth === 0) return src.slice(start, match.index)
+  }
+  assert.fail(`unclosed <${tag}> at ${startPattern}`)
 }
 
 test('reader-dev chapter progress is the integer chapter percentage', () => {
@@ -247,9 +255,10 @@ test('the toolbar glyphs come from the reader-dev iconfont', () => {
     for (const stale of ['ArrowUpBold', 'ArrowDownBold', 'Notebook', 'Grid', 'Setting,', 'List,']) {
       assert.ok(!src.includes(stale), `${stale} is not a reader-dev toolbar icon`)
     }
-    assert.match(src, /\bTop,/)
-    assert.match(src, /\bBottom,/)
   }
+  // Only the mini float zone has 顶部/底部 (el-icon-top/el-icon-bottom); the desktop rail uses glyphs.
+  assert.match(mobileChrome, /\bTop,/)
+  assert.match(mobileChrome, /\bBottom,/)
 })
 
 test('the mobile toolbar, float buttons and bottom bar have the reader-dev geometry', () => {

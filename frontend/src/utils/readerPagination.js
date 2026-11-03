@@ -11,18 +11,72 @@ export function readerBookProgress({
   return clampReaderPercent((Number(chapterIndex) + clampReaderPercent(chapterPercent)) / total)
 }
 
+// reader-dev Reader.vue#readingProgress: the share of chapters reached, as a whole percentage.
+export function readerChapterProgressLabel({ chapterIndex, totalChapters }) {
+  const total = Number(totalChapters) || 0
+  if (total <= 0) return ''
+  return `${Math.trunc(((Number(chapterIndex) || 0) + 1) * 100 / total)}%`
+}
+
+// reader-dev Reader.vue#scrollOffset: two lines plus two paragraph gaps.
+function readerScrollOffset({ fontSize, lineHeight, paragraphSpace }) {
+  const size = Number(fontSize || 18)
+  return size * Number(lineHeight || 1.8) * 2 + size * Number(paragraphSpace || 0) * 2
+}
+
 export function readerScrollStep({
   viewportHeight,
   fontSize,
   lineHeight,
   paragraphSpace,
 }) {
-  const size = Number(fontSize || 18)
-  const offset = (
-    size * Number(lineHeight || 1.8) * 2
-    + size * Number(paragraphSpace || 0) * 2
-  )
+  const offset = readerScrollOffset({ fontSize, lineHeight, paragraphSpace })
   return Math.max(1, Math.floor(Number(viewportHeight || 0) - offset))
+}
+
+// reader-dev Reader.vue#computePages outside slide reading: the content height in pages of
+// the window height minus the scroll offset.
+export function readerVerticalPageCount({
+  contentHeight,
+  viewportHeight,
+  fontSize,
+  lineHeight,
+  paragraphSpace,
+}) {
+  const pageHeight = Number(viewportHeight || 0) - readerScrollOffset({ fontSize, lineHeight, paragraphSpace })
+  if (!(pageHeight > 0)) return 1
+  return Math.max(1, Math.ceil((Number(contentHeight) || 0) / pageHeight))
+}
+
+// reader-dev Reader.vue#scrollHandler; the page slider holds it within 1…pageCount.
+export function readerVerticalCurrentPage({
+  scrollTop,
+  viewportHeight,
+  fontSize,
+  lineHeight,
+  paragraphSpace,
+  pageCount,
+}) {
+  const height = Number(viewportHeight || 0)
+  const pageHeight = height - readerScrollOffset({ fontSize, lineHeight, paragraphSpace })
+  const count = Math.max(1, Number(pageCount) || 1)
+  if (!(pageHeight > 0)) return 1
+  const page = Math.round(((Number(scrollTop) || 0) + height) / pageHeight)
+  return Math.max(1, Math.min(count, page))
+}
+
+// reader-dev Reader.vue#showPage outside slide reading.
+export function readerVerticalPageScrollTop({ page, viewportHeight }) {
+  return Math.max(0, (Number(viewportHeight || 0) - 10) * ((Number(page) || 1) - 1))
+}
+
+// reader-dev Reader.vue#readWidthConfig: the reading width steps down by 20px until the
+// window keeps 140px for the side bars.
+export function readerReadWidthConfig({ readWidth, windowWidth }) {
+  let width = Number(readWidth) || 800
+  const limit = (Number(windowWidth) || 0) - 140
+  while (width > limit && width > 20) width -= 20
+  return width
 }
 
 export function readerScrollBehaviorForDuration(animateDuration) {
@@ -50,24 +104,6 @@ export function readerFlipPageLayout({
     pageHeight: height,
     pageCount,
     page: Math.min(Math.max(0, Number(currentPage) || 0), pageCount - 1),
-  }
-}
-
-export function readerVerticalPageLayout({
-  scrollHeight,
-  clientHeight,
-  scrollTop,
-  pageHeight,
-}) {
-  const height = Math.max(1, Number(pageHeight) || 0)
-  const totalHeight = Math.max(0, Number(scrollHeight) || 0)
-  const scrollBottom = Math.max(totalHeight - (Number(clientHeight) || 0), 1)
-  const pageCount = Math.max(1, Math.ceil(totalHeight / height))
-  const page = Math.round(((Number(scrollTop) || 0) / scrollBottom) * Math.max(pageCount - 1, 0))
-  return {
-    pageHeight: height,
-    pageCount,
-    page: Math.max(0, Math.min(pageCount - 1, page)),
   }
 }
 

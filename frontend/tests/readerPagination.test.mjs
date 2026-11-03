@@ -6,7 +6,8 @@ import {
   readerFlipPageLayout,
   readerScrollBehaviorForDuration,
   readerScrollStep,
-  readerVerticalPageLayout,
+  readerVerticalCurrentPage,
+  readerVerticalPageCount,
 } from '../src/utils/readerPagination.js'
 
 test('derives smooth whole-book display progress without owning mobile navigation', () => {
@@ -53,25 +54,11 @@ test('clamps flip pagination when content or viewport changes', () => {
   assert.equal(readerFlipChapterPercent(0, 1), 0)
 })
 
-test('derives vertical page count and current page from scroll position', () => {
-  assert.deepEqual(readerVerticalPageLayout({
-    scrollHeight: 2400,
-    clientHeight: 800,
-    scrollTop: 800,
-    pageHeight: 720,
-  }), {
-    pageHeight: 720,
-    pageCount: 4,
-    page: 2,
-  })
-  assert.deepEqual(readerVerticalPageLayout({
-    scrollHeight: 0,
-    clientHeight: 800,
-    scrollTop: 100,
-    pageHeight: 0,
-  }), {
-    pageHeight: 1,
-    pageCount: 1,
-    page: 0,
-  })
+test('derives vertical page count and current page like reader-dev computePages and scrollHandler', () => {
+  const typography = { fontSize: 20, lineHeight: 1.5, paragraphSpace: 0.5 }
+  // 800px window minus two lines and two paragraph gaps (80px) gives 720px pages.
+  assert.equal(readerVerticalPageCount({ contentHeight: 2400, viewportHeight: 800, ...typography }), 4)
+  assert.equal(readerVerticalCurrentPage({ scrollTop: 800, viewportHeight: 800, pageCount: 4, ...typography }), 2)
+  assert.equal(readerVerticalPageCount({ contentHeight: 0, viewportHeight: 0, ...typography }), 1)
+  assert.equal(readerVerticalCurrentPage({ scrollTop: 100, viewportHeight: 0, pageCount: 1, ...typography }), 1)
 })

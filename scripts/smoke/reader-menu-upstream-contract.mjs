@@ -162,7 +162,8 @@ function rects(page, selector) {
       y: rect.y,
       w: rect.width,
       h: rect.height,
-      text: (node.innerText || '').trim().replace(/\s+/g, ' '),
+      // The iconfont glyphs are private-use characters; keep the readable text.
+      text: (node.innerText || '').replace(/[\ue000-\uf8ff]/g, '').trim().replace(/\s+/g, ' '),
       color: style.color,
       backgroundColor: style.backgroundColor,
       backgroundImage: style.backgroundImage,
@@ -177,13 +178,8 @@ function rects(page, selector) {
   }).filter(rect => rect.display !== 'none' && rect.w > 0 && rect.h > 0), selector)
 }
 
-function hit(page, x, y) {
-  return page.evaluate(({ px, py }) => {
-    const node = document.elementFromPoint(px, py)
-    if (!node) return ''
-    const owner = node.closest('[class]')
-    return owner ? String(owner.className) : node.tagName
-  }, { px: x, py: y })
+function hitInside(page, x, y, selector) {
+  return page.evaluate(({ px, py, sel }) => Boolean(document.elementFromPoint(px, py)?.closest(sel)), { px: x, py: y, sel: selector })
 }
 
 async function tap(page, viewport, x, y) {
@@ -253,6 +249,11 @@ async function runViewport(browser, viewport) {
       })
       const labels = await rects(page, '.reader-mobile-top .icon-text')
       equal(labels.map(item => [item.color, item.fontSize]), Array(5).fill([label, '12px']), 'top tool labels')
+      // Glyph and label stack from the top of each tool: glyph 22px tall at y=11, label at y=33.
+      labels.forEach((item, i) => near(item.y, 33, `top tool ${i} label y`))
+      const topGlyphs = await rects(page, '.reader-mobile-top .iconfont')
+      equal(topGlyphs.length, 4, 'top tool glyphs')
+      topGlyphs.forEach((item, i) => { near(item.y, 11, `top glyph ${i} y`); near(item.h, 22, `top glyph ${i} height`) })
       const glyph = await page.evaluate(() => {
         const node = document.querySelector('.reader-mobile-top .iconfont')
         return node ? getComputedStyle(node).fontFamily : null
@@ -291,6 +292,9 @@ async function runViewport(browser, viewport) {
         near(tool.y, H - 46, `bottom tool ${i} y`); near(tool.h, 45, `bottom tool ${i} height`)
         equal(tool.color, icon, `bottom tool ${i} color`)
       })
+      const stepGlyphs = await rects(page, '.reader-mobile-bottom .mobile-chapter-step .iconfont')
+      equal(stepGlyphs.length, 2, 'chapter step glyphs')
+      stepGlyphs.forEach((item, i) => near(item.y, H - 46, `chapter step glyph ${i} y`))
       if (bottomTools.length === 3) {
         const half = bottomTools[0].x - 15
         near(bottomTools[1].x - (bottomTools[0].x + bottomTools[0].w), half * 2, 'bottom tools space-around')
@@ -319,6 +323,11 @@ async function runViewport(browser, viewport) {
         equal(item.color, icon, `rail item ${i} color`)
         equal(item.borderLeftColor, viewport.night ? 'rgb(68, 68, 68)' : 'rgba(0, 0, 0, 0.1)', `rail item ${i} border`)
       })
+      const railLabels = await rects(page, '.reader-left-rail .icon-text')
+      railLabels.forEach((item, i) => near(item.y, 34 + 61 * i, `rail label ${i} y`))
+      const railGlyphs = await rects(page, '.reader-left-rail .iconfont')
+      equal(railGlyphs.length, 6, 'rail glyphs (书源 is an Element icon)')
+      railGlyphs.forEach((item, i) => near(item.y, 12 + 61 * [0, 2, 3, 4, 5, 6][i], `rail glyph ${i} y`))
       const rounds = await rects(page, '.reader-right-rail .round-tool')
       rounds.forEach((button, i) => {
         near(button.x, W / 2 + frame / 2 + 12, `right float ${i} x`)
@@ -333,6 +342,8 @@ async function runViewport(browser, viewport) {
         near(item.x, W / 2 + frame / 2 + 8, `progress column ${i} x`); near(item.y, H - 133 + 44 * i, `progress column ${i} y`)
         near(item.w, 44, `progress column ${i} width`); near(item.h, 45, `progress column ${i} height`)
       })
+      const columnGlyphs = await rects(page, '.reader-page-control .iconfont')
+      columnGlyphs.forEach((item, i) => near(item.y, H - 133 + 44 * (i + 1) + 13, `progress column glyph ${i} y`))
       await clickCenter(page, viewport, '.progress-box')
       await page.waitForTimeout(300)
       const [cache] = await rects(page, '.reader-cache-zone')
@@ -363,7 +374,7 @@ async function runViewport(browser, viewport) {
       const titleSelector = name === '设置' ? '.settings-title' : `${panelSelector} .title-zone .title`
       const [title] = await rects(page, titleSelector)
       near(title?.x, panelX + inset, `${name} title x`); near(title?.y, 20, `${name} title y`)
-      if (viewport.mobile) ok(String(await hit(page, W / 2, 20)).includes('reader-mobile') || String(await hit(page, W / 2, 20)).includes('title') || String(await hit(page, W / 2, 20)).includes('settings'), `${name} panel covers the top bar (hit ${await hit(page, W / 2, 20)})`)
+      if (viewport.mobile) ok(await hitInside(page, W / 2, 20, panelSelector), `${name} panel covers the top bar`)
       if (name === '书架') {
         equal(title?.text, '书架(6)', 'shelf title')
         const books = await rects(page, `${panelSelector} .reader-shelf-card`)
@@ -383,9 +394,15 @@ async function runViewport(browser, viewport) {
         near(rows[0]?.w, viewport.mobile && W <= 500 ? panelW - 2 * inset : (panelW - 2 * inset) / 2, 'catalog row width')
         const [active] = await rects(page, `${panelSelector} .toc-item.active .log-text`)
         equal(active?.color, RED, 'current chapter color')
-        const [list] = await rects(page, `${panelSelector} .toc-list`)
-        const [activeRow] = await rects(page, `${panelSelector} .toc-item.active`)
-        near(activeRow?.y, list?.y, 'current chapter scrolled to the list top')
+        // PopCatalog jumpToCurrent: the current row goes to the list top as far as the list can scroll.
+        const scroll = await page.evaluate((sel) => {
+          const list = document.querySelector(`${sel} .toc-list`)
+          const active = list?.querySelector('.toc-item.active')
+          if (!list || !active) return null
+          const offset = active.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop
+          return { actual: list.scrollTop, expected: Math.min(offset, list.scrollHeight - list.clientHeight) }
+        }, panelSelector)
+        near(scroll?.actual, scroll?.expected ?? -1, 'current chapter scrolled toward the list top')
       }
       if (name === '书源') equal(title?.text, '来源(4)', 'source title')
       // Close by tapping the reading content below the panel: only the panel closes.
@@ -436,11 +453,12 @@ async function runViewport(browser, viewport) {
     if (overlay) { near(overlay.w, W, 'click zone width'); near(overlay.h, H, 'click zone height') }
     const closeBar = pieces[3]
     if (closeBar) { near(closeBar.y, H - 65, 'click zone close bar y'); near(closeBar.h, 45, 'click zone close bar height') }
+    // Lower half, outside the menu box and clear of the float buttons.
     const beforeTap = await scrollTop(page)
-    await tap(page, viewport, Math.round(W * 0.1), Math.round(H * 0.6))
+    await tap(page, viewport, Math.round(W / 2), Math.round(H * 0.75))
     await page.waitForTimeout(500)
     ok(await scrollTop(page) > beforeTap, 'a tap on the lower half pages through the overlay')
-    await page.getByText('关闭', { exact: true }).last().click()
+    await page.locator('.click-zone-close').click()
     await page.waitForTimeout(300)
     equal((await rects(page, '.click-zone-overlay')).length, 0, 'click zone closes')
   } catch (error) {

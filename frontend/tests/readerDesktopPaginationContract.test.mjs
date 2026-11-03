@@ -13,6 +13,8 @@ test('desktop reader click zones keep the upstream 30/40/30 geometry', () => {
   assert.match(zones, /\.tap-center\s*\{[^}]*top:\s*30%;[^}]*right:\s*30%;[^}]*bottom:\s*30%;[^}]*left:\s*30%;/s)
   assert.match(zones, /\.tap-upper\s*\{[^}]*height:\s*30%;/s)
   assert.match(zones, /\.tap-lower\s*\{[^}]*height:\s*30%;/s)
-  assert.match(zones, /grid-template-rows:\s*30% 40% 30%;/)
-  assert.match(zones, /grid-template-columns:\s*30% 40% 30%;/)
+  // 显示翻页区域 draws reader-dev's halves under a 30%–70% menu box (reader-menu contract D1).
+  assert.match(zones, /\.click-zone-menu\s*\{[^}]*top:\s*30%;[^}]*right:\s*30%;[^}]*bottom:\s*30%;[^}]*left:\s*30%;/s)
+  assert.match(zones, /\.click-zone-prev\s*\{[^}]*bottom:\s*50%;/s)
+  assert.match(zones, /\.click-zone-next\s*\{[^}]*top:\s*50%;/s)
 })

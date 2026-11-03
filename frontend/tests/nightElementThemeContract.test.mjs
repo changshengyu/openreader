@@ -293,16 +293,11 @@ test('the light home sidebar selects keep their text color at night', () => {
   assert.match(wrapper[1], /--el-select-multiple-input-color: var\(--el-text-color-regular\);/)
 })
 
-test('OpenReader-only catalog tag, empty states and loading masks get the decided night look', () => {
-  // D2: reader-dev's night tag convention (BookInfo.vue, Explore.vue, Index.vue).
+test('OpenReader-only empty states and loading masks get the decided night look', () => {
+  // D2 tag: 2026-11-03 user decision D1 of the reader-menu contract removed the catalog cache tag;
+  // reader-dev's catalog has no tag and only dims browser-cached chapters.
   const toc = source('components/reader/ReaderTocPanel.vue')
-  assert.match(toc, /<el-tag v-if="!showMeta && isCached\(item\)" size="small" type="success" :effect="isNight \? 'dark' : 'plain'">/)
-  assert.match(toc, /isNight: \{\n    type: Boolean,\n    default: false,\n  \},/)
-  const reader = source('views/Reader.vue')
-  const tocPanels = [...reader.matchAll(/<ReaderTocPanel\b[^>]*>/g)].map(match => match[0])
-  assert.equal(tocPanels.length, 2, 'Reader.vue renders the desktop and mobile catalogs')
-  for (const panel of tocPanels) assert.match(panel, /:is-night="isNightTheme"/)
-  assert.match(reader, /const isNightTheme = computed\(\(\) => reader\.themeType === 'night'\)/)
+  assert.doesNotMatch(toc, /<el-tag/)
 
   // D3: Element Plus's own dark empty illustration and the reader-dev night loading background.
   assertDeclarations('.night-theme .el-empty', {

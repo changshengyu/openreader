@@ -2,11 +2,14 @@ import { computed, ref, unref } from 'vue'
 import {
   clampReaderPercent,
   readerBookProgress,
+  readerChapterProgressLabel,
+  readerVerticalPageScrollTop,
 } from '../utils/readerPagination.js'
 import { createReaderScrollAnimator } from '../utils/readerAnimation.js'
 import { readerElementScrollTop } from '../utils/readerScrollViewport.js'
 
 export function useReaderProgressControls(options) {
+  const windowTarget = options.windowTarget ?? globalThis.window
   const mobilePageSliderDraft = ref(null)
   const scrollAnimator = options.scrollAnimator || createReaderScrollAnimator()
 
@@ -15,7 +18,10 @@ export function useReaderProgressControls(options) {
     chapterPercent: options.getCurrentChapterPercent(),
     totalChapters: options.chapters.value.length,
   }))
-  const bookProgressLabel = computed(() => `${Math.round(bookProgress.value * 100)}%`)
+  const bookProgressLabel = computed(() => readerChapterProgressLabel({
+    chapterIndex: options.currentIndex.value,
+    totalChapters: options.chapters.value.length,
+  }))
   const mobilePageSliderMax = computed(() => Math.max(1, Number(options.pageCount.value) || 1))
   const mobilePageSliderValue = computed(() => {
     const max = mobilePageSliderMax.value
@@ -102,10 +108,10 @@ export function useReaderProgressControls(options) {
       options.contentEl.value.scrollHeight - options.contentEl.value.clientHeight,
       0,
     )
-    const pageMax = Math.max(0, mobilePageSliderMax.value - 1)
-    const targetTop = pageMax > 0
-      ? Math.round((target / pageMax) * bottom)
-      : 0
+    const targetTop = Math.min(bottom, readerVerticalPageScrollTop({
+      page: target + 1,
+      viewportHeight: windowTarget?.innerHeight || options.contentEl.value.clientHeight,
+    }))
     options.page.value = target
     scrollAnimator.cancel()
     scrollAnimator.scrollTo(

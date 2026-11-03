@@ -53,21 +53,26 @@ test('calculates mobile flip pages from the upstream readable stride minus 16px'
 
 test('calculates vertical pages for paged and native continuous modes', () => {
   const fixture = createController()
+  Object.assign(fixture.state.reader, { fontSize: 18, lineHeight: 1.8, paragraphSpace: 0.2 })
+  // reader-dev computePages: the rendered chapters in pages of the 900px window minus 72px.
+  const block = (top, height) => ({ getBoundingClientRect: () => ({ top, bottom: top + height, height }) })
+  fixture.state.contentBody.value.querySelectorAll = selector => (
+    selector === '.chapter-content' ? [block(73, 1200), block(1273, 1000)] : []
+  )
   fixture.state.reader.mode = 'page'
   fixture.controller.update()
   assert.equal(fixture.state.pageHeight.value, 400)
-  assert.equal(fixture.state.pageCount.value, 4)
+  assert.equal(fixture.state.pageCount.value, 3)
   assert.equal(fixture.state.page.value, 1)
 
   fixture.state.reader.mode = 'scroll2'
   fixture.controller.update()
-  assert.equal(fixture.state.pageHeight.value, 400)
-  assert.equal(fixture.state.pageCount.value, 4)
+  assert.equal(fixture.state.pageCount.value, 3)
   assert.equal(fixture.state.page.value, 1)
 
   fixture.state.reader.mode = 'scroll'
   fixture.controller.update()
-  assert.equal(fixture.state.pageCount.value, 4)
+  assert.equal(fixture.state.pageCount.value, 3)
   assert.equal(fixture.state.page.value, 1)
 })
 

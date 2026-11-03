@@ -15,9 +15,10 @@ const panels = readFileSync(
   'utf8',
 )
 
+// The tools carry reader-dev's `.icon-text` labels.
 function toolOrder(source, labels) {
   const template = source.slice(0, source.indexOf('</template>'))
-  return labels.map(label => template.indexOf(`<span>${label}</span>`))
+  return labels.map(label => template.indexOf(`<span class="icon-text">${label}</span>`))
 }
 
 test('mobile Reader uses the upstream visible top-tool order', () => {
@@ -35,10 +36,12 @@ test('desktop Reader keeps the upstream rail order independently from mobile fle
 test('mobile Reader exposes the upstream top and bottom float controls', () => {
   const template = mobileChrome.slice(0, mobileChrome.indexOf('</template>'))
   const floatLeft = template.match(/<aside class="reader-mobile-float-tools reader-mobile-float-left"[\s\S]*?<\/aside>/)?.[0] || ''
-  assert.match(floatLeft, /title="顶部"/, 'mobile top control should be in the left float zone')
-  assert.match(floatLeft, /title="底部"/, 'mobile bottom control should be in the left float zone')
-  assert.match(floatLeft, /title="顶部"[^>]*@click="\$emit\('action', 'top'\)"/)
-  assert.match(floatLeft, /title="底部"[^>]*@click="\$emit\('action', 'bottom'\)"/)
+  // reader-dev float buttons have no tooltip; the accessible name stays.
+  assert.match(floatLeft, /aria-label="顶部"/, 'mobile top control should be in the left float zone')
+  assert.match(floatLeft, /aria-label="底部"/, 'mobile bottom control should be in the left float zone')
+  assert.match(floatLeft, /aria-label="顶部"[^>]*@click="\$emit\('action', 'top'\)"/)
+  assert.match(floatLeft, /aria-label="底部"[^>]*@click="\$emit\('action', 'bottom'\)"/)
+  assert.doesNotMatch(floatLeft, /\stitle=/)
 })
 
 test('Reader source entry stays available instead of being disabled for local books', () => {

@@ -1,26 +1,37 @@
 <template>
-  <el-input v-if="searchable" v-model="keyword" placeholder="搜索章节..." clearable size="small" class="toc-search" />
-  <div ref="tocListRef" class="toc-list" :class="{ 'desktop-grid': desktopGrid }">
-    <button
-      v-for="item in filteredChapters"
-      :key="item.id"
-      class="toc-item"
-      :class="{ active: item.index === currentIndex, cached: isBrowserCached(item) }"
-      :data-chapter-index="item.index"
-      type="button"
-      @click="$emit('jump', item.index)"
-    >
-      <span class="toc-main">
-        <span>{{ item.title }}</span>
-        <small v-if="!desktopGrid">第 {{ item.index + 1 }} 章<template v-if="showMeta"> · {{ isCached(item) ? '已缓存' : '未缓存' }}</template></small>
-      </span>
-      <el-tag v-if="!showMeta && isCached(item)" size="small" type="success" :effect="isNight ? 'dark' : 'plain'">{{ browserCachedMap[item.index] ? '本地' : '已缓存' }}</el-tag>
-    </button>
-    <el-empty v-if="searchable && keyword && !filteredChapters.length" description="没有匹配章节" />
+  <!-- reader-dev PopCatalog.vue: its own title zone over a 300px list of 40px chapter rows. -->
+  <div class="reader-toc-popup">
+    <div class="title-zone">
+      <div class="title">目录 <span v-if="chapters.length">({{ chapters.length }})</span></div>
+      <div class="title-btn">
+        <button v-if="chapters.length" class="span-btn" type="button" @click="$emit('toggle-reverse')">{{ reverse ? '顺序' : '倒序' }}</button>
+        <button v-if="chapters.length" class="span-btn" type="button" @click="scrollToTop">顶部</button>
+        <button v-if="chapters.length" class="span-btn" type="button" @click="scrollToBottom">底部</button>
+        <button v-if="canChangeRule" class="span-btn" type="button" :disabled="refreshing" @click="$emit('change-rule')">修改规则</button>
+        <button class="refresh-btn" :class="{ loading: refreshing }" type="button" :disabled="refreshing" @click="$emit('refresh')">
+          <el-icon v-if="refreshing" class="is-loading"><Loading /></el-icon>
+          {{ refreshing ? '刷新中...' : '刷新' }}
+        </button>
+      </div>
+    </div>
+    <div ref="tocListRef" class="toc-list">
+      <button
+        v-for="item in orderedChapters"
+        :key="item.id"
+        class="toc-item"
+        :class="{ active: item.index === currentIndex }"
+        :data-chapter-index="item.index"
+        type="button"
+        @click="$emit('jump', item.index)"
+      >
+        <span class="log-text" :class="{ cached: isBrowserCached(item) }">{{ item.title }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup>
+import { Loading } from '@element-plus/icons-vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -32,19 +43,7 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
-  modelValue: {
-    type: String,
-    default: '',
-  },
-  searchable: {
-    type: Boolean,
-    default: false,
-  },
   reverse: {
-    type: Boolean,
-    default: false,
-  },
-  showMeta: {
     type: Boolean,
     default: false,
   },
@@ -56,34 +55,19 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
-  desktopGrid: {
+  canChangeRule: {
     type: Boolean,
     default: false,
   },
-  isNight: {
+  refreshing: {
     type: Boolean,
     default: false,
   },
 })
 
-const emit = defineEmits(['update:modelValue', 'jump'])
+defineEmits(['jump', 'toggle-reverse', 'change-rule', 'refresh'])
 
-const keyword = computed({
-  get: () => props.modelValue,
-  set: value => emit('update:modelValue', value),
-})
-
-const filteredChapters = computed(() => {
-  const value = props.searchable ? keyword.value.trim().toLowerCase() : ''
-  const list = value
-    ? props.chapters.filter(chapter => String(chapter.title || '').toLowerCase().includes(value))
-    : props.chapters
-  return props.reverse ? [...list].reverse() : list
-})
-
-function isCached(item) {
-  return Boolean(item?.cachePath || props.browserCachedMap?.[item?.index])
-}
+const orderedChapters = computed(() => (props.reverse ? [...props.chapters].reverse() : props.chapters))
 
 // reader-dev PopCatalog dims only chapters held in the browser cache (cachedCataMap);
 // every imported local-book chapter also has a server cachePath.
@@ -93,6 +77,16 @@ function isBrowserCached(item) {
 
 const tocListRef = ref(null)
 let locateTimer = 0
+
+// reader-dev PopCatalog.vue#jumpToCurrent: the row scrolls to the top of the list.
+function scrollRowToTop(row) {
+  const list = tocListRef.value
+  if (!list || !row) return
+  list.scrollTop = Math.max(
+    0,
+    list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top,
+  )
+}
 
 function locateCurrentChapter(attempt = 0) {
   if (locateTimer) window.clearTimeout(locateTimer)
@@ -105,16 +99,7 @@ function locateCurrentChapter(attempt = 0) {
       }
       return
     }
-    const targetTop = active.offsetTop - Math.max(0, (list.clientHeight - active.clientHeight) / 2)
-    const nextTop = Math.max(0, targetTop)
-    list.scrollTo({ top: nextTop, behavior: 'auto' })
-    requestAnimationFrame(() => {
-      list.scrollTop = nextTop
-      active.scrollIntoView({ block: 'center', inline: 'nearest' })
-      requestAnimationFrame(() => {
-        list.scrollTop = nextTop
-      })
-    })
+    scrollRowToTop(active)
   })
 }
 
@@ -130,117 +115,119 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [props.currentIndex, props.locateKey, filteredChapters.value.length],
+  () => [props.currentIndex, props.locateKey, orderedChapters.value.length],
   () => locateCurrentChapter(),
 )
 
 function scrollToTop() {
-  const list = tocListRef.value
-  if (!list) return
-  list.scrollTo({ top: 0, behavior: 'auto' })
+  scrollRowToTop(tocListRef.value?.firstElementChild)
 }
 
 function scrollToBottom() {
-  const list = tocListRef.value
-  if (!list) return
-  list.scrollTo({ top: Math.max(0, list.scrollHeight - list.clientHeight), behavior: 'auto' })
+  scrollRowToTop(tocListRef.value?.lastElementChild)
 }
 </script>
 
 <style scoped>
-.toc-search {
-  margin-bottom: 12px;
+.title-zone {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0 0 20px;
+}
+
+.title {
+  width: fit-content;
+  color: #ed4259;
+  border-bottom: 1px solid #ed4259;
+  font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, "Nimbus Sans L", Arial, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Source Han Sans CN", "Microsoft YaHei", "Wenquanyi Micro Hei", "WenQuanYi Zen Hei", "ST Heiti", SimHei, "WenQuanYi Zen Hei Sharp", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.title-btn {
+  color: #606266;
+  font-size: 14px;
+  line-height: 26px;
+}
+
+.title-btn button {
+  display: inline-block;
+  margin-left: 15px;
+  padding: 0;
+  color: #ed4259;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+
+.title-btn .refresh-btn.loading {
+  color: #606266;
+}
+
+.title-btn button:disabled {
+  cursor: default;
 }
 
 .toc-list {
-  max-height: calc(100vh - 160px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: space-between;
+  height: 300px;
+  overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
 }
 
-.toc-list.desktop-grid {
-  display: grid;
-  max-height: calc(100vh - 72px);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-content: start;
-  column-gap: 20px;
+.toc-list::-webkit-scrollbar {
+  width: 0;
 }
 
 .toc-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 52px;
-  padding: 9px 8px;
-  color: var(--reader-list-text, var(--reader-popup-text, var(--reader-text)));
+  box-sizing: content-box;
+  display: block;
+  width: 50%;
+  height: 40px;
+  padding: 0;
+  color: var(--reader-list-text, inherit);
   background: transparent;
-  cursor: pointer;
   border: 0;
-  border-bottom: 1px solid var(--reader-list-border, #f0f0f0);
-  font-size: 14px;
-  text-align: left;
+  border-bottom: 1px solid var(--reader-list-border, #eee);
+  cursor: pointer;
+  font: 16px / 40px PingFangSC-Regular, HelveticaNeue-Light, 'Helvetica Neue Light', 'Microsoft YaHei', sans-serif;
+  text-align: inherit;
 }
 
-/* Before hover and the current chapter, which override it at the same specificity. */
-.toc-item.cached {
-  color: var(--reader-list-cached-text, var(--reader-list-text, var(--reader-popup-text, var(--reader-text))));
-}
-
-.toc-list.desktop-grid .toc-item {
-  min-height: 42px;
-  padding: 7px 0;
-}
-
-.toc-list.desktop-grid .toc-item.active {
-  color: var(--reader-accent, #ed4259);
-  background: transparent;
-}
-
-.toc-main {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.toc-main span,
-.toc-main small {
+.toc-item .log-text {
+  display: block;
   overflow: hidden;
+  margin-right: 26px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.toc-item small {
-  flex: 0 0 auto;
-  color: var(--reader-shelf-chapter-text, var(--app-text-muted, #909399));
-  font-size: 12px;
+/* Before the current chapter, which overrides it at the same specificity. */
+.toc-item .log-text.cached {
+  color: var(--reader-list-cached-text, #bbb);
 }
 
-.toc-item:hover {
-  color: var(--reader-list-active-text, #409eff);
-  background: var(--reader-list-active-bg, #f5f7fa);
+.toc-item.active .log-text {
+  color: #eb4259;
 }
 
-.toc-item.active {
-  color: var(--reader-list-active-text, #409eff);
-  font-weight: 600;
-  background: var(--reader-list-active-bg, #ecf5ff);
-}
-
-@media (max-width: 750px) {
-  .toc-search {
-    margin-bottom: 8px;
-  }
-
-  .toc-list {
-    max-height: calc(82vh - 76px - env(safe-area-inset-bottom));
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-  }
-
+@media (max-width: 500px) {
   .toc-item {
-    min-height: 48px;
-    padding: 8px 2px;
+    width: 100%;
+  }
+
+  .toc-item .log-text {
+    margin-right: 0;
   }
 }
 </style>
