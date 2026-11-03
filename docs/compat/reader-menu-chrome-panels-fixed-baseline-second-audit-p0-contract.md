@@ -2,7 +2,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-日期：2026-11-03。状态：**contract-only**。
+日期：2026-11-03。状态：**implementation-complete / regression-validated**（发布阻塞于 Go 公告门，见第 8 节）。
 
 ## 1. 来源、范围与方法
 
@@ -154,3 +154,34 @@ z 10）`#636060`；文字固定为 `点击前一页`、`点击显示菜单`、`�
 - 提示样式：Reader 自有提示条与上游 `$message` 的差异（全局），本切片边界提示沿用 Reader 提示条。
 - 朗读条、书签/搜索/书籍信息对话框、设置面板各行、正文排版与字体。
 - 上游首次触摸被忽略的缺陷。
+
+## 8. 实现与回归证据（2026-11-03）
+
+分支 `claude/reader-menu-alignment`：
+
+| 阶段 | 提交 | 内容 |
+| --- | --- | --- |
+| 合同 | `7a8b073` | 本文件、差异总账与矩阵条目 |
+| 红测 | `5c08708` | `readerMenuUpstreamAlignmentContract` 15 项在 `69c27bc` 全部失败；`reader-menu-upstream-contract.mjs` 在 `69c27bc` 构建上记录 693 项检查失败 |
+| 实现 | `da438bc` | A1–A7、B1–B6、C1–C6、D1、E1，D1/D2 按用户决定；纯函数实现名为 `readerChapterProgressLabel`、`readerVerticalPageCount`、`readerVerticalCurrentPage`、`readerVerticalPageScrollTop`、`readerReadWidthConfig`；12 个既有单元测试文件里钉住旧布局的断言按上游值改写（步进器与夜间配色期望不变） |
+| 类名钩子 | `f1c92da` | 移动主面板保留 `reader-mobile-primary-{shelf,toc,source,settings}`（第 4 节“保留现有类名作测试钩子”） |
+| 浏览器合同迁移 | `4be6e20` | 18 个 smoke 跟随上游布局，不放宽无关断言：工具按钮从 `title` 改用 `aria-label`（上游无提示气泡）；移动面板盖住顶栏，改为点面板下方关闭；桌面右列按钮执行并关闭已开面板；页码提示改读 `.progress-tip`；手机低位点击带 88% → 84%（上游 103px 底栏盖住 88%）；目录缓存标记改读 `.log-text.cached`；夜间快照改为上游实测值；书源分组下拉取未选中项（`#ddd`）并核对默认选中的 `全部分组 (N)` 保持 `#409eff`；移动设置外壳的 `overflow-y` 按上游 `overflow-x:hidden` 计算为 `auto`，改为直接断言外壳没有自己的滚动范围；手机上面板盖住顶栏后指针停在分组框上，取色前先移开 |
+
+验证（最终构建，与 `f1c92da` 源码一致）：
+
+- 前端 `npm test` 870/870，`npm run build` 通过；后端未改动，`go test ./...`（31 包）与 `go vet ./...` 通过；未改 db/api/services，race 门不适用。
+- 依赖公告门：自测 109/109、前端实时扫描通过；Go 实时扫描失败（见下文“发布阻塞”）。
+- 浏览器（模拟接口）：`reader-menu-upstream-contract.mjs` 六视口全部通过（与第 3 节实测值相差 ≤1.5px，亚像素取整）；
+  reader-mobile、reader-desktop-panel-controls、reader-source-switch、reader-text-modes、reader-continuous、reader-tts（390/1440/360）、
+  reader-settings-position、reader-audio、reader-error-surface、document-title、reader-inline-cache、reader-image、reader-volume、
+  reader-deep-page、reader-reauthentication、night-element-theme、remote-reader、reader-progress-multiclient 通过。
+- 真实 Go 服务 + 最终构建：reader-epub、reader-cbz 三视口；真实接口合同 bookshelf-refresh-progress、reader-appearance-assets、
+  source-parser-workflow、book-deletion-convergence 通过。
+- 已知旧失败（在改前构建 `69c27bc` 上以相同断言失败，与本切片无关，另起）：portable-appearance-assets 首页书架封面未使用恢复后的
+  封面 URL（1440）；bookinfo-shelf-mutations 书籍信息“追更”开关 15 秒内未发出 `PUT /api/books/:id`。
+
+发布阻塞：Go 公告门实时扫描失败——GO-2026-5932（`golang.org/x/crypto`）在漏洞库里新增修复版本
+`v0.58.1-0.20261009181718-2f1f834330b2`（伪版本，无 tag）。门要求该已知公告“无修复版本”，且升级只接受带 tag 的版本，因此失败关闭。
+与本切片无关，需用户决定处理方式；在此之前不合入 `main`（合入即触发发布）。
+
+状态：**implementation-complete / regression-validated**；发布阻塞于 Go 公告门。

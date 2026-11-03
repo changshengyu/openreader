@@ -9,6 +9,10 @@
 标签；D2 桌面关闭按钮保留并移到面板外。保留：原生连续滚动、步进器、亮度、字体预览、运行章节标题、书签添加当前段落。计划红测：
 `readerMenuUpstreamAlignmentContract` 单元/源码合同与 `reader-menu-upstream-contract.mjs` 浏览器合同（逐项比对上游实测值）。
 状态 contract-only。
+记录（2026-11-03，取代上段的状态）：合同 `7a8b073`、红测 `5c08708`（单元 15 项、浏览器 693 项检查在 `69c27bc` 失败）、实现 `da438bc`、
+类名钩子 `f1c92da`、smoke 迁移 `4be6e20`。前端 870/870 与 build、后端全量/vet、公告门自测与前端实时扫描、菜单合同六视口、18 个模拟浏览器
+合同、真实服务 EPUB/CBZ 与 4 个真实接口合同通过；首页书架封面（portable-appearance-assets）与书籍信息“追更”两项改前构建同样失败，另起。
+状态 implementation-complete / regression-validated。发布阻塞：Go 公告门 GO-2026-5932 新增伪版本修复，门失败关闭，待用户决定；未合入 main。
 
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 

@@ -12,6 +12,11 @@ Element Plus 图标；桌面左栏上游只包住 7 个按钮，OpenReader 铺�
 上游去掉副行与“本地/已缓存”标签，D2 保留桌面关闭按钮但移到面板外。合同见
 [`reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md`](reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md)。
 状态 **contract-only**。
+记录（2026-11-03，取代上段的状态）：合同 `7a8b073`、红测 `5c08708`（单元合同 15 项、浏览器合同 693 项检查在 `69c27bc` 失败）、实现
+`da438bc`、移动面板类名钩子 `f1c92da`、18 个 smoke 迁移 `4be6e20`。前端 870/870 与 build、后端全量/vet（未改后端）、公告门自测与前端
+实时扫描、菜单浏览器合同六视口、18 个模拟浏览器合同、真实服务 EPUB/CBZ 与 4 个真实接口合同通过；portable-appearance-assets 首页书架
+封面与书籍信息“追更”两项在改前构建同样失败，另起。状态 **implementation-complete / regression-validated**；Go 公告门实时扫描因
+GO-2026-5932 新增伪版本修复而失败关闭（与本切片无关，待用户决定），未合入 main、未发布。
 
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
