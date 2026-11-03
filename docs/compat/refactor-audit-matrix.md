@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-03 当前切片：BookInfo 追更开关（P2，F1–F3）
+
+见[`bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md`](bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md)。
+本地书架书的追更开关可见但点了无效（处理函数要求 `sourceId`）；真实接口合同的“远程书”因 `POST /api/books` 忽略书源字段而实为无书源书，
+完整模式在第一个视口追更一步超时。F1 本地追更同上游保存，must-fix；F2 合同远程书改走 `POST /api/books/remote` + 回环夹具书源，F3 本地分支
+实际切追更并在本地更新后核对。计划红测：单元 T1/T2（本地切追更成功/失败）、浏览器 T4（本地分支等待 PUT 超时）；T3 远程分支为对照。
+状态 contract-only。
+
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 
 见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。

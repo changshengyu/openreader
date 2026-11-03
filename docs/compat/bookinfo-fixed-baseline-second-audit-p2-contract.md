@@ -194,3 +194,9 @@ v1/v2 assets/跨用户/重启和历史 TXT/EPUB/UMD/CBZ/relative-cache/owner-iso
   `sha256:4b24b395aa0fa542be0fc689a3a2e174c4be3e4cad082e88778106b7fc42de96`。
 - `docker buildx imagetools inspect` 已分别读取不可变标签与 `latest`，确认二者 digest 和架构
   完全一致。当前状态为 **Docker-published / awaiting device verification**。
+
+## 12. 2026-11-03 勘误：本地书架书追更
+
+第 5 节的目标与第 10 节记录的“所有书架书追更”只做到了可见：`toggleBookCanUpdate` 仍要求 `sourceId`，本地书架书点追更
+没有请求；第 10 节的浏览器证据只切了远程书（当时 `POST /api/books` 还保存 `sourceId`）。补齐与真实接口合同种子修正见
+[`bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md`](bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md)。
