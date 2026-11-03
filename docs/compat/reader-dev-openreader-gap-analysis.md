@@ -1,5 +1,18 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-03 P0 Reader 菜单栏与弹出面板（移动/桌面）布局与逻辑
+
+用户要求移动端点中间唤起的菜单栏及其次级布局、桌面菜单栏布局和内部逻辑都与上游对齐（已要求过的优化除外）。本次把上游 `web/`
+原样构建（element-ui 2.15.14、vue 2.7.16），与当前 main 用同一份模拟数据在 390×844、360×800、1440×900、1024×1366 日夜间实测对照。
+主要差异：移动主面板上游从顶 0 盖住顶栏（OpenReader 让出 58px、顶栏仍可点）；面板打开时上游悬浮按钮与底栏仍可点（执行并关闭面板），
+OpenReader 的透明关闭层把它们挡住；工具层上游是不透明纸纹、无边框阴影、自有 `iconfont` 字形，OpenReader 是 96% 透明加边框阴影与
+Element Plus 图标；桌面左栏上游只包住 7 个按钮，OpenReader 铺满整列并有当前面板高亮；右侧按钮/进度列位置与间距不同；目录上游单行 40px、
+无序号副行与标签；书架上游单列、只有书名变红；阅读进度上游按章 `(index+1)/总章数`（25%），OpenReader 含章内比例（17%）；页码公式不同
+（8 页 vs 9 页）；章节键边界上游提示、OpenReader 禁用；显示翻页区域遮罩上游可点穿、文字固定为“点击前一页/后一页”。用户决定 D1 目录按
+上游去掉副行与“本地/已缓存”标签，D2 保留桌面关闭按钮但移到面板外。合同见
+[`reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md`](reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md)。
+状态 **contract-only**。
+
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
 前两个夜间切片（`24511c0`、`21d78ab`）只改了 Reader 自己画的工具栏、设置与列表；`html.dark-reader` 只改 `--app-*`，夜间所有

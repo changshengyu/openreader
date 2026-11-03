@@ -1,5 +1,15 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-03 当前切片：Reader 菜单栏与弹出面板布局与逻辑（P0，A1–A7、B1–B6、C1–C6、D1、E1）
+
+见[`reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md`](reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md)。
+上游 `web/` 原样构建后与当前 main 同数据四视口日夜实测：移动顶栏/悬浮按钮/底栏、移动主面板（顶 0 盖住顶栏、面板打开时悬浮与底栏仍可点）、
+桌面左栏（只包住按钮）/右列/进度列/缓存区、桌面面板（x=50%−rwc/2、宽 rwc−1）、书架/书源/目录列表、显示翻页区域、阅读进度
+`(index+1)/总章数`、页码公式、章节键边界提示、阅读框 `rwc` 宽度、简洁模式工具色全部 must-fix。用户决定 D1 目录去掉序号副行与“本地/已缓存”
+标签；D2 桌面关闭按钮保留并移到面板外。保留：原生连续滚动、步进器、亮度、字体预览、运行章节标题、书签添加当前段落。计划红测：
+`readerMenuUpstreamAlignmentContract` 单元/源码合同与 `reader-menu-upstream-contract.mjs` 浏览器合同（逐项比对上游实测值）。
+状态 contract-only。
+
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 
 见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
