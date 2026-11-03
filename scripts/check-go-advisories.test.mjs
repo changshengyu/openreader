@@ -4,6 +4,10 @@ import {readFile} from 'node:fs/promises'
 import {evaluateSourceScan, parseMessages, runTool} from './check-go-advisories.mjs'
 
 const now = Date.parse('2026-10-16T03:00:00Z')
+// x/crypto 2f1f834330b2 is v0.58.0 with openpgp/ deleted; GO-2026-5932 names it as the fix since 2026-11-02.
+const pin = 'v0.58.1-0.20261009181718-2f1f834330b2'
+const openpgpImports = ['', '/packet', '/armor', '/clearsign', '/errors', '/elgamal', '/s2k']
+  .map(suffix => ({path:`golang.org/x/crypto/openpgp${suffix}`}))
 function fixture() {
   const packages = ['openreader/backend', 'golang.org/x/crypto/bcrypt']
   return {
@@ -15,17 +19,23 @@ function fixture() {
         scan_level:'symbol', scan_mode:'source'}},
       {SBOM:{go_version:'go1.26.9', roots:['openreader/backend'], modules:[
         {path:'openreader/backend'}, {path:'golang.org/x/crypto', version:'v0.57.0'}]}},
-      {osv:{id:'GO-2026-5932', affected:[{package:{ecosystem:'Go', name:'golang.org/x/crypto'},
-        ranges:[{type:'SEMVER',events:[{introduced:'0'}]}], ecosystem_specific:{imports:[
-          {path:'golang.org/x/crypto/openpgp'}, {path:'golang.org/x/crypto/openpgp/packet'}]}}]}},
-      {finding:{osv:'GO-2026-5932', trace:[{module:'golang.org/x/crypto',version:'v0.57.0'}]}},
+      // The record as modified on 2026-11-02: fixed by the pin, plus a standalone deprecated module.
+      {osv:{id:'GO-2026-5932', affected:[
+        {package:{ecosystem:'Go', name:'golang.org/x/crypto'}, ranges:[{type:'SEMVER',events:[
+          {introduced:'0'}, {fixed:pin.slice(1)}]}], ecosystem_specific:{imports:openpgpImports}},
+        {package:{ecosystem:'Go', name:'golang.org/x/crypto/openpgp'}, ranges:[{type:'SEMVER',events:[
+          {introduced:'0'}]}], ecosystem_specific:{imports:openpgpImports}}]}},
     ],
   }
 }
-function check(change = () => {}) {
+function check(change = () => {}, at = now) {
   const f = fixture()
   change(f)
-  return evaluateSourceScan(f.messages.map(x=>JSON.stringify(x)).join('\n'),f.evidence,{now})
+  return evaluateSourceScan(f.messages.map(x=>JSON.stringify(x)).join('\n'),f.evidence,{now:at})
+}
+const withCrypto = version => f => {
+  f.evidence.cryptoVersion = version
+  f.messages[1].SBOM.modules[1].version = version
 }
 test('stream parser handles nested objects and escaped braces in strings', () => {
   const objects = [{progress:{message:'a } { " \\ b'}}, {osv:{x:[{y:1}]}}]
@@ -34,19 +44,30 @@ test('stream parser handles nested objects and escaped braces in strings', () =>
 for (const raw of ['', '  ', '{}junk', '{"config":', '[]', 'null', '{"a":1} {']) {
   test(`invalid/incomplete stream fails closed: ${JSON.stringify(raw)}`,()=>assert.throws(()=>parseMessages(raw)))
 }
-test('only precise absent OpenPGP module finding is not-applicable, not clean',()=>{
-  const result=check()
-  assert.equal(result.status,'pass-with-not-applicable')
-  assert.deepEqual(result.notApplicable,['GO-2026-5932'])
-  assert.equal(result.findings,1)
-  assert.equal(result.goos,'darwin')
-  assert.ok(result.limitations.includes('C/OS/Node/frontend not scanned'))
-})
 test('no findings is valid, OSV record alone is not a finding',()=>{
-  const result=check(f=>f.messages.pop())
+  const result=check()
   assert.equal(result.status,'pass')
   assert.equal(result.findings,0)
 })
+test('reviewed x/crypto fix pin passes clean, with no not-applicable items',()=>{
+  const result=check(withCrypto(pin))
+  assert.equal(result.status,'pass')
+  assert.equal(result.findings,0)
+  assert.deepEqual(result.crypto,{version:pin,pinReviewUntil:'2026-12-16T00:00:00.000Z'})
+  assert.ok(!Object.hasOwn(result,'notApplicable'))
+  assert.equal(result.goos,'darwin')
+  assert.ok(result.limitations.includes('C/OS/Node/frontend not scanned'))
+})
+test('reviewed pin is accepted until 2026-12-16, then a tagged release is required',()=>{
+  const fresh=version=>f=>{withCrypto(version)(f);f.messages[0].config.db_last_modified='2026-12-15T00:00:00Z'}
+  assert.equal(check(fresh(pin),Date.parse('2026-12-15T23:59:59Z')).status,'pass')
+  assert.throws(()=>check(fresh(pin),Date.parse('2026-12-16T00:00:00Z')),/pin expired/)
+  assert.equal(check(fresh('v0.59.0'),Date.parse('2026-12-16T00:00:00Z')).status,'pass')
+})
+for(const version of [`${pin.slice(0,-1)}3`,'v0.58.1-0.20261010000000-2f1f834330b2','v0.59.0-rc.1',
+  'v0.58.0+incompatible',`${pin}+incompatible`,'v0.58']) {
+  test(`x/crypto ${version} is neither a tagged release nor the reviewed pin`,()=>assert.throws(()=>check(withCrypto(version))))
+}
 test('official repeated identical OSV is idempotent',()=>{
   assert.equal(check(f=>f.messages.push(structuredClone(f.messages[2]))).advisories,1)
 })
@@ -73,18 +94,7 @@ const invalid = {
   'module precision cannot masquerade as symbol': f=>f.messages[0].config.scan_level='module',
   'unknown message': f=>f.messages.push({error:{message:'incomplete'}}),
   'ambiguous message': f=>f.messages.push({progress:{message:'x'},finding:{}}),
-  'unknown advisory': f=>f.messages[3].finding.osv='GO-2099-9999',
-  'empty trace': f=>f.messages[3].finding.trace=[],
-  'version mismatch': f=>f.messages[3].finding.trace[0].version='v0.1.0',
-  'missing version': f=>delete f.messages[3].finding.trace[0].version,
   'SBOM version mismatch': f=>f.messages[1].SBOM.modules[1].version='v0.1.0',
-  'different module': f=>f.messages[3].finding.trace[0].module='other/module',
-  'package finding': f=>f.messages[3].finding.trace[0].package='golang.org/x/crypto/openpgp',
-  'symbol finding': f=>f.messages[3].finding.trace[0].function='ReadMessage',
-  'missing affected imports': f=>f.messages[2].osv.affected[0].ecosystem_specific.imports=[],
-  'new affected non-OpenPGP package': f=>f.messages[2].osv.affected[0].ecosystem_specific.imports.push({path:'golang.org/x/crypto/bcrypt'}),
-  'unexpected affected module': f=>f.messages[2].osv.affected[0].package.name='other/module',
-  'new fixed version requires review': f=>f.messages[2].osv.affected[0].ranges[0].events.push({fixed:'0.58.0'}),
   'empty graph': f=>f.evidence.graphs.host=[],
   'missing target graph': f=>delete f.evidence.graphs['linux/amd64'],
   'missing main': f=>f.evidence.graphs.host=['golang.org/x/crypto/bcrypt'],
@@ -92,19 +102,37 @@ const invalid = {
   'CGO evidence absent': f=>f.evidence.cgoEnabled='0',
 }
 for(const [name,change] of Object.entries(invalid)) test(name,()=>assert.throws(()=>check(change)))
+// The OpenPGP exception is retired: every finding blocks, whatever its precision, fix or metadata.
+const trace=(frame={})=>[{module:'golang.org/x/crypto',version:'v0.57.0',...frame}]
+const findings = {
+  'formerly not-applicable pure module OpenPGP finding': {osv:'GO-2026-5932',trace:trace()},
+  'module finding with the new fixed version (2026-11-03 live scan)': {osv:'GO-2026-5932',fixed_version:pin,trace:trace()},
+  'unknown advisory': {osv:'GO-2099-9999',trace:trace()},
+  'empty trace': {osv:'GO-2026-5932',trace:[]},
+  'version mismatch': {osv:'GO-2026-5932',trace:trace({version:'v0.1.0'})},
+  'missing version': {osv:'GO-2026-5932',trace:[{module:'golang.org/x/crypto'}]},
+  'different module': {osv:'GO-2026-5932',trace:trace({module:'other/module'})},
+  'package finding': {osv:'GO-2026-5932',trace:trace({package:'golang.org/x/crypto/openpgp'})},
+  'symbol finding': {osv:'GO-2026-5932',trace:trace({package:'golang.org/x/crypto/openpgp',function:'ReadMessage'})},
+}
+for(const [name,finding] of Object.entries(findings)) {
+  test(`finding blocks release: ${name}`,()=>assert.throws(()=>check(f=>f.messages.push({finding}))))
+}
+test('retired exception: the pre-fix v0.58.0 OpenPGP module finding is no longer not-applicable',()=>{
+  assert.throws(()=>check(f=>{
+    withCrypto('v0.58.0')(f)
+    f.messages[2].osv.affected=[{package:{ecosystem:'Go',name:'golang.org/x/crypto'},
+      ranges:[{type:'SEMVER',events:[{introduced:'0'}]}],ecosystem_specific:{imports:openpgpImports}}]
+    f.messages.push({finding:{osv:'GO-2026-5932',trace:[{module:'golang.org/x/crypto',version:'v0.58.0'}]}})
+  }),/block release/)
+})
 for(const graph of ['host','linux/amd64','linux/arm64']) {
   for(const path of ['golang.org/x/crypto/openpgp','golang.org/x/crypto/openpgp/packet']) {
-    test(`${graph} imports ${path}: exemption revoked`,()=>assert.throws(()=>check(f=>{
+    test(`${graph} imports ${path}: unmaintained OpenPGP blocks release without a finding`,()=>assert.throws(()=>check(f=>{
       f.evidence.graphs[graph]=[...f.evidence.graphs[graph],path]
-    })))
+    }),/OpenPGP imported/))
   }
 }
-test('exception expires and requires explicit review',()=>{
-  const f=fixture()
-  f.messages[0].config.db_last_modified='2026-11-15T00:00:00Z'
-  assert.throws(()=>evaluateSourceScan(f.messages.map(x=>JSON.stringify(x)).join('\n'),f.evidence,
-    {now:Date.parse('2026-11-16T00:00:00Z')}))
-})
 test('owned scanner process must finish successfully',async()=>{
   assert.equal(await runTool(process.execPath,['-e','process.stdout.write("ok")']), 'ok')
   await assert.rejects(runTool(process.execPath,['-e','process.stdout.write("{}");process.exit(7)']))
