@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本切片不涉及上游可见行为）。
 
 审查日期：2026-11-03。实施基线：`origin/main` = `69c27bc`；分支 `claude/go-advisory-x-crypto-openpgp-fix` 从 `origin/main` 切出。
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（记录见第 8 节；待合入 main 与可信 Actions）。
 
 前置合同：[`go-advisory-release-gate-contract.md`](go-advisory-release-gate-contract.md)（“唯一有条件不适用项”）、
 [`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。
@@ -99,3 +99,26 @@ govulncheck 版本、DB 14 天时效、Go 工具链、其它依赖、前端门�
 2. 实现后同一断言转绿；现场 Go 门 exit 0、`pass`、0 个发现；前端门 exit 0。
 3. backend `go test ./...`、`go vet ./...`（沙箱外）；`node --test scripts/check-go-advisories.test.mjs scripts/check-frontend-advisories.test.mjs`。
 4. 推送分支；合入 main 与发布由用户决定，发布后由可信 Actions 复核。
+
+## 8. 记录（2026-11-03）
+
+合同 `c998b7a`、红测 `d0659bf`、实现 `544b980`（分支 `claude/go-advisory-x-crypto-openpgp-fix`，基线 `69c27bc`）。
+
+- 红：新门测试在旧门脚本上 65 项中 9 项失败、56 项通过，正是第 5 节所列：固定伪版本两项（旧门的 `/^v\d+\.\d+\.\d+$/`
+  拒绝伪版本）、修复前纯模块 finding 一项（`Missing expected exception`，旧门仍判不适用）、三张图 × 两条 OpenPGP 路径六项
+  （`Missing expected exception`，旧门只在不适用项内部查图）。
+- 绿：`544b980` 上同一断言转绿，Go 门测试 65/65、前端门测试 49/49（共 114，0 skip）。`go.mod` 1 行、`go.sum` 2+/2-，
+  `go mod verify` 通过。
+- 现场 Go 门（沙箱外）exit 0：`pass`，go1.26.10/darwin-arm64/CGO1，DB `2026-11-02T22:01:43Z`，249 条公告，**0 个发现**，
+  `crypto.version` 为固定伪版本、`pinReviewUntil` 为 `2026-12-16T00:00:00.000Z`；三张图 360/359/358 个包，无 openpgp 族，
+  x/crypto 只用 bcrypt/blowfish/sha3（两版逐字节相同）。证据目录
+  `/var/folders/5z/h__cbxf93c5gc1p4myzqpd480000gn/T/openreader-go-advisories-ne6VbK`。
+- 前端公告门 exit 0：完整锁文件 132 个包、0 个发现。
+- backend `go test ./...`（沙箱外；31 个包通过、7 个无测试文件，api 121.45s）与 `go vet ./...` 通过；`docker compose config --quiet`
+  通过；隔离存储 HTTP 合同 10 项 PASS（真实 Go 服务的注册/登录与 WebDAV Basic 都经过 bcrypt）；按 workflow 的
+  `go mod vendor -o` 生成 vendor（x/crypto 只含 bcrypt/blowfish/sha3），`-mod=vendor -trimpath` 编译通过，二进制记录的依赖为固定伪版本。
+- 未跑及原因：`go test -race`（无 Go 源码变化，构建用到的 x/crypto 包逐字节相同）；前端 `npm test`/`build` 与浏览器 smoke
+  （前端树与已发布的 `0ce2bff` 相同，`0ce2bff..69c27bc` 只改文档）；新旧卷/便携备份门与双架构构建（只在可信 Actions 上跑）。
+
+状态：**implementation-complete / regression-validated**，待合入 main 与可信 Actions；镜像未发布；生产未访问。
+固定项到期前（2026-12-16）需要换成包含 `2f1f834330b2` 的 x/crypto 标签版本，并删除门里的固定项常量与对应测试。

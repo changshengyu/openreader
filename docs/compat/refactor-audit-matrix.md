@@ -6,6 +6,9 @@
 GO-2026-5932 增加修复版本，唯一不适用项的前提失效，Go 公告门在 main 上失败关闭（`advisory changed: review required`）。
 must-fix：x/crypto 精确固定到 `v0.58.1-0.20261009181718-2f1f834330b2`（`v0.58.0` 只删 `openpgp/`），门只接受该伪版本到 2026-12-16；
 退役不适用项（任何 finding 阻止发布），openpgp 族无条件禁止。计划红测：门合同测试 9 项。状态 contract-only。
+记录（2026-11-03，取代上段的状态）：合同 `c998b7a`、红测 `d0659bf`（9/65 失败）、实现 `544b980`；门测试 65/65 + 49/49，现场 Go 门
+exit 0、0 个发现，前端门 exit 0，后端全量/vet、Compose、存储 HTTP 合同、`-mod=vendor` 编译通过。状态 implementation-complete /
+regression-validated，待合入 main 与可信 Actions；镜像未发布；生产未动。
 
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 

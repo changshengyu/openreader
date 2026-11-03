@@ -1,5 +1,15 @@
 # OpenReader Security Review Checklist
 
+2026-11-03 release-blocker dependency maintenance:
+[`compat/dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](compat/dependency-advisory-x-crypto-openpgp-fix-p1-contract.md).
+GO-2026-5932 (unmaintained x/crypto/openpgp, never imported) gained a fixed version on 2026-11-02, which voided
+the Go gate's only not-applicable exception and blocked every release. x/crypto is pinned to the fix commit
+2f1f834330b2 (v0.58.0 minus openpgp/; bcrypt/blowfish/sha3 byte-identical, h1 matches sum.golang.org). The gate
+accepts that exact pseudo-version until 2026-12-16 and otherwise only tagged releases; the exception is retired, so
+every finding blocks, and an OpenPGP package in any import graph fails the gate even without a finding. Checked:
+module supply chain (sumdb hash, file-level diff), auth (bcrypt registration/login and WebDAV Basic in the isolated
+storage HTTP contract), no new exceptions. Live Go (0 findings) and full-lock npm scans pass; not yet published.
+
 2026-10-22 release-blocker dependency maintenance:
 [`compat/dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](compat/dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md).
 GO-2026-6809 (crypto/x509, reachable through crypto/tls) is fixed by Go 1.26.10 and the official

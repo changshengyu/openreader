@@ -9,6 +9,10 @@ Go 公告门在 main `69c27bc` 上失败关闭：`advisory changed: review requi
 **`must-fix`（发布阻塞）**，用户选方案 A：x/crypto 精确固定到该伪版本；门只接受这一个伪版本，期限 2026-12-16，之后必须是
 标签版本；退役不适用项，任何 finding 都阻止发布；openpgp 族出现在任一依赖图即失败。完整合同见
 [`dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](dependency-advisory-x-crypto-openpgp-fix-p1-contract.md)。状态 **contract-only**。
+2026-11-03 记录（合同第 8 节）：合同 `c998b7a`、红测 `d0659bf`（旧门 65 项中 9 项失败）、实现 `544b980`（`go.mod` 1 行、`go.sum`
+2+/2-）；门测试 65/65 + 前端门 49/49；现场 Go 门 exit 0、`pass`、0 个发现（DB `2026-11-02T22:01:43Z`，249 条公告，固定项期限
+2026-12-16），前端门 exit 0；后端全量/vet、Compose、存储 HTTP 合同与 `-mod=vendor` 编译通过。状态
+**implementation-complete / regression-validated**，待合入 main 与可信 Actions；镜像未发布；生产未访问。
 
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
