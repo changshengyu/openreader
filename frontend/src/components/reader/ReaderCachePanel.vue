@@ -1,10 +1,11 @@
 <template>
+  <!-- reader-dev Reader.vue `.cache-content-zone`: one row, 缓存章节 then the three ranges, or the progress and a cancel icon. -->
   <section v-if="visible" class="reader-cache-zone" @click.stop>
     <span class="reader-cache-title">缓存章节</span>
     <div v-if="caching" class="reader-cache-status">
       <span>{{ statusText }}</span>
       <button class="reader-cache-cancel" type="button" title="取消缓存" aria-label="取消缓存" @click="$emit('cancel')">
-        <el-icon :size="16"><Close /></el-icon>
+        <el-icon><Close /></el-icon>
       </button>
     </div>
     <div v-else class="reader-cache-actions">
@@ -40,90 +41,40 @@ defineEmits(['cache', 'cancel'])
 .reader-cache-zone {
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-height: 44px;
-  box-sizing: border-box;
-  padding: 8px 14px;
-  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
+  justify-content: space-between;
+  padding: 10px 36px;
+  color: var(--reader-chrome-label, var(--reader-chrome-text, rgba(0, 0, 0, 0.4)));
   background: inherit;
   border: 0;
   box-shadow: none;
   font-size: 14px;
 }
 
-.reader-cache-title {
-  flex: 0 0 auto;
-}
-
-.reader-cache-actions {
-  display: flex;
-  flex: 1;
-  justify-content: flex-end;
-  gap: 8px;
+/* The wrappers only group the states; their children are the row's items, as in reader-dev. */
+.reader-cache-actions,
+.reader-cache-status {
+  display: contents;
 }
 
 .reader-cache-actions button,
 .reader-cache-status button {
-  min-height: 30px;
-  padding: 0 8px;
-  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
+  padding: 0;
+  color: inherit;
   background: transparent;
   border: 0;
   cursor: pointer;
-  font-size: 13px;
-}
-
-.reader-cache-status {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.reader-cache-status button {
-  flex: 0 0 auto;
+  font: inherit;
+  line-height: normal;
 }
 
 .reader-cache-cancel {
-  display: grid;
-  width: 30px;
-  padding: 0;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
 }
 
 .reader-cache-actions button:focus-visible,
 .reader-cache-cancel:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 1px;
-}
-
-@media (max-width: 750px) {
-  .reader-cache-zone {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 6px;
-    width: 100%;
-    padding: 8px 10px;
-  }
-
-  .reader-cache-title {
-    width: 100%;
-  }
-
-  .reader-cache-actions,
-  .reader-cache-status {
-    width: 100%;
-  }
-
-  .reader-cache-actions {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .reader-cache-actions button {
-    min-height: 34px;
-    padding: 0 4px;
-  }
 }
 </style>

@@ -138,8 +138,8 @@ async function runViewport(browser, viewport) {
     audioBookInfo: document.querySelector('.reader-audio-author')?.textContent || '',
     hasTextBlocks: Boolean(document.querySelector('.reader-body [data-reader-block]')),
     hasChapterContent: Boolean(document.querySelector('.chapter-content')),
-    hasAutoReading: Boolean(document.querySelector('[title="自动阅读"]')),
-    hasTTS: Boolean(document.querySelector('[title="朗读"]')),
+    hasAutoReading: Boolean(document.querySelector('[aria-label="自动阅读"]')),
+    hasTTS: Boolean(document.querySelector('[aria-label="朗读"]')),
     hasNativeControls: document.querySelector('.reader-audio-content audio')?.hasAttribute('controls') || false,
     hasCover: Boolean(document.querySelector('.reader-audio-cover img')),
     hasProgressSlider: Boolean(document.querySelector('input[aria-label="音频播放进度"]')),
@@ -167,6 +167,20 @@ async function runViewport(browser, viewport) {
   }
   assert(initial.hasPlayButton, `${viewport.width}: custom play button missing`)
   assert(initial.hasMuteButton, `${viewport.width}: custom mute/volume button missing`)
+
+  // On phones reader-dev's float buttons overlap the audio controls while the tool layer shows, so the
+  // controls are pressed with it hidden (a center tap on the book title), as a reader would.
+  const titleTapPoint = await page.locator('.reader-audio-book-title').evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top + rect.height / 2),
+    }
+  })
+  if (viewport.width <= 750) {
+    await page.mouse.click(titleTapPoint.x, titleTapPoint.y)
+    await page.waitForSelector('.reader-mobile-top.visible', { state: 'detached', timeout: 5000 })
+  }
 
   const firstChapterRequestsBeforeBoundary = requests.filter(item => item === 'GET /books/1/chapters/0/content').length
   await page.locator('.reader-audio-actions.primary').getByRole('button', { name: '上一章' }).click()
@@ -309,16 +323,11 @@ async function runViewport(browser, viewport) {
 
   if (viewport.width <= 750) {
     assert(initial.mobileTopVisible, `${viewport.width}: mobile toolbar should be visible by default`)
+    await page.mouse.click(titleTapPoint.x, titleTapPoint.y)
+    await page.waitForSelector('.reader-mobile-top.visible', { timeout: 5000 })
     await page.mouse.click(viewport.width - 20, Math.round(viewport.height / 2))
     await page.waitForTimeout(160)
     assert(await page.locator('.reader-mobile-top.visible').count() === 1, `${viewport.width}: side tap should not hide toolbar for audio`)
-    const titleTapPoint = await page.locator('.reader-audio-book-title').evaluate((element) => {
-      const rect = element.getBoundingClientRect()
-      return {
-        x: Math.round(rect.left + rect.width / 2),
-        y: Math.round(rect.top + rect.height / 2),
-      }
-    })
     await page.mouse.click(titleTapPoint.x, titleTapPoint.y)
     await page.waitForTimeout(160)
     assert(await page.locator('.reader-mobile-top.visible').count() === 0, `${viewport.width}: center tap should hide toolbar for audio`)

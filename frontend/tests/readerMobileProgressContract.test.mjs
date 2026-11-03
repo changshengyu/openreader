@@ -21,7 +21,8 @@ test('mobile Reader exposes upstream page progress rather than a whole-book seek
 test('mobile Reader hides text page progress for audio and keeps one-line book progress cache action', () => {
   assert.match(readerView, /:page-slider-visible="!isAudioChapter"/)
   const template = mobileChrome.slice(0, mobileChrome.indexOf('</template>'))
-  assert.match(template, /'without-page-slider': !pageSliderVisible/)
+  // reader-dev drops the `.progress` row for audio, leaving the one-line tools.
+  assert.match(template, /<label v-if="pageSliderVisible" class="mobile-progress-slider-row">/)
   const progressButton = template.match(/<button class="mobile-chapter-progress"[\s\S]*?<\/button>/)?.[0] || ''
   assert.match(progressButton, /阅读进度: \{\{ bookProgressLabel \}\}/)
   assert.doesNotMatch(progressButton, /chapterLabel/)

@@ -1,5 +1,23 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-03 P0 Reader 菜单栏与弹出面板（移动/桌面）布局与逻辑
+
+用户要求移动端点中间唤起的菜单栏及其次级布局、桌面菜单栏布局和内部逻辑都与上游对齐（已要求过的优化除外）。本次把上游 `web/`
+原样构建（element-ui 2.15.14、vue 2.7.16），与当前 main 用同一份模拟数据在 390×844、360×800、1440×900、1024×1366 日夜间实测对照。
+主要差异：移动主面板上游从顶 0 盖住顶栏（OpenReader 让出 58px、顶栏仍可点）；面板打开时上游悬浮按钮与底栏仍可点（执行并关闭面板），
+OpenReader 的透明关闭层把它们挡住；工具层上游是不透明纸纹、无边框阴影、自有 `iconfont` 字形，OpenReader 是 96% 透明加边框阴影与
+Element Plus 图标；桌面左栏上游只包住 7 个按钮，OpenReader 铺满整列并有当前面板高亮；右侧按钮/进度列位置与间距不同；目录上游单行 40px、
+无序号副行与标签；书架上游单列、只有书名变红；阅读进度上游按章 `(index+1)/总章数`（25%），OpenReader 含章内比例（17%）；页码公式不同
+（8 页 vs 9 页）；章节键边界上游提示、OpenReader 禁用；显示翻页区域遮罩上游可点穿、文字固定为“点击前一页/后一页”。用户决定 D1 目录按
+上游去掉副行与“本地/已缓存”标签，D2 保留桌面关闭按钮但移到面板外。合同见
+[`reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md`](reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md)。
+状态 **contract-only**。
+记录（2026-11-03，取代上段的状态）：合同 `7a8b073`、红测 `5c08708`（单元合同 15 项、浏览器合同 693 项检查在 `69c27bc` 失败）、实现
+`da438bc`、移动面板类名钩子 `f1c92da`、18 个 smoke 迁移 `4be6e20`。前端 870/870 与 build、后端全量/vet（未改后端）、公告门自测与前端
+实时扫描、菜单浏览器合同六视口、18 个模拟浏览器合同、真实服务 EPUB/CBZ 与 4 个真实接口合同通过；portable-appearance-assets 首页书架
+封面与书籍信息“追更”两项在改前构建同样失败，另起。状态 **implementation-complete / regression-validated**；Go 公告门实时扫描因
+GO-2026-5932 新增伪版本修复而失败关闭（与本切片无关，待用户决定），未合入 main、未发布。
+
 ## 2026-11-03 P1 发布门依赖公告：GO-2026-5932（`x/crypto/openpgp`）出现修复版本
 
 Go 公告门在 main `69c27bc` 上失败关闭：`advisory changed: review required`。唯一不适用项 GO-2026-5932（不再维护的

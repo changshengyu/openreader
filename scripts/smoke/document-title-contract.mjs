@@ -286,16 +286,28 @@ async function ensureMobileChrome(page, viewport) {
 async function clickReaderTool(page, viewport, label) {
   if (!isMobile(viewport)) {
     const title = label === '首页' ? '返回首页' : label
-    await page.locator(`.reader-left-rail button[title="${title}"]`).click()
+    await page.locator(`.reader-left-rail button[aria-label="${title}"]`).click()
     return
   }
   await ensureMobileChrome(page, viewport)
   await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: label }).click()
 }
 
+// Desktop rail tools sit beside an open panel and close it; on phones reader-dev's panel covers the
+// toolbar, so a tap below the panel closes it.
+async function closeReaderPanel(page, viewport, label) {
+  if (!isMobile(viewport)) {
+    await clickReaderTool(page, viewport, label)
+    return
+  }
+  const bottom = await page.locator('.reader-mobile-workspace').evaluate(element => element.getBoundingClientRect().bottom)
+  await page.mouse.click(Math.round(viewport.width / 2), Math.min(viewport.height - 130, Math.ceil(bottom + 24)))
+  await page.locator('.reader-mobile-workspace').waitFor({ state: 'detached', timeout: 10_000 })
+}
+
 async function nextChapter(page, viewport) {
   if (!isMobile(viewport)) {
-    await page.locator('.reader-page-control button[title="下一章"]').click()
+    await page.locator('.reader-page-control button[aria-label="下一章"]').click()
     return
   }
   await ensureMobileChrome(page, viewport)
@@ -315,11 +327,11 @@ async function assertPanelsKeepTitle(page, viewport, label) {
   const before = await page.evaluate(() => window.__titleLog.length)
   await clickReaderTool(page, viewport, '目录')
   await page.locator('.toc-item:visible').first().waitFor({ timeout: 10_000 })
-  await clickReaderTool(page, viewport, '目录')
+  await closeReaderPanel(page, viewport, '目录')
   await page.locator('.toc-item:visible').first().waitFor({ state: 'hidden', timeout: 10_000 })
   await clickReaderTool(page, viewport, '设置')
   await page.waitForTimeout(250)
-  await clickReaderTool(page, viewport, '设置')
+  await closeReaderPanel(page, viewport, '设置')
   await page.waitForTimeout(250)
   const after = await page.evaluate(start => ({ title: document.title, writes: window.__titleLog.slice(start) }), before)
   assert(after.title === expected, `${label}: opening and closing panels changed the tab title to ${JSON.stringify(after.title)}`)

@@ -56,12 +56,12 @@ const BACKEND_CONTENT_FAILURE = { error: 'failed to load chapter content', code:
 const CHAPTER_END = '.reader-chapter-end'
 const INLINE_BUTTON = `.chapter-content[data-index="${INLINE_FAIL_INDEX}"] .chapter-inline-error button`
 const MAIN_BUTTON = '.chapter-load-error button'
-const RAIL_RELOAD = '.reader-right-rail .round-tool[title="重新载入章节"]'
+const RAIL_RELOAD = '.reader-right-rail .round-tool[aria-label="重新载入章节"]'
 const PANEL_CLOSE = '.reader-desktop-workspace-close'
 const BAND = 0.88
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-const railEntry = label => `.reader-left-rail .rail-item[title="${label}"]`
+const railEntry = label => `.reader-left-rail .rail-item[aria-label="${label}"]`
 
 function json(data, status = 200) {
   return { status, contentType: 'application/json', body: JSON.stringify(data) }

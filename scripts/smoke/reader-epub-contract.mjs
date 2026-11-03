@@ -446,8 +446,8 @@ async function assertCurrentEpubParagraphBookmark(page, viewport) {
   assert.ok(expectedParagraph, `${viewport.width}: EPUB viewport must expose a current paragraph`)
 
   const button = viewport.width <= 750
-    ? page.locator('.reader-mobile-float-left.visible button[title="书签"]')
-    : page.locator('.reader-right-rail button[title="书签"]')
+    ? page.locator('.reader-mobile-float-left.visible button[aria-label="书签"]')
+    : page.locator('.reader-right-rail button[aria-label="书签"]')
   await button.click()
   const manager = page.locator('.global-bookmark-dialog')
   await manager.waitFor({ state: 'visible', timeout: 10_000 })
@@ -546,8 +546,8 @@ function assertEPUBAuthorSurfacesKept(state, viewport, label) {
 
 async function assertBuiltInNightSurface(page, frame, viewport) {
   const toggleSelector = viewport.width <= 750
-    ? '.reader-mobile-float-right.visible button[title="夜间模式"]'
-    : '.reader-right-rail button[title="夜间模式"]'
+    ? '.reader-mobile-float-right.visible button[aria-label="夜间模式"]'
+    : '.reader-right-rail button[aria-label="夜间模式"]'
   await page.locator(toggleSelector).click()
   await page.waitForFunction(() => window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
 
@@ -568,8 +568,8 @@ async function assertBuiltInNightSurface(page, frame, viewport) {
   assertEPUBAuthorSurfacesKept(nightFrame, viewport, 'built-in night')
 
   const dayToggleSelector = viewport.width <= 750
-    ? '.reader-mobile-float-right.visible button[title="日间模式"]'
-    : '.reader-right-rail button[title="日间模式"]'
+    ? '.reader-mobile-float-right.visible button[aria-label="日间模式"]'
+    : '.reader-right-rail button[aria-label="日间模式"]'
   await page.locator(dayToggleSelector).click()
   await page.waitForFunction(() => !window.getComputedStyle(document.querySelector('.reader-page')).backgroundImage.includes('content_6.png'))
   const restored = await waitForEPUBRootColor(frame, 'rgb(38, 38, 38)', viewport)
@@ -648,8 +648,8 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   await assertCurrentEpubParagraphBookmark(page, viewport)
 
   const searchButton = viewport.width <= 750
-    ? page.locator('.reader-mobile-float-left.visible button[title="搜索正文"]')
-    : page.locator('.reader-right-rail button[title="搜索正文"]')
+    ? page.locator('.reader-mobile-float-left.visible button[aria-label="搜索正文"]')
+    : page.locator('.reader-right-rail button[aria-label="搜索正文"]')
   await searchButton.click()
   await assertContentSearchDialogGeometry(page, viewport)
   const searchDialog = page.locator('.global-content-search-dialog')
@@ -666,10 +666,19 @@ async function assertFrameContract(page, viewport, resourceResponses) {
     await settingsTool.click()
     await page.waitForSelector('.reader-mobile-workspace')
     assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
-    await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
+    // reader-dev pins the settings popover over the toolbar: a tap on its padding stays in the panel and a
+    // tap below it closes the panel, neither toggling the tools.
+    const panelBox = await page.locator('.reader-mobile-workspace').boundingBox()
+    await page.mouse.click(10, Math.round(panelBox.y + panelBox.height - 10))
+    await page.waitForTimeout(150)
+    assert.equal(await page.locator('.reader-mobile-workspace').count(), 1)
     assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
-    await settingsTool.click()
+    await page.mouse.click(
+      Math.round(viewport.width / 2),
+      Math.min(viewport.height - 130, Math.ceil(panelBox.y + panelBox.height + 24)),
+    )
     await page.waitForFunction(() => !document.querySelector('.reader-mobile-workspace'))
+    assert.equal(await page.locator('.reader-mobile-top.visible').count(), 1)
 
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     await page.waitForTimeout(150)
@@ -717,7 +726,7 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   )
   if (viewport.width <= 750) {
     assert.match(
-      await page.locator('.reader-mobile-bottom.visible .mobile-progress-slider-row > span').innerText(),
+      await page.locator('.reader-mobile-bottom.visible .mobile-progress-slider-row .progress-tip').innerText(),
       /^第 \d+\/\d+ 页$/,
       'mobile tool layer must show upstream in-chapter page progress',
     )

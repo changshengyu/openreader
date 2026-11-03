@@ -216,7 +216,7 @@ async function installMocks(page) {
 async function openSourcePanel(page, viewport) {
   const button = viewport.width <= 750
     ? page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '书源' })
-    : page.locator('.reader-left-rail button[title="书源"]')
+    : page.locator('.reader-left-rail button[aria-label="书源"]')
   await button.click()
   await page.locator('.source-switch-list').waitFor({ state: 'visible', timeout: 10_000 })
 }
@@ -372,12 +372,14 @@ async function runViewport(browser, viewport) {
   const requestCountBeforeChange = state.candidateRequests.length
   state.delayedOldContent = deferred()
   if (viewport.width <= 750) {
-    await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '书源' }).click()
+    // reader-dev's open panel covers the toolbar on phones; a tap below it closes it.
+    const panelBottom = await page.locator('.reader-mobile-workspace').evaluate(element => element.getBoundingClientRect().bottom)
+    await page.mouse.click(Math.round(viewport.width / 2), Math.min(viewport.height - 130, Math.ceil(panelBottom + 24)))
     await page.locator('.source-switch-list').waitFor({ state: 'hidden' })
   }
   const reloadButton = viewport.width <= 750
-    ? page.locator('.reader-mobile-float-right.visible button[title="重新载入章节"]')
-    : page.locator('.reader-right-rail button[title="重新载入章节"]')
+    ? page.locator('.reader-mobile-float-right.visible button[aria-label="重新载入章节"]')
+    : page.locator('.reader-right-rail button[aria-label="重新载入章节"]')
   await reloadButton.click()
   await waitForState(
     () => state.oldContentPending,

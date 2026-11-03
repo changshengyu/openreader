@@ -8,29 +8,21 @@
   />
   <section
     class="reader-desktop-workspace"
-    :class="[{ 'without-head': !title }, `workspace-panel-${panel}`]"
+    :class="`workspace-panel-${panel}`"
     :aria-label="title || '阅读设置'"
   >
-    <button
-      class="reader-desktop-workspace-close"
-      type="button"
-      aria-label="关闭阅读工具面板"
-      title="关闭"
-      @pointerdown.stop
-      @click.stop="$emit('close')"
-    >
-      ×
-    </button>
-    <header v-if="title" class="reader-workspace-head">
-      <strong>{{ title }}</strong>
-      <div class="reader-workspace-actions">
-        <slot name="actions" />
-      </div>
-    </header>
-    <div class="reader-workspace-body">
-      <slot />
-    </div>
+    <slot />
   </section>
+  <!-- OpenReader keeps one visible close button for touch iPads (user decision D2), beside the panel. -->
+  <button
+    class="reader-desktop-workspace-close"
+    type="button"
+    aria-label="关闭阅读工具面板"
+    @pointerdown.stop
+    @click.stop="$emit('close')"
+  >
+    ×
+  </button>
 </template>
 
 <script setup>
@@ -58,45 +50,49 @@ defineEmits(['close'])
   border: 0;
 }
 
+/* reader-dev's desktop popover face: the panels' `.popup-wrapper` overhangs the popover by 4px, so it
+   covers the reading frame inside its border (x = center − readWidthConfig/2, readWidthConfig − 1 wide)
+   from the top; text starts 20px down and 24px in, with el-popover's text defaults. */
 .reader-desktop-workspace {
   position: fixed;
   z-index: 4;
   top: 0;
-  left: calc(50vw - var(--reader-frame-width) / 2 + 4px);
-  width: calc(var(--reader-frame-width) - 9px);
-  height: auto;
-  min-height: 0;
-  max-height: 100dvh;
+  left: 50%;
   box-sizing: border-box;
-  padding: 24px 60px 24px 24px;
-  color: var(--reader-popup-text, var(--reader-text));
+  width: calc(var(--reader-frame-width) - 1px);
+  max-height: 100dvh;
+  margin-left: calc(var(--reader-frame-width) / -2);
+  padding: 20px 24px 24px;
+  color: #606266;
   background-color: var(--reader-popup-bg);
   background-image: var(--reader-popup-bg-image);
   background-repeat: repeat;
-  background-size: auto;
-  border-right: 1px solid rgba(109, 95, 55, 0.28);
-  border-left: 1px solid rgba(109, 95, 55, 0.28);
-  box-shadow:
-    inset 24px 0 44px rgba(90, 71, 28, 0.05),
-    inset -24px 0 44px rgba(90, 71, 28, 0.05);
-  filter: brightness(var(--reader-brightness));
-  overflow: visible;
+  font-family: initial;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: justify;
+  word-break: break-all;
 }
 
+/* Over the right tool column's empty top, never over the panel. */
 .reader-desktop-workspace-close {
-  position: absolute;
+  position: fixed;
   top: 8px;
-  right: 8px;
-  z-index: 1;
-  display: grid;
+  left: 50%;
+  z-index: 5;
+  display: flex;
   width: 44px;
   height: 44px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  margin-left: calc(var(--reader-frame-width) / 2 + 8px);
   padding: 0;
-  color: var(--reader-accent, #ed4259);
-  background: color-mix(in srgb, var(--reader-popup-bg) 88%, transparent);
-  border: 1px solid rgba(237, 66, 89, 0.28);
-  border-radius: 999px;
+  color: var(--reader-chrome-text, #121212);
+  background-color: var(--reader-popup-bg);
+  background-image: var(--reader-popup-bg-image);
+  background-repeat: repeat;
+  border: 0;
+  border-radius: 100%;
   cursor: pointer;
   font: inherit;
   font-size: 26px;
@@ -105,69 +101,14 @@ defineEmits(['close'])
 }
 
 .reader-desktop-workspace-close:focus-visible {
-  outline: 2px solid var(--reader-accent, #ed4259);
+  outline: 2px solid currentColor;
   outline-offset: 2px;
-}
-
-.reader-workspace-head {
-  display: flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 10px;
-  color: var(--reader-accent, #ed4259);
-}
-
-.reader-workspace-head strong {
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.reader-workspace-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 14px;
-}
-
-.reader-workspace-actions :deep(button) {
-  padding: 0;
-  color: var(--reader-accent, #ed4259);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.reader-workspace-actions :deep(button:disabled) {
-  color: var(--reader-list-text, #aaa);
-  cursor: default;
-}
-
-.reader-workspace-body {
-  height: auto;
-  min-height: 0;
-  max-height: calc(100dvh - 48px);
-  overflow: visible;
-}
-
-.reader-desktop-workspace.workspace-panel-shelf :deep(.reader-shelf-list),
-.reader-desktop-workspace.workspace-panel-toc :deep(.toc-list),
-.reader-desktop-workspace.workspace-panel-source :deep(.source-switch-list) {
-  height: 300px;
-  max-height: 300px;
-  min-height: 0;
-}
-
-.reader-desktop-workspace.workspace-panel-settings .reader-workspace-body {
-  max-height: none;
-  overflow: visible;
 }
 
 @media (max-width: 750px) {
   .reader-workspace-dismiss,
-  .reader-desktop-workspace {
+  .reader-desktop-workspace,
+  .reader-desktop-workspace-close {
     display: none;
   }
 }

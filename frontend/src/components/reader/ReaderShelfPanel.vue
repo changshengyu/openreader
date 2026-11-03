@@ -1,25 +1,38 @@
 <template>
-  <div ref="listRef" class="reader-shelf-list">
-    <button
-      v-for="item in books"
-      :key="item.id"
-      class="reader-shelf-card"
-      :class="{ active: Number(item.id) === Number(currentBookId) }"
-      :data-book-id="item.id"
-      type="button"
-      @click="$emit('select', item)"
-    >
-      <span class="reader-shelf-title-line">
-        <strong>{{ item.title }}</strong>
-        <em v-if="unreadCount(item)">{{ unreadCount(item) }}</em>
-      </span>
-      <span class="reader-shelf-chapter">{{ readChapterTitle(item) || '尚未阅读' }}</span>
-    </button>
-    <el-empty v-if="!loading && !books.length" description="书架暂无书籍" />
+  <!-- reader-dev BookShelf.vue: its own title zone over a 300px single-column list. -->
+  <div class="reader-shelf-popup">
+    <div class="title-zone">
+      <div class="title">书架({{ books.length }})</div>
+      <div class="title-btn" :class="{ loading }">
+        <button type="button" :disabled="loading" @click="$emit('refresh')">
+          <el-icon v-if="loading" class="is-loading"><Loading /></el-icon>
+          {{ loading ? '刷新中...' : '刷新' }}
+        </button>
+      </div>
+    </div>
+    <div ref="listRef" v-loading="loading" class="reader-shelf-list">
+      <button
+        v-for="item in books"
+        :key="item.id"
+        class="reader-shelf-card"
+        :class="{ active: Number(item.id) === Number(currentBookId) }"
+        :data-book-id="item.id"
+        type="button"
+        @click="$emit('select', item)"
+      >
+        <span class="reader-shelf-title-line">
+          <strong>{{ item.title }}</strong>
+          <em v-if="unreadCount(item)">{{ unreadCount(item) }}</em>
+        </span>
+        <span class="reader-shelf-chapter">{{ readChapterTitle(item) }}</span>
+      </button>
+      <el-empty v-if="!loading && !books.length" description="书架暂无书籍" />
+    </div>
   </div>
 </template>
 
 <script setup>
+import { Loading } from '@element-plus/icons-vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { newestBookProgress } from '../../utils/bookOrder'
 
@@ -42,7 +55,7 @@ const props = defineProps({
   },
 })
 
-defineEmits(['select'])
+defineEmits(['select', 'refresh'])
 
 const listRef = ref(null)
 let locateTimer = 0
@@ -63,6 +76,7 @@ function unreadCount(item) {
   return Math.max(0, total - 1 - chapterIndex)
 }
 
+// reader-dev BookShelf.vue#jumpToActive: the current book scrolls to the top of the list.
 function locateCurrentBook(attempt = 0) {
   if (locateTimer) window.clearTimeout(locateTimer)
   nextTick(() => {
@@ -74,13 +88,10 @@ function locateCurrentBook(attempt = 0) {
       }
       return
     }
-    const targetTop = active.offsetTop - Math.max(0, (list.clientHeight - active.clientHeight) / 2)
-    const nextTop = Math.max(0, targetTop)
-    list.scrollTo({ top: nextTop, behavior: 'auto' })
-    requestAnimationFrame(() => {
-      list.scrollTop = nextTop
-      active.scrollIntoView({ block: 'center', inline: 'nearest' })
-    })
+    list.scrollTop = Math.max(
+      0,
+      list.scrollTop + active.getBoundingClientRect().top - list.getBoundingClientRect().top,
+    )
   })
 }
 
@@ -97,83 +108,112 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.title-zone {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0 0 20px;
+}
+
+.title {
+  width: fit-content;
+  color: #ed4259;
+  border-bottom: 1px solid #ed4259;
+  font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, "Nimbus Sans L", Arial, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Source Han Sans CN", "Microsoft YaHei", "Wenquanyi Micro Hei", "WenQuanYi Zen Hei", "ST Heiti", SimHei, "WenQuanYi Zen Hei Sharp", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.title-btn {
+  color: #ed4259;
+  font-size: 14px;
+  line-height: 26px;
+}
+
+.title-btn.loading {
+  color: #606266;
+}
+
+.title-btn button {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+
+.title-btn button:disabled {
+  cursor: default;
+}
+
 .reader-shelf-list {
-  display: grid;
-  grid-auto-rows: max-content;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  height: 300px;
   gap: 16px;
-  max-height: calc(100vh - 154px);
-  overflow-y: auto;
+  overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.reader-shelf-list::-webkit-scrollbar {
+  width: 0;
 }
 
 .reader-shelf-card {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
   width: 100%;
   max-width: 100%;
   overflow: hidden;
   padding: 8px 0;
-  color: var(--reader-shelf-title-text, var(--reader-popup-text, var(--reader-text)));
+  color: inherit;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--reader-list-border, rgba(160, 139, 91, 0.22));
+  border-bottom: 1px solid var(--reader-list-border, #eee);
   cursor: pointer;
-  text-align: left;
-}
-
-.reader-shelf-card:hover,
-.reader-shelf-card.active {
-  color: var(--reader-accent, #ed4259);
-  background: transparent;
+  font: inherit;
+  text-align: inherit;
 }
 
 .reader-shelf-title-line {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  color: var(--reader-shelf-title-text, inherit);
 }
 
-.reader-shelf-title-line strong,
-.reader-shelf-chapter {
-  min-width: 0;
+.reader-shelf-title-line strong {
   overflow: hidden;
+  font-size: 16px;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.reader-shelf-title-line strong {
-  font-size: 16px;
-  font-weight: 500;
-}
-
 .reader-shelf-title-line em {
-  flex: 0 0 auto;
-  color: var(--reader-shelf-title-text, var(--reader-accent, #ed4259));
   font-size: 12px;
   font-style: normal;
 }
 
-.reader-shelf-chapter {
-  color: var(--reader-shelf-chapter-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
-  font-size: 14px;
+.reader-shelf-card.active strong {
+  color: #eb4259;
 }
 
-@media (min-width: 900px) {
-  .reader-shelf-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    align-content: start;
-    gap: 16px 24px;
-  }
-
-  .reader-shelf-card {
-    min-width: 0;
-    padding: 10px 0;
-  }
-
-  .reader-shelf-list :deep(.el-empty) {
-    grid-column: 1 / -1;
-  }
+.reader-shelf-chapter {
+  display: block;
+  overflow: hidden;
+  margin-top: 6px;
+  color: var(--reader-shelf-chapter-text, #888);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -1,5 +1,19 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-03 当前切片：Reader 菜单栏与弹出面板布局与逻辑（P0，A1–A7、B1–B6、C1–C6、D1、E1）
+
+见[`reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md`](reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md)。
+上游 `web/` 原样构建后与当前 main 同数据四视口日夜实测：移动顶栏/悬浮按钮/底栏、移动主面板（顶 0 盖住顶栏、面板打开时悬浮与底栏仍可点）、
+桌面左栏（只包住按钮）/右列/进度列/缓存区、桌面面板（x=50%−rwc/2、宽 rwc−1）、书架/书源/目录列表、显示翻页区域、阅读进度
+`(index+1)/总章数`、页码公式、章节键边界提示、阅读框 `rwc` 宽度、简洁模式工具色全部 must-fix。用户决定 D1 目录去掉序号副行与“本地/已缓存”
+标签；D2 桌面关闭按钮保留并移到面板外。保留：原生连续滚动、步进器、亮度、字体预览、运行章节标题、书签添加当前段落。计划红测：
+`readerMenuUpstreamAlignmentContract` 单元/源码合同与 `reader-menu-upstream-contract.mjs` 浏览器合同（逐项比对上游实测值）。
+状态 contract-only。
+记录（2026-11-03，取代上段的状态）：合同 `7a8b073`、红测 `5c08708`（单元 15 项、浏览器 693 项检查在 `69c27bc` 失败）、实现 `da438bc`、
+类名钩子 `f1c92da`、smoke 迁移 `4be6e20`。前端 870/870 与 build、后端全量/vet、公告门自测与前端实时扫描、菜单合同六视口、18 个模拟浏览器
+合同、真实服务 EPUB/CBZ 与 4 个真实接口合同通过；首页书架封面（portable-appearance-assets）与书籍信息“追更”两项改前构建同样失败，另起。
+状态 implementation-complete / regression-validated。发布阻塞：Go 公告门 GO-2026-5932 新增伪版本修复，门失败关闭，待用户决定；未合入 main。
+
 ## 2026-11-03 当前切片：发布门依赖公告 GO-2026-5932 出现修复（P1，发布阻塞）
 
 见[`dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](dependency-advisory-x-crypto-openpgp-fix-p1-contract.md)。

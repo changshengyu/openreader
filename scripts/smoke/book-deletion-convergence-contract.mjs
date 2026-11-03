@@ -262,7 +262,7 @@ async function runViewport(browser, app, token, viewport) {
     await clientA.page.goto(`${app.root}/books/${bookmarkFixture.book.id}/read?resume=1`, { waitUntil: 'domcontentloaded' })
     await waitForReader(clientA.page)
     await waitForLocalProgress(clientA.page, bookmarkFixture.book.id)
-    await clientA.page.locator('button[title="书签"]').click()
+    await clientA.page.locator('button[aria-label="书签"]').click()
     const bookmarkDialog = clientA.page.locator('.global-bookmark-dialog')
     await bookmarkDialog.waitFor({ state: 'visible', timeout: 10_000 })
     clientA.progressRequests.length = 0
@@ -276,7 +276,7 @@ async function runViewport(browser, app, token, viewport) {
     const searchFixture = await importTXT(app.root, token, `删除搜索 ${suffix}`)
     await clientA.page.goto(`${app.root}/books/${searchFixture.book.id}/read`, { waitUntil: 'domcontentloaded' })
     await waitForReader(clientA.page)
-    await clientA.page.locator('button[title="搜索正文"]').click()
+    await clientA.page.locator('button[aria-label="搜索正文"]').click()
     const searchDialog = clientA.page.locator('.global-content-search-dialog')
     await searchDialog.waitFor({ state: 'visible', timeout: 10_000 })
     clientA.progressRequests.length = 0

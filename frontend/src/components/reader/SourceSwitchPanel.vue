@@ -1,12 +1,12 @@
 <template>
+  <!-- reader-dev BookSource.vue: title zone with the group select, then a 300px list. -->
   <div class="title-zone">
     <div class="title">来源({{ sources.length }})</div>
-    <div class="title-actions" :class="{ loading }">
+    <div class="title-actions" :class="{ loading: loadingMore }">
       <el-select
         :model-value="group"
         size="small"
         placeholder="全部分组"
-        clearable
         filterable
         class="source-group-select"
         :disabled="opening"
@@ -95,6 +95,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  sourceTotal: {
+    type: Number,
+    default: 0,
+  },
 })
 
 defineEmits(['refresh', 'loadMore', 'groupChange', 'change'])
@@ -102,7 +106,8 @@ defineEmits(['refresh', 'loadMore', 'groupChange', 'change'])
 const sourceList = ref(null)
 const sourceItemRefs = ref([])
 
-const normalizedGroups = computed(() => props.groups.map((item) => {
+// reader-dev bookSourceGroupList starts with 全部分组 and the number of book sources.
+const normalizedGroups = computed(() => [{ value: '', label: `全部分组 (${props.sourceTotal})` }, ...props.groups.map((item) => {
   if (typeof item === 'string') {
     return { value: item, label: item }
   }
@@ -112,7 +117,7 @@ const normalizedGroups = computed(() => props.groups.map((item) => {
     value,
     label: count > 0 ? `${item?.label || value} (${count})` : (item?.label || value),
   }
-}).filter(item => item.value))
+}).filter(item => item.value)])
 
 onBeforeUpdate(() => {
   sourceItemRefs.value = []
@@ -161,31 +166,35 @@ function setSourceItemRef(el) {
   if (el) sourceItemRefs.value.push(el)
 }
 
+// reader-dev BookSource.vue#jumpToActive: the current source scrolls to the top of the list.
 function jumpToActive() {
   const index = props.sources.findIndex(isSelected)
   const target = sourceItemRefs.value[index]
   if (!target || !sourceList.value) return
   const wrapper = sourceList.value
-  const nextTop = target.offsetTop - wrapper.clientHeight / 2 + target.clientHeight / 2
-  wrapper.scrollTop = Math.max(0, nextTop)
+  wrapper.scrollTop = Math.max(
+    0,
+    wrapper.scrollTop + target.getBoundingClientRect().top - wrapper.getBoundingClientRect().top,
+  )
 }
 </script>
 
 <style scoped>
 .title-zone {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: row;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 16px;
+  justify-content: space-between;
+  width: 100%;
   min-width: 0;
+  margin: 0 0 20px;
 }
 
 .title {
   width: fit-content;
-  color: var(--reader-accent, #ed4259);
-  border-bottom: 1px solid var(--reader-accent, #ed4259);
+  color: #ed4259;
+  border-bottom: 1px solid #ed4259;
+  font-family: -apple-system, "Noto Sans", "Helvetica Neue", Helvetica, "Nimbus Sans L", Arial, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Source Han Sans CN", "Microsoft YaHei", "Wenquanyi Micro Hei", "WenQuanYi Zen Hei", "ST Heiti", SimHei, "WenQuanYi Zen Hei Sharp", sans-serif;
   font-size: 18px;
   font-weight: 400;
 }
@@ -193,35 +202,50 @@ function jumpToActive() {
 .title-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  color: var(--reader-accent, #ed4259);
+  color: #ed4259;
+  cursor: pointer;
   font-size: 14px;
   line-height: 26px;
 }
 
+.title-actions.loading {
+  color: #606266;
+}
+
 .title-actions button {
+  margin-left: 15px;
   padding: 0;
   color: inherit;
   background: transparent;
   border: 0;
   cursor: pointer;
   font: inherit;
+  line-height: inherit;
 }
 
 .title-actions button:disabled {
-  color: var(--reader-list-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 62%, transparent));
+  color: #606266;
   cursor: default;
 }
 
+/* reader-dev el-select size mini: 140×28, 12px text 15px in. */
 .source-group-select {
   width: 140px;
 }
 
+.source-group-select :deep(.el-select__wrapper) {
+  min-height: 28px;
+  padding: 0 10px 0 15px;
+  font-size: 12px;
+  line-height: 28px;
+}
+
 .source-switch-list {
-  height: min(52vh, 360px);
-  overflow: auto;
+  height: 300px;
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
 }
 
 .source-switch-list::-webkit-scrollbar {
@@ -229,22 +253,20 @@ function jumpToActive() {
 }
 
 .source-item {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 9px 0;
-  color: var(--reader-popup-text, var(--reader-text));
+  overflow: hidden;
+  padding: 8px 0;
+  color: var(--reader-list-text, inherit);
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--reader-list-border, #eee);
   cursor: pointer;
-  text-align: left;
-}
-
-.source-item:hover {
-  background: rgba(237, 66, 89, 0.05);
+  font: inherit;
+  text-align: inherit;
 }
 
 .source-item:disabled {
@@ -254,71 +276,41 @@ function jumpToActive() {
 
 .source-title {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
   min-width: 0;
 }
 
 .source-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--reader-list-text, var(--reader-popup-text, var(--reader-text)));
   font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .source-time {
-  flex: 0 0 auto;
-  color: var(--reader-list-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
   font-size: 12px;
 }
 
 .source-latest-chapter {
   min-width: 0;
   overflow: hidden;
-  color: var(--reader-source-chapter-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
+  margin-top: 6px;
+  color: var(--reader-source-chapter-text, #888);
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .source-status {
-  color: var(--reader-source-chapter-text, color-mix(in srgb, var(--reader-popup-text, var(--reader-text)) 72%, transparent));
+  color: var(--reader-source-chapter-text, #888);
   font-size: 12px;
 }
 
 .source-item.selected .source-name {
-  color: var(--reader-accent, #ed4259);
-}
-
-@media (max-width: 750px) {
-  .title-zone {
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-
-  .title-actions {
-    gap: 10px;
-  }
-
-  .source-group-select {
-    width: 132px;
-  }
-
-  .source-switch-list {
-    height: 46vh;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-  }
-
-  .source-item {
-    min-height: 58px;
-    padding: 10px 0;
-  }
-
-  .source-name {
-    font-size: 15px;
-  }
+  color: #eb4259;
 }
 </style>

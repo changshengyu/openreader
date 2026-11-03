@@ -1,4 +1,5 @@
 <template>
+  <!-- reader-dev Reader.vue right `.read-bar` `.tools`: book progress, previous and next chapter. -->
   <footer class="reader-page-control">
     <ReaderCachePanel
       class="desktop-cache-zone"
@@ -8,24 +9,23 @@
       @cache="$emit('cache', $event)"
       @cancel="$emit('cache-cancel')"
     />
-    <button class="progress-box" type="button" title="缓存章节" @click="$emit('cache-toggle')">{{ bookProgressLabel }}</button>
-    <button class="page-step chapter-step" type="button" title="上一章" :disabled="previousDisabled" @click="$emit('previous')">
-      <el-icon :size="24"><ArrowLeft /></el-icon>
+    <button class="progress-box" type="button" @click="$emit('cache-toggle')">{{ bookProgressLabel }}</button>
+    <button class="page-step chapter-step" type="button" aria-label="上一章" @click="$emit('previous')">
+      <span class="iconfont">&#58920;</span>
     </button>
-    <button class="page-step chapter-step" type="button" title="下一章" :disabled="nextDisabled" @click="$emit('next')">
-      <el-icon :size="24"><ArrowRight /></el-icon>
+    <button class="page-step chapter-step" type="button" aria-label="下一章" @click="$emit('next')">
+      <span class="iconfont">&#58913;</span>
     </button>
   </footer>
 </template>
 
 <script setup>
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import ReaderCachePanel from './ReaderCachePanel.vue'
 
 defineProps({
   bookProgressLabel: {
     type: String,
-    default: '0%',
+    default: '',
   },
   cacheVisible: {
     type: Boolean,
@@ -39,14 +39,6 @@ defineProps({
     type: String,
     default: '',
   },
-  previousDisabled: {
-    type: Boolean,
-    default: false,
-  },
-  nextDisabled: {
-    type: Boolean,
-    default: false,
-  },
 })
 
 defineEmits([
@@ -59,60 +51,63 @@ defineEmits([
 </script>
 
 <style scoped>
+/* reader-dev Reader.vue desktop right `.read-bar`: its right edge is readWidthConfig/2 + 52px right of
+   the center and it is as wide as its 42px tools plus their borders. */
 .reader-page-control {
   position: fixed;
-  right: auto;
   bottom: 0;
-  left: var(--reader-right-x);
-  z-index: 4;
-  display: grid;
-  width: 46px;
-  background: color-mix(in srgb, var(--reader-popup-bg) 82%, transparent);
-  border: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.38));
-  border-bottom: 0;
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  margin-left: calc(var(--reader-frame-width) / 2 + 8px);
+  background-color: var(--reader-popup-bg);
+  background-image: var(--reader-popup-bg-image);
+  background-repeat: repeat;
+  font-family: "Avenir", Helvetica, Arial, sans-serif;
 }
 
 .desktop-cache-zone {
   position: absolute;
-  right: 54px;
-  bottom: 0;
+  top: 0;
+  right: 55px;
+  box-sizing: content-box;
   width: 300px;
 }
 
+/* A button centers its content; reader-dev's div stacks it from the top. */
 .progress-box,
 .page-step {
-  display: grid;
-  height: 43px;
-  place-items: center;
-  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
-  background: color-mix(in srgb, var(--reader-popup-bg) 62%, transparent);
-  border: 0;
-  border-bottom: 1px solid var(--reader-chrome-border, rgba(148, 132, 87, 0.32));
-  font-size: 16px;
-}
-
-.page-step {
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 42px;
+  height: 31px;
+  margin: -1px 0 0;
+  padding: 12px 0 0;
+  color: var(--reader-chrome-text, #000);
+  background: transparent;
+  border: 1px solid var(--reader-chrome-border, rgba(0, 0, 0, 0.1));
   cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  line-height: normal;
+  text-align: center;
 }
 
 .progress-box {
-  width: 100%;
-  padding: 0;
-  cursor: pointer;
-}
-
-.chapter-step {
-  padding: 0;
   font-size: 16px;
 }
 
-.chapter-step:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.page-step:hover {
-  background: var(--reader-popup-bg);
+.page-step .iconfont {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0 auto 6px;
+  font-family: iconfont;
+  font-size: 16px;
 }
 
 @media (max-width: 750px) {

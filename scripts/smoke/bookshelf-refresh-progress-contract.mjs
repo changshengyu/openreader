@@ -289,7 +289,7 @@ async function runViewport(browser, root, viewport) {
       await page.locator('.reader-mobile-top.visible .mobile-tool-button').filter({ hasText: '书架' }).click()
       await page.locator('.reader-mobile-primary-shelf').waitFor()
     } else {
-      await page.locator('.rail-item[title="书架"]').click()
+      await page.locator('.rail-item[aria-label="书架"]').click()
       await page.locator('.reader-desktop-workspace.workspace-panel-shelf').waitFor()
     }
 
@@ -329,8 +329,8 @@ async function runViewport(browser, root, viewport) {
     const readerProgressWritesBeforeRefresh = pageProgressWrites
     const readerUpdateChecksBeforeRefresh = manualUpdateChecks
     const readerRefresh = viewport.width <= 750
-      ? page.locator('.reader-mobile-primary-shelf .reader-mobile-primary-actions button').filter({ hasText: '刷新' })
-      : page.locator('.reader-desktop-workspace.workspace-panel-shelf .reader-workspace-actions button').filter({ hasText: '刷新' })
+      ? page.locator('.reader-mobile-primary-shelf .title-btn button').filter({ hasText: '刷新' })
+      : page.locator('.reader-desktop-workspace.workspace-panel-shelf .title-btn button').filter({ hasText: '刷新' })
     await readerRefresh.click()
     await readerShelfCard.locator('.reader-shelf-chapter').filter({ hasText: chapters[1].title }).waitFor({ timeout: 10_000 })
     assert(pageProgressWrites === readerProgressWritesBeforeRefresh + 1, `${suffix}: Reader shelf refresh did not settle its pending progress with one CAS request`)

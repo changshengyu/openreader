@@ -733,7 +733,7 @@ function resetReaderSettings() {
 <style scoped>
 .settings-body {
   min-width: 0;
-  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
+  color: var(--reader-settings-text, #606266);
   text-align: left;
   user-select: none;
 }
@@ -872,7 +872,7 @@ function resetReaderSettings() {
 }
 
 .setting-label {
-  color: var(--reader-chrome-text, var(--reader-popup-text, var(--reader-text)));
+  color: var(--reader-chrome-text, #666);
   font-size: 13px;
 }
 
@@ -1030,7 +1030,7 @@ function resetReaderSettings() {
   width: 78px;
   height: 34px;
   padding: 0;
-  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
+  color: var(--reader-settings-text, #606266);
   background: var(--reader-control-bg);
   border: 1px solid var(--reader-control-border);
   border-radius: 2px;
@@ -1123,7 +1123,7 @@ function resetReaderSettings() {
 .font-size-preset {
   min-width: 0;
   min-height: 32px;
-  color: var(--reader-settings-text, var(--reader-popup-text, var(--reader-text)));
+  color: var(--reader-settings-text, #606266);
   background: var(--reader-control-bg);
   border: 1px solid var(--reader-control-border);
   border-radius: 6px;

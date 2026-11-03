@@ -1,0 +1,6 @@
+/* reader-dev web/src/assets/fonts/iconfont.css: the glyphs of the Reader toolbars
+   (书架 &#58892;, 目录 &#58905;, 设置 &#58971;, 首页/上一章 &#58920;, 顶部 &#58914;, 底部 &#58915;, 下一章 &#58913;). */
+@font-face {
+  font-family: "iconfont";
+  src: url("../assets/fonts/iconfont.woff") format("woff");
+}
