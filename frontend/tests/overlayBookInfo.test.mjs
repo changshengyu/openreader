@@ -317,6 +317,65 @@ test('uploads custom covers and toggles remote update state with precise patch p
   assert.deepEqual(fixture.calls.at(-1), ['success', '操作成功'])
 })
 
+function useLocalShelfBook(fixture) {
+  const localBook = {
+    id: 2,
+    title: '本地书',
+    author: '本地作者',
+    sourceId: 0,
+    originalFile: 'users/1/本地书.txt',
+    canUpdate: true,
+  }
+  Object.assign(fixture.bookshelf.books[1], localBook)
+  fixture.overlay.bookInfoBook = { ...localBook }
+}
+
+test('toggles follow updates on a local shelf book like reader-dev saveBook', async () => {
+  const fixture = createController()
+  useLocalShelfBook(fixture)
+
+  await fixture.controller.toggleBookCanUpdate(false)
+
+  assert.deepEqual(fixture.calls[0], [
+    'update-book',
+    2,
+    {
+      canUpdate: false,
+    },
+  ])
+  assert.equal(fixture.calls.filter(([kind]) => kind === 'update-book').length, 1)
+  assert.equal(fixture.calls.find(([kind]) => kind === 'upsert')?.[1]?.canUpdate, false)
+  assert.equal(fixture.overlay.bookInfoBook.canUpdate, false)
+  assert.equal(fixture.overlay.bookInfoBook.title, '本地书')
+  assert.equal(fixture.controller.updatingBookId.value, null)
+  assert.deepEqual(fixture.calls.at(-1), ['success', '操作成功'])
+})
+
+test('keeps the server follow value when a local shelf book toggle fails', async () => {
+  const failure = new Error('network down')
+  const fixture = createController({
+    updateBook: async (id, payload) => {
+      fixture.calls.push(['update-book', id, payload])
+      throw failure
+    },
+  })
+  useLocalShelfBook(fixture)
+
+  await fixture.controller.toggleBookCanUpdate(false)
+
+  assert.deepEqual(fixture.calls[0], [
+    'update-book',
+    2,
+    {
+      canUpdate: false,
+    },
+  ])
+  assert.deepEqual(fixture.calls.at(-1), ['error', failure, '操作失败'])
+  assert.equal(fixture.calls.some(([kind]) => kind === 'upsert'), false)
+  assert.equal(fixture.overlay.bookInfoBook.canUpdate, true)
+  assert.equal(fixture.controller.updatingBookId.value, null)
+})
+
 test('drops a late metadata response instead of writing it into a replacement account', async () => {
   const response = deferred()
   let current = true

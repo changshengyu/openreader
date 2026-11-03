@@ -94,6 +94,7 @@ async function startOpenReader() {
       OPENREADER_JWT_SECRET: 'bookinfo-real-api-contract-secret',
       OPENREADER_CORS_ORIGIN: `http://127.0.0.1:${port}`,
       OPENREADER_CHECK_INTERVAL: '24h',
+      OPENREADER_SOURCE_NETWORK_ALLOWLIST: '127.0.0.1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -113,6 +114,43 @@ async function startOpenReader() {
       await stopProcess(child)
       await rm(tempRoot, { recursive: true, force: true })
     },
+  }
+}
+
+async function startSourceFixture() {
+  const server = createServer((request, response) => {
+    const parts = new URL(request.url || '/', 'http://fixture.local').pathname.split('/').filter(Boolean)
+    const html = body => {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      response.end(body)
+    }
+    if (parts[0] === 'book' && parts.length === 2) {
+      html(`<a class="toc" href="/toc/${parts[1]}">目录</a>`)
+      return
+    }
+    if (parts[0] === 'toc' && parts.length === 2) {
+      html(`<article class="chapter"><span class="chapter-name">第一章</span><a href="/chapter/${parts[1]}/0">阅读</a></article>`)
+      return
+    }
+    if (parts[0] === 'chapter' && parts.length === 3) {
+      html(`<main class="content">${parts[1]} 远程正文</main>`)
+      return
+    }
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+    response.end('missing fixture')
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address()
+  assert(address && typeof address === 'object', 'unable to start the BookInfo source fixture')
+  return {
+    root: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise(resolve => {
+      server.closeAllConnections?.()
+      server.close(resolve)
+    }),
   }
 }
 
@@ -150,7 +188,7 @@ async function importLocalBook(root, token, title) {
   return JSON.parse(text)
 }
 
-async function seedWorkspace(root, viewport) {
+async function seedWorkspace(root, fixture, viewport) {
   const suffix = `${viewport.width}x${viewport.height}`
   const registered = await api(root, '/auth/register', {
     method: 'POST',
@@ -169,13 +207,22 @@ async function seedWorkspace(root, viewport) {
     method: 'POST',
     body: {
       name: `BookInfo 书源 ${suffix}`,
-      baseUrl: `https://bookinfo-source.example/${suffix}`,
+      baseUrl: fixture.root,
       charset: 'utf-8',
       enabled: true,
+      rules: JSON.stringify({
+        tocUrlRule: '.toc|attr:href',
+        chapterListRule: '.chapter',
+        chapterNameRule: '.chapter-name|text',
+        chapterUrlRule: 'a|attr:href',
+        contentRule: '.content|text',
+      }),
     },
   })
   const remoteTitle = `BookInfo 远程书 ${suffix}`
-  const remote = await api(root, '/books', {
+  // POST /api/books ignores source fields by contract; only the remote
+  // confirmation route binds a shelf book to the caller's own source.
+  const remote = await api(root, '/books/remote', {
     token,
     method: 'POST',
     body: {
@@ -184,19 +231,25 @@ async function seedWorkspace(root, viewport) {
       intro: '第一段简介\n\n    第二段简介',
       kind: '玄幻,热血,成长,冒险,东方,群像,长篇,连载,完整标签',
       wordCount: '99万字',
-      sourceId: 1,
-      url: `https://bookinfo.example/${suffix}`,
-      canUpdate: true,
+      bookUrl: `${fixture.root}/book/${suffix}`,
+      sourceId: source.id,
     },
   })
   const localTitle = `BookInfo 本地书 ${suffix}`
   const local = await importLocalBook(root, token, localTitle)
   assert(Number(remote.id) > 0 && Number(local.id) > 0, `${suffix}: seed did not return shelf records`)
+  assert(Number(remote.sourceId) === Number(source.id), `${suffix}: remote seed is not bound to its own source: ${remote.sourceId}`)
+  assert(Number(local.sourceId || 0) === 0, `${suffix}: local seed unexpectedly has a source: ${local.sourceId}`)
+  assert(remote.canUpdate === true && local.canUpdate === true, `${suffix}: seeded books must start with follow updates on`)
   return { token, userID, category, source, remote, local }
 }
 
 function shelfRow(page, title) {
   return page.locator('.shelf-page .book-row').filter({ has: page.getByText(title, { exact: true }) })
+}
+
+function followSwitchChecked(dialog) {
+  return dialog.locator('.inline-update-switch .el-switch').evaluate(node => node.classList.contains('is-checked'))
 }
 
 async function captureRequest(page, predicate, action) {
@@ -272,8 +325,8 @@ async function runFocusedLocalRefresh(page, root, viewport, seeded, failures) {
   return suffix
 }
 
-async function runViewport(browser, root, viewport) {
-  const seeded = await seedWorkspace(root, viewport)
+async function runViewport(browser, root, fixture, viewport) {
+  const seeded = await seedWorkspace(root, fixture, viewport)
   const context = await browser.newContext({
     viewport,
     isMobile: viewport.width <= 750,
@@ -330,6 +383,11 @@ async function runViewport(browser, root, viewport) {
     assert(introParagraphs.length === 3, `${viewport.width}: BookInfo intro must preserve every newline, got ${introParagraphs.length} paragraphs`)
     assert(introParagraphs[0].startsWith('\u00a0'.repeat(6)), `${viewport.width}: BookInfo intro must keep the upstream six-space prefix`)
     assert(introParagraphs[1] === '\u00a0'.repeat(6), `${viewport.width}: BookInfo intro must preserve the empty line`)
+    await waitFor(
+      async () => (await dialog.locator('.book-origin').innerText()).includes(seeded.source.name),
+      `${viewport.width}: remote BookInfo must show its own source name`,
+    )
+    assert(await dialog.getByRole('button', { name: '\u66f4\u65b0', exact: true }).count() === 0, `${viewport.width}: remote BookInfo must not offer the local refresh action`)
 
     if (!bookPatchOnly) {
       const followRequest = await captureRequest(
@@ -347,6 +405,7 @@ async function runViewport(browser, root, viewport) {
         `${viewport.width}: follow state persisted`,
       )
       assert(afterFollow.title === seeded.remote.title, `${viewport.width}: follow toggle changed the book title`)
+      await waitFor(async () => !(await followSwitchChecked(dialog)), `${viewport.width}: follow switch shows the saved state`)
     }
 
     const coverRequest = await captureRequest(
@@ -446,6 +505,21 @@ async function runViewport(browser, root, viewport) {
     await localRow.locator('.list-cover').click()
     await dialog.waitFor({ state: 'visible', timeout: 10_000 })
     assert(await dialog.locator('.inline-update-switch .el-switch').count() === 1, `${viewport.width}: local shelf BookInfo must retain the upstream follow switch`)
+    const localFollowRequest = await captureRequest(
+      page,
+      request => request.method() === 'PUT' && new URL(request.url()).pathname === `/api/books/${seeded.local.id}`,
+      () => dialog.locator('.inline-update-switch .el-switch').click(),
+    )
+    const localFollowPayload = JSON.parse(localFollowRequest.postData() || '{}')
+    assert(JSON.stringify(localFollowPayload) === JSON.stringify({ canUpdate: false }), `${viewport.width}: local follow toggle payload must be precise, got ${JSON.stringify(localFollowPayload)}`)
+    await waitFor(
+      async () => {
+        const book = await api(root, `/books/${seeded.local.id}`, { token: seeded.token })
+        return book.canUpdate === false ? book : null
+      },
+      `${viewport.width}: local follow state persisted`,
+    )
+    await waitFor(async () => !(await followSwitchChecked(dialog)), `${viewport.width}: local follow switch shows the saved state`)
     const refreshRequest = await captureRequest(
       page,
       request => request.method() === 'POST' && new URL(request.url()).pathname === `/api/books/${seeded.local.id}/refresh-local`,
@@ -453,13 +527,14 @@ async function runViewport(browser, root, viewport) {
     )
     assert((refreshRequest.postData() || '') === '', `${viewport.width}: local refresh must not send a stray body`)
     await page.getByText('更新成功', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 })
-    await waitFor(
+    const refreshedLocal = await waitFor(
       async () => {
         const book = await api(root, `/books/${seeded.local.id}`, { token: seeded.token })
         return Number(book.chapterCount) === 1 ? book : null
       },
       `${viewport.width}: refreshed local chapter count`,
     )
+    assert(refreshedLocal.canUpdate === false, `${viewport.width}: local refresh must keep the saved follow state`)
     assert(await dialog.isVisible(), `${viewport.width}: local refresh must leave BookInfo open`)
     assert(failures.length === 0, `${viewport.width}: ${failures.join('\n')}`)
     return `${viewport.width}x${viewport.height}`
@@ -469,7 +544,11 @@ async function runViewport(browser, root, viewport) {
 }
 
 async function run() {
-  const app = await startOpenReader()
+  const fixture = await startSourceFixture()
+  const app = await startOpenReader().catch(async error => {
+    await fixture.close()
+    throw error
+  })
   try {
     const browser = await openSmokeBrowser()
     try {
@@ -488,20 +567,21 @@ async function run() {
             { width: 1366, height: 1024 },
           ]
       for (const viewport of viewports) {
-        completed.push(await runViewport(browser, app.root, viewport))
+        completed.push(await runViewport(browser, app.root, fixture, viewport))
       }
       if (localRefreshOnly) {
         console.log(`bookinfo-local-refresh-real-api: ok ${completed.join(', ')} realApi=true geometry=true localRefresh=true reader=true`)
       } else if (bookPatchOnly) {
-        console.log(`bookinfo-book-patch-real-api: ok ${completed.join(', ')} realApi=true geometry=true metadataPatch=true userAssets=true groupSet=true existingRemoteAdd=true`)
+        console.log(`bookinfo-book-patch-real-api: ok ${completed.join(', ')} realApi=true remoteSource=true geometry=true metadataPatch=true userAssets=true groupSet=true existingRemoteAdd=true`)
       } else {
-        console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true geometry=true fields=true naturalCover=true precisePatches=true userAssets=true groupSet=true existingRemoteAdd=true localRefresh=true`)
+        console.log(`bookinfo-shelf-mutations-real-api: ok ${completed.join(', ')} realApi=true remoteSource=true geometry=true fields=true naturalCover=true precisePatches=true remoteFollow=true localFollow=true userAssets=true groupSet=true existingRemoteAdd=true localRefresh=true`)
       }
     } finally {
       await browser.close()
     }
   } finally {
     await app.close()
+    await fixture.close()
   }
 }
 
