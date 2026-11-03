@@ -373,8 +373,18 @@ async function runViewport(browser, root, viewport) {
     await page.goto(root, { waitUntil: 'domcontentloaded' })
     const row = page.locator('.shelf-page .book-row').filter({ hasText: restored.title }).first()
     await row.waitFor({ state: 'visible', timeout: 15_000 })
-    const shelfCover = await row.locator('.list-cover').evaluate(element => getComputedStyle(element).backgroundImage)
-    assert(shelfCover.includes(restored.coverURL), `${viewport.width}: shelf cover does not use restored URL: ${shelfCover}`)
+    const shelfImage = row.locator('.list-cover img.loaded')
+    await shelfImage.waitFor({ timeout: 15_000 }).catch(async () => {
+      const shown = await row.locator('.list-cover').evaluate(element => element.querySelector('img')?.getAttribute('src') || element.textContent.trim())
+      throw new Error(`${viewport.width}: shelf cover image did not load: ${shown}`)
+    })
+    const shelfCover = await shelfImage.evaluate(element => ({
+      src: element.getAttribute('src') || '',
+      width: element.naturalWidth,
+      height: element.naturalHeight,
+    }))
+    assert(shelfCover.src === restored.coverURL, `${viewport.width}: shelf cover does not use restored URL: ${shelfCover.src}`)
+    assert(shelfCover.width === 1 && shelfCover.height === 1, `${viewport.width}: shelf cover shows a ${shelfCover.width}x${shelfCover.height} image, not the 1x1 restored PNG`)
 
     await page.goto(`${root}/books/${restored.book.id}/read?chapter=0`, { waitUntil: 'domcontentloaded' })
     await page.locator('.reader-page').waitFor({ state: 'visible', timeout: 15_000 })
