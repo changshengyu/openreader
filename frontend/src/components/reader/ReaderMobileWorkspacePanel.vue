@@ -1,6 +1,7 @@
 <template>
   <section
     class="reader-mobile-workspace reader-mobile-workspace-primary"
+    :class="`reader-mobile-primary-${panel}`"
     role="dialog"
     aria-modal="false"
     :aria-label="title"
@@ -15,6 +16,10 @@
 
 <script setup>
 defineProps({
+  panel: {
+    type: String,
+    required: true,
+  },
   title: {
     type: String,
     required: true,

@@ -120,7 +120,7 @@ test('reader preset surfaces map every fixed-baseline theme resource while retai
 test('mobile reader settings suppresses the generic workspace header', () => {
   // The mobile popover face has no generic header at all (reader-menu contract B1).
   assert.doesNotMatch(mobileWorkspaceSource, /reader-mobile-workspace-head|showHeader/, 'mobile workspace must not add a generic header')
-  assert.match(readerViewSource, /<ReaderMobileWorkspacePanel\s+v-if="isMobileReader && showSettingsDrawer"\s+title="设置"\s*>/, 'mobile settings should not add a second generic 设置 title')
+  assert.match(readerViewSource, /<ReaderMobileWorkspacePanel\s+v-if="isMobileReader && showSettingsDrawer"\s+panel="settings"\s+title="设置"\s*>/, 'mobile settings should not add a second generic 设置 title')
   assert.match(panelSource, /class="settings-title"/, 'settings panel must keep the upstream ReadSettings title')
   assert.match(panelSource, /class="settings-title"[\s\S]*?设置[\s\S]*?重置为默认配置/, 'settings title must own the upstream reset action')
   assert.match(panelSource, /<\/div>\s*<div class="settings-list">/, 'settings title and scrollable settings list must be siblings')

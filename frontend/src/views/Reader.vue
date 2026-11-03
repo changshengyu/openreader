@@ -241,6 +241,7 @@
     <!-- ===== 移动端主面板：reader-dev mini popover，盖住顶栏 ===== -->
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showShelfDrawer"
+      panel="shelf"
       :title="`书架(${filteredShelfBooks.length})`"
     >
       <ReaderShelfPanel
@@ -256,6 +257,7 @@
 
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showTocDrawer"
+      panel="toc"
       :title="`目录(${chapters.length})`"
     >
       <ReaderTocPanel
@@ -276,6 +278,7 @@
 
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSourceDrawer"
+      panel="source"
       title="书源"
     >
       <SourceSwitchPanel
@@ -300,6 +303,7 @@
 
     <ReaderMobileWorkspacePanel
       v-if="isMobileReader && showSettingsDrawer"
+      panel="settings"
       title="设置"
     >
       <ReaderSettingsPanel
