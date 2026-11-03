@@ -13,6 +13,11 @@ Go 公告门在 main `69c27bc` 上失败关闭：`advisory changed: review requi
 2+/2-）；门测试 65/65 + 前端门 49/49；现场 Go 门 exit 0、`pass`、0 个发现（DB `2026-11-02T22:01:43Z`，249 条公告，固定项期限
 2026-12-16），前端门 exit 0；后端全量/vet、Compose、存储 HTTP 合同与 `-mod=vendor` 编译通过。状态
 **implementation-complete / regression-validated**，待合入 main 与可信 Actions；镜像未发布；生产未访问。
+2026-11-03 发布：`main` 快进到 `fbbd890`（ls-remote 核验，未强推）；可信 Actions run `41636824884` 全部成功（12:34–12:59Z，Linux amd64 现场
+Go 门 0 个发现）。`ghcr.io/changshengyu/openreader:fbbd890` 与 `latest` 为 OCI index
+`sha256:1c1593634d79b1961ab27bcb9d4385e30cae1cd64a807eb6a41256f934806b8b`（linux/amd64 `sha256:44452254…`、linux/arm64 `sha256:6afeeb90…`），
+两平台 `org.opencontainers.image.revision` 均为 `fbbd8908e11dc7ab6cdf8cc0ecf2ebf774975c14`。状态 **aligned / Docker-published /
+awaiting-device-verification**；生产未访问。
 
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 

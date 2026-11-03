@@ -8,7 +8,8 @@ the Go gate's only not-applicable exception and blocked every release. x/crypto 
 accepts that exact pseudo-version until 2026-12-16 and otherwise only tagged releases; the exception is retired, so
 every finding blocks, and an OpenPGP package in any import graph fails the gate even without a finding. Checked:
 module supply chain (sumdb hash, file-level diff), auth (bcrypt registration/login and WebDAV Basic in the isolated
-storage HTTP contract), no new exceptions. Live Go (0 findings) and full-lock npm scans pass; not yet published.
+storage HTTP contract), no new exceptions. Live Go (0 findings) and full-lock npm scans pass; published as `fbbd890`
+(trusted run 41636824884, OCI index `sha256:1c159363…6b8b`, amd64 + arm64).
 
 2026-10-22 release-blocker dependency maintenance:
 [`compat/dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](compat/dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md).

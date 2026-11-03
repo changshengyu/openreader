@@ -9,6 +9,8 @@ must-fix：x/crypto 精确固定到 `v0.58.1-0.20261009181718-2f1f834330b2`（`v
 记录（2026-11-03，取代上段的状态）：合同 `c998b7a`、红测 `d0659bf`（9/65 失败）、实现 `544b980`；门测试 65/65 + 49/49，现场 Go 门
 exit 0、0 个发现，前端门 exit 0，后端全量/vet、Compose、存储 HTTP 合同、`-mod=vendor` 编译通过。状态 implementation-complete /
 regression-validated，待合入 main 与可信 Actions；镜像未发布；生产未动。
+发布（2026-11-03）：main 快进到 fbbd890（ls-remote 核验，未强推），run 41636824884 全部成功；fbbd890/latest = index `1c159363…6b8b`
+（amd64 `44452254…`、arm64 `6afeeb90…`，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 

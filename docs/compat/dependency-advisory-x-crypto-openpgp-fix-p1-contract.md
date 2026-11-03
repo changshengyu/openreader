@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本切片不涉及上游可见行为）。
 
 审查日期：2026-11-03。实施基线：`origin/main` = `69c27bc`；分支 `claude/go-advisory-x-crypto-openpgp-fix` 从 `origin/main` 切出。
-状态：**implementation-complete / regression-validated**（记录见第 8 节；待合入 main 与可信 Actions）。
+状态：**aligned / Docker-published / awaiting-device-verification**（记录见第 8 节，发布见文末）。
 
 前置合同：[`go-advisory-release-gate-contract.md`](go-advisory-release-gate-contract.md)（“唯一有条件不适用项”）、
 [`dependency-advisory-x-net-html-quadratic-p1-contract.md`](dependency-advisory-x-net-html-quadratic-p1-contract.md)。
@@ -122,3 +122,13 @@ govulncheck 版本、DB 14 天时效、Go 工具链、其它依赖、前端门�
 
 状态：**implementation-complete / regression-validated**，待合入 main 与可信 Actions；镜像未发布；生产未访问。
 固定项到期前（2026-12-16）需要换成包含 `2f1f834330b2` 的 x/crypto 标签版本，并删除门里的固定项常量与对应测试。
+
+## 发布（2026-11-03）
+
+main 由 `69c27bc` 快进到 `fbbd890`（ls-remote 核验，未强推）；可信 Actions run `41636824884` 全部成功（12:34–12:59Z，43 个步骤）。
+其中 Go 门测试 65/65、前端门测试 49/49；Linux amd64 现场 source 扫描 `pass`，go1.26.10，DB `2026-11-02T22:01:43Z`，249 条公告，
+0 个发现，x/crypto 为固定伪版本、期限 `2026-12-16T00:00:00.000Z`；OS APK 门、存储 HTTP 合同、新旧卷与便携备份门（含未设 JWT 密钥）、
+双平台发布与平台核验也都通过。`ghcr.io/changshengyu/openreader:fbbd890` 与 `latest` 为 OCI index
+`sha256:1c1593634d79b1961ab27bcb9d4385e30cae1cd64a807eb6a41256f934806b8b`（linux/amd64 `sha256:44452254…`、linux/arm64
+`sha256:6afeeb90…`），两平台 `org.opencontainers.image.revision` 均为 `fbbd8908e11dc7ab6cdf8cc0ecf2ebf774975c14`。
+状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知，需在生产升级容器后实机确认。
