@@ -105,7 +105,7 @@ export function useOverlayBookInfo(options) {
 
   async function toggleBookCanUpdate(value) {
     const book = options.overlay.bookInfoBook
-    if (!book?.id || !book.sourceId) return
+    if (!book?.id) return
     const operation = operations.begin('toggle-book-update')
     updatingBookId.value = book.id
     try {
