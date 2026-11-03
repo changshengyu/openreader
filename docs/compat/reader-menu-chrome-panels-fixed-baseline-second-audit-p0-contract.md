@@ -2,7 +2,7 @@
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
-日期：2026-11-03。状态：**implementation-complete / regression-validated**（发布阻塞于 Go 公告门，见第 8 节）。
+日期：2026-11-03。状态：**aligned / Docker-published / awaiting-device-verification**（见第 9 节）。
 
 ## 1. 来源、范围与方法
 
@@ -185,3 +185,18 @@ z 10）`#636060`；文字固定为 `点击前一页`、`点击显示菜单`、`�
 与本切片无关，需用户决定处理方式；在此之前不合入 `main`（合入即触发发布）。
 
 状态：**implementation-complete / regression-validated**；发布阻塞于 Go 公告门。
+
+## 9. 发布（2026-11-03）
+
+- 解除阻塞：GO-2026-5932 由另一切片 `fbbd890`（x/crypto 精确固定到修复版本、退役 OpenPGP 不适用项）解决并先行发布
+  （run `41636824884`），main 随后为其发布记录 `c347867`。
+- 合入：合并提交 `636b1ff`（第一父提交 main `c347867`、第二父提交本分支 `3bc8788`）；只有差异总账与矩阵顶部条目冲突，两条都保留。
+  合并树复跑：前端 870/870 与 build（产物与第 8 节已验证的构建逐字节相同，浏览器合同结论沿用）、后端 `go test ./...` 31 包与 `go vet`、
+  公告门自测 114/114、Go 实时扫描 0 个发现、前端实时扫描、`docker compose config`、存储读写/列表生命周期合同通过；除 `docs/` 外与
+  先在 `fbbd890` 上验证过的合并树完全相同。
+- 发布：main 快进到 `636b1ff`（ls-remote 核验，未强推）；可信 Actions run `41643708227` 43/43 步成功（13:22–13:43 UTC，途中一次
+  GitHub API 500 只影响本地观察，不影响运行）。`ghcr.io/changshengyu/openreader:636b1ff` 与 `latest` 为 OCI index
+  `sha256:c407eb1bae985a9a322c9ed6ce98d206c18128b236b5341f70faef2f98d2af40`（linux/amd64 `sha256:b926e5a5…`、linux/arm64 `sha256:601d4f7d…`），两平台
+  `org.opencontainers.image.revision` 均为 `636b1ff1c093bed79f24c332b30aca40ae0c07db`。
+
+状态：**aligned / Docker-published / awaiting-device-verification**；生产未访问。

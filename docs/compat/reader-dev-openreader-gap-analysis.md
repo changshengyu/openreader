@@ -17,6 +17,9 @@ Element Plus 图标；桌面左栏上游只包住 7 个按钮，OpenReader 铺�
 实时扫描、菜单浏览器合同六视口、18 个模拟浏览器合同、真实服务 EPUB/CBZ 与 4 个真实接口合同通过；portable-appearance-assets 首页书架
 封面与书籍信息“追更”两项在改前构建同样失败，另起。状态 **implementation-complete / regression-validated**；Go 公告门实时扫描因
 GO-2026-5932 新增伪版本修复而失败关闭（与本切片无关，待用户决定），未合入 main、未发布。
+发布（2026-11-03）：GO-2026-5932 由 `fbbd890` 解除后，以合并提交 `636b1ff` 合入（合并树复跑前端/后端/公告门/Compose/存储合同通过），
+main 快进到 `636b1ff`（ls-remote 核验，未强推），run `41643708227` 全部成功；`636b1ff`/`latest` = index `c407eb1b…af40`
+（amd64 `b926e5a5…`、arm64 `601d4f7d…`，revision 标签核验）。状态 **aligned / Docker-published / awaiting-device-verification**；生产未动。
 
 ## 2026-11-03 P1 发布门依赖公告：GO-2026-5932（`x/crypto/openpgp`）出现修复版本
 

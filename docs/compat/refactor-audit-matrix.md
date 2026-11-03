@@ -13,6 +13,9 @@
 类名钩子 `f1c92da`、smoke 迁移 `4be6e20`。前端 870/870 与 build、后端全量/vet、公告门自测与前端实时扫描、菜单合同六视口、18 个模拟浏览器
 合同、真实服务 EPUB/CBZ 与 4 个真实接口合同通过；首页书架封面（portable-appearance-assets）与书籍信息“追更”两项改前构建同样失败，另起。
 状态 implementation-complete / regression-validated。发布阻塞：Go 公告门 GO-2026-5932 新增伪版本修复，门失败关闭，待用户决定；未合入 main。
+发布（2026-11-03）：`fbbd890` 解除 GO-2026-5932 后以合并提交 `636b1ff` 合入，main 快进到 `636b1ff`（ls-remote 核验，未强推），
+run `41643708227` 全部成功；`636b1ff`/`latest` = index `c407eb1b…af40`（amd64 `b926e5a5…`、arm64 `601d4f7d…`，revision 标签核验）。
+状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-03 当前切片：发布门依赖公告 GO-2026-5932 出现修复（P1，发布阻塞）
 
