@@ -185,7 +185,23 @@ async function seed(root, viewport) {
   return { token, book, zhangHui, directory, suffix }
 }
 
+// Waits for the finite enter/leave animations of Element overlays and poppers, so a tap never lands on a
+// message box that is still fading in or on a dropdown that is still moving.
+async function settle(page) {
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter(animation => {
+      const target = animation.effect?.target
+      const timing = animation.effect?.getComputedTiming?.()
+      return target?.closest?.('.el-overlay, .el-popper') && Number.isFinite(timing?.endTime)
+    })
+    .map(animation => animation.finished.catch(() => null))))
+}
+
 async function tap(page, viewport, locator) {
+  // An option can sit outside the dropdown's scroll viewport (the list opens scrolled to the current rule);
+  // a coordinate tap there would hit the message box overlay instead.
+  await locator.scrollIntoViewIfNeeded()
+  await settle(page)
   const box = await locator.boundingBox()
   assert(box, `missing target for tap: ${locator}`)
   if (viewport.mobile) await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
@@ -221,6 +237,7 @@ async function openRuleDialog(page, viewport, panel) {
   await tap(page, viewport, panel.getByRole('button', { name: '修改规则', exact: true }))
   const dialog = page.locator('.el-message-box.reader-toc-rule-dialog')
   await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+  await settle(page)
   return dialog
 }
 
