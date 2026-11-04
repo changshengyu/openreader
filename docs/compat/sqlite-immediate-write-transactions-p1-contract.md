@@ -87,7 +87,7 @@ api 26 个、services 34 个、db 2 个。另有 `cmd/reparse-local-book` 用自
 - 事务内没有网络请求。文件操作只有 `captureBookCleanup` 的 `os.Lstat`、`userWorkspaceCleanupPlans` 的路径计算、
   `updateBook` 打开封面文件，以及备份写 zip（`run` 写临时文件，`portableLogicalEntries` 写内存）。
 - 回调里的句柄都来自 `tx`（`scoped := New(tx)`、`query := tx.Where(...)`、恢复用的 `Server{db: tx}`），静态扫描没有发现在回调里
-  用外层 `s.db` 写入。回归时再用动态探测补证（第 8 节）。
+  用外层 `s.db` 写入。回归时再用动态探测补证（第 8 节）。审计漏了一类：事务内取得的 Go 互斥锁（2026-11-04 补充，见第 13 节）。
 - 事务内的测试钩子只取消 context、改文件，或通过 `tx` 写入（`batchBookCategoryWriteLifecycleTestHook`、
   `remoteBookExistingAddWriteLifecycleTestHook`、`readerLocalChapterCacheRebuildLifecycleTestHook`），不依赖 deferred 语义。
 
@@ -220,4 +220,27 @@ CLAUDE.md 禁止的禁用 WAL、改单连接不考虑。
 
 未跑：fresh/历史卷与可移植备份门（GitHub Actions 在推送 main 时运行；DSN 参数不改数据文件）。
 
-状态 **implementation-complete / regression-validated**。分支已推送待合入；未合入 main，镜像未发布，生产未访问。
+状态 **implementation-complete / regression-validated**。分支已推送待合入；未合入 main，镜像未发布，生产未访问。不能单独合入，见第 13 节。
+
+## 13. 合入要求（2026-11-04 补充）
+
+本分支**不能单独合入或发布**。必须先合入本分支，再在同一次发布中合入 `claude/retire-sqlite-busy-workarounds`（`1ec50a6`，叠在 `5bfb0b8` 上）。
+
+原因：清理已有绕行的会话发现了本切片审计漏掉的一类问题，即事务内取得的 Go 互斥锁。第 4 节只查了回调里外层句柄的写入；
+动态探测只看同一 goroutine 的连接池调用。具体路径：管理员重置书源的事务（`RestoreDefaultForUsers` → `New(tx).EnsureNamespace`）
+在事务内取 `sourceNamespaceInitMu`。另一个用户首次访问时持有这把锁，在 `BEGIN IMMEDIATE` 处等重置事务的写锁，并按
+`namespaceInitRetryLimit` 重试。两边互相等待，期间所有写入都要排队。
+
+同一测试 `TestAdminSourceResetDoesNotStallBehindAnotherFirstAccess`（`1ec50a6` 分支的 `5166e03`），本会话复跑结果：
+
+| 代码 | 结果 |
+| --- | --- |
+| main `0f5e6b1`（deferred） | 快速失败：管理员重置 0.46 s 后 `database is locked`（即本切片修复的问题） |
+| 本分支 `5bfb0b8`（immediate，绕行仍在） | 互相等待 52.2 s 后，首次访问 `database is locked` |
+| `1ec50a6`（去掉互斥锁与重试，事务内复查） | 两边都成功，0.37 s |
+
+另据 `1ec50a6` 分支记录：恢复事务内的 `lockSourceUserWrite`（`ReplaceActive` → `Create`）是同类模式，最多停顿 5 s，尚未修复，
+需另起切片。
+
+`claude/throttle-per-request-auth-writes`（`9128e02`）同样叠在 `5bfb0b8` 上，是可选的性能改动，不是合入本分支的前提。
+同批合入时，三个分支都在两本总账顶部追加条目，冲突时全部保留，新的在上。

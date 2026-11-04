@@ -10,6 +10,7 @@ acceptable-change；S4 续期频率、已有重试与先写绕行、WAL/连接�
 记录（2026-11-04，取代上段的状态）：合同 `7eaf51d`、红测 `7a15fe1`/`2f023ab`、实现 `cd0d96a`（DSN 加 `_txlock=immediate`）。后端全量/vet、
 race 26 个包、前端 870/870 与 build、公告门与存储合同通过；动态探测 0 处事务内外层写入；压力 main 45–126 次失败 → 修复 0；BookInfo 真实接口
 合同：修复 18/18、交替运行的改前树 17/18（`cover state persisted` 超时）。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
+合入要求（2026-11-04 补充）：不能单独合入，须紧接着在同一次发布中合入 `claude/retire-sqlite-busy-workarounds`（`1ec50a6`）。原因：本分支上事务内的 `sourceNamespaceInitMu` 会造成 52.2 s 互相等待（合同第 13 节）。
 
 ## 2026-11-03 当前切片：Reader 菜单栏与弹出面板布局与逻辑（P0，A1–A7、B1–B6、C1–C6、D1、E1）
 
