@@ -38,7 +38,7 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	database, err := gorm.Open(sqlite.Open(cfg.DatabasePath), &gorm.Config{
+	database, err := gorm.Open(sqlite.Open(sqliteDSN(cfg.DatabasePath)), &gorm.Config{
 		Logger: databaseLogger(log.New(os.Stdout, "\r\n", log.LstdFlags)),
 	})
 	if err != nil {
@@ -62,6 +62,20 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 		}
 	}
 	return database, nil
+}
+
+// sqliteDSN starts every transaction on every pooled connection with BEGIN
+// IMMEDIATE. A deferred transaction that reads before it writes cannot
+// upgrade once another connection holds the write lock or has committed since
+// its first read, and SQLite fails that upgrade at once without consulting
+// busy_timeout. Taking the lock at BEGIN lets it wait instead; WAL readers
+// never wait for it.
+func sqliteDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "_txlock=immediate"
 }
 
 func databaseLogger(writer gormlogger.Writer) gormlogger.Interface {

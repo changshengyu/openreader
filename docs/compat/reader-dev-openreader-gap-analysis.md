@@ -1,5 +1,22 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
+
+BookInfo 追更真实接口合同第 8 节发现：另一个认证请求在 `PUT /api/books/:id` 事务期间提交时，该 `PUT` 返回
+`500 {"error":"failed to update book"}`（`api/books.go:599 database is locked`）。核实：`db.Open` 的 DSN 没有 `_txlock`，mattn 默认
+deferred `BEGIN`；SQLite 3.51.3 中已持有读快照的事务升级为写时不调用 busy handler，另一连接持锁或已提交即立即失败。每个认证请求提交
+两次（`authsession.renew`，`a0edce3` 起；`TrackActivity`，首个提交起），所以窗口早于 `a0edce3`。审计 62 个显式事务：40 个先读后写
+（书籍修改、登录签发、进度上传、书源、RSS、分类、替换规则、备份与恢复、后台更新、本地导入等），22 个先写，没有只读事务。压力对比：
+main 失败 56/150、92/150、60/300、134/300；只节流续期，或连 `TrackActivity` 一起去掉都不够（任何真实写者仍让 51%–86% 失败）；
+`_txlock=immediate` 四种场景 0 失败。选定 DSN 加 `_txlock=immediate`（不禁用 WAL、不改单连接、不迁移）。合同见
+[`sqlite-immediate-write-transactions-p1-contract.md`](sqlite-immediate-write-transactions-p1-contract.md)。状态 **contract-only**。
+记录（2026-11-04，取代上段的状态）：合同 `7eaf51d`、红测 `7a15fe1`（T1/T2/T3 在 `0f5e6b1` 上 10/10 失败，对照 C1–C3 通过）与
+`2f023ab`（带参数的 `OPENREADER_DB`）、实现 `cd0d96a`（`db.go` +15/−1）。后端全量 31 个包与 vet、关键包 race 26 个包（api 1048.7 s）、
+前端 870/870 与 build、公告门自测 114/114 与现场双门 0 个发现、Compose、存储 HTTP 合同通过；动态探测 api/db 测试 0 处事务内外层写入。
+压力：main 62/150、92/150、45/300、126/300 → 修复 0/150、0/150、0/300、0/300；BookInfo 原脚本封面 0/150、追更 0/300。BookInfo 真实接口合同
+完整模式五视口：修复树 18/18 通过，交替运行的改前树 17/18（第 11 轮在 `1024: cover state persisted` 超时）。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+合入要求（2026-11-04 补充）：不能单独合入。事务内取得的 `sourceNamespaceInitMu` 在本分支上会让管理员重置书源与另一用户首次访问互相等待 52.2 s（main 上是 0.46 s 快速失败）。由 `claude/retire-sqlite-busy-workarounds`（`1ec50a6`）修复（0.37 s 通过），须在同一次发布中、紧接本分支合入；详见合同第 13 节。
+
 ## 2026-11-03 P0 Reader 菜单栏与弹出面板（移动/桌面）布局与逻辑
 
 用户要求移动端点中间唤起的菜单栏及其次级布局、桌面菜单栏布局和内部逻辑都与上游对齐（已要求过的优化除外）。本次把上游 `web/`
