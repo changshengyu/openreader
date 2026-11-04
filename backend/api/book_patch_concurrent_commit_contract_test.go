@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mattn/go-sqlite3"
@@ -25,12 +25,18 @@ type bookPatchConcurrentCommitFixture struct {
 	router *gin.Engine
 	server *Server
 	auth   string
-	token  string
 	book   models.Book
 	// sessions authenticates like another request, but on its own
 	// busy_timeout=0 connection: its session renew commits at once when the
 	// write lock is free and fails with SQLITE_BUSY instead of waiting.
 	sessions *authsession.Service
+	// concurrentToken is a second login of the same user whose session was
+	// last renewed at concurrentStaleAt, two minutes ago, so authenticating
+	// with it renews the session: a real commit. A session renewed within
+	// the last minute, like the one behind auth, commits nothing.
+	concurrentToken   string
+	concurrentKey     string
+	concurrentStaleAt time.Time
 }
 
 type bookPatchConcurrentCommitCase struct {
@@ -83,14 +89,38 @@ func newBookPatchConcurrentCommitFixture(t *testing.T, username string) bookPatc
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = otherSQL.Close() })
-	return bookPatchConcurrentCommitFixture{
-		router:   router,
-		server:   server,
-		auth:     auth,
-		token:    strings.TrimPrefix(auth, "Bearer "),
-		book:     book,
-		sessions: authsession.New(other, server.cfg.JWTSecret, server.cfg.JWTPreviousSecrets...),
+	sessions := authsession.New(other, server.cfg.JWTSecret, server.cfg.JWTPreviousSecrets...)
+	concurrent := loginSessionContractUser(t, router, username, "bookinfo-asset")
+	identity, err := sessions.Authenticate(context.Background(), concurrent.Token)
+	if err != nil {
+		t.Fatal(err)
 	}
+	staleAt := time.Now().UTC().Add(-2 * time.Minute)
+	if result := server.db.Model(&models.UserSession{}).Where("id = ?", identity.Key).
+		UpdateColumns(map[string]any{"last_seen_at": staleAt, "expires_at": staleAt.Add(authsession.SessionTTL)}); result.Error != nil || result.RowsAffected != 1 {
+		t.Fatalf("age the concurrent session: rows=%d err=%v", result.RowsAffected, result.Error)
+	}
+	return bookPatchConcurrentCommitFixture{
+		router:            router,
+		server:            server,
+		auth:              auth,
+		book:              book,
+		sessions:          sessions,
+		concurrentToken:   concurrent.Token,
+		concurrentKey:     identity.Key,
+		concurrentStaleAt: staleAt,
+	}
+}
+
+// bookPatchConcurrentSessionRenewed reports whether the concurrent request's
+// session was renewed after the fixture aged it, which takes a commit.
+func bookPatchConcurrentSessionRenewed(t *testing.T, fixture bookPatchConcurrentCommitFixture) bool {
+	t.Helper()
+	var session models.UserSession
+	if err := fixture.server.db.First(&session, "id = ?", fixture.concurrentKey).Error; err != nil {
+		t.Fatal(err)
+	}
+	return session.LastSeenAt.After(fixture.concurrentStaleAt)
 }
 
 func performBookPatchConcurrentCommitRequest(fixture bookPatchConcurrentCommitFixture, body string) *httptest.ResponseRecorder {
@@ -117,8 +147,8 @@ type bookPatchInTransactionRenew struct {
 	err       error
 }
 
-// installBookPatchInTransactionRenew renews the fixture session from another
-// connection right after PUT /api/books/:id reads the book inside its
+// installBookPatchInTransactionRenew renews the concurrent session from
+// another connection right after PUT /api/books/:id reads the book inside its
 // transaction, the moment another authenticated request commits in practice.
 func installBookPatchInTransactionRenew(t *testing.T, fixture bookPatchConcurrentCommitFixture) *bookPatchInTransactionRenew {
 	t.Helper()
@@ -132,7 +162,7 @@ func installBookPatchInTransactionRenew(t *testing.T, fixture bookPatchConcurren
 			return
 		}
 		renew.attempted = true
-		_, renew.err = fixture.sessions.Authenticate(context.Background(), fixture.token)
+		_, renew.err = fixture.sessions.Authenticate(context.Background(), fixture.concurrentToken)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -160,9 +190,12 @@ func TestBookPatchSurvivesConcurrentSessionRenew(t *testing.T) {
 				if !isBookPatchSQLiteBusy(renew.err) {
 					t.Fatalf("concurrent renew = %v, want success or SQLITE_BUSY while the PUT held the write lock", renew.err)
 				}
-				if _, err := fixture.sessions.Authenticate(context.Background(), fixture.token); err != nil {
+				if _, err := fixture.sessions.Authenticate(context.Background(), fixture.concurrentToken); err != nil {
 					t.Fatalf("concurrent renew after the PUT committed: %v", err)
 				}
+			}
+			if !bookPatchConcurrentSessionRenewed(t, fixture) {
+				t.Fatal("the concurrent request never renewed its session: nothing committed between the PUT's read and write")
 			}
 		})
 	}
@@ -190,7 +223,7 @@ func TestBookPatchConcurrentCommitControls(t *testing.T) {
 					return
 				}
 				renewed = true
-				_, renewErr = fixture.sessions.Authenticate(context.Background(), fixture.token)
+				_, renewErr = fixture.sessions.Authenticate(context.Background(), fixture.concurrentToken)
 			}
 			t.Cleanup(func() { bookPatchWriteLifecycleTestHook = nil })
 
@@ -200,6 +233,9 @@ func TestBookPatchConcurrentCommitControls(t *testing.T) {
 			}
 			if renewErr != nil {
 				t.Fatalf("renew committed before the transaction: %v", renewErr)
+			}
+			if !bookPatchConcurrentSessionRenewed(t, fixture) {
+				t.Fatal("the renew before the transaction committed nothing")
 			}
 			if response.Code != http.StatusOK {
 				t.Fatalf("PUT %s after a committed renew = %d %s, want 200", body, response.Code, response.Body.String())
