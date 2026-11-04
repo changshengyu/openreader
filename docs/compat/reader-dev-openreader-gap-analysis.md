@@ -14,6 +14,7 @@ intentional-redesign，没有回/话标题的书选择不变）；负向前瞻�
 （TXT 打开 prompt、EPUB 原生 select、EPUB 选项名等）。实现后同一断言转绿；对照（普通章节小说、章行紧跟回行、单处“第一回”、书首目录区）
 不变。后端全量 31 个包与 vet、race 26 个包（api 1049.6 s）；前端 877/877 与 build；公告门自测 114/114、实时扫描通过；浏览器合同 B1 三视口与本地导入合同
 三视口通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未动。
+发布（2026-11-04）：main 快进到 `257f458`（ls-remote 核验，未强推），run `41832867417` 43 步全部成功；`257f458`/`latest` = index `43c89177…c776`（amd64 `0ead270a…`、arm64 `1c8419b1…`，两个平台 revision 标签均为 `257f458…`）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。已导入的书不会自动重新解析，需在阅读器目录“修改规则”中选“目录(章回、话)”。
 
 ## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）
 

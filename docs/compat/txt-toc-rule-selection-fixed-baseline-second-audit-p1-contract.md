@@ -4,7 +4,7 @@
 
 审计日期：2026-11-04。
 
-状态：**implementation-complete / regression-validated**（第 10 节）。
+状态：**aligned / Docker-published / awaiting-device-verification**（第 11 节）。
 
 ## 1. 用户反馈
 
@@ -165,3 +165,13 @@ B1 三视口；本地导入既有浏览器合同。
   关闭，上游同样如此），合同脚本改为先滚入视野并等待弹层动画（`e61157f`），不是产品缺陷；Element Plus 的 `el-select` 默认宽 100%，
   补两条全局样式让“请选择规则：”与 200px 下拉同行、文本框占满宽度，与上游布局一致。
 - 状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未动。
+
+## 11. 发布（2026-11-04）
+
+`origin/main` 仍为 `8c3cf79`，没有进行中的发布，本分支直接快进：main 到 `257f458`（ls-remote 核验，未强推）。可信 Actions
+`41832867417`（docker-publish）43 步全部成功。`ghcr.io/changshengyu/openreader:257f458` 与 `latest` 同为 OCI index
+`sha256:43c89177cb84fa906682a248e400f00ab080b661149f72284c7d6b98cce6c776`：linux/amd64 `sha256:0ead270a…dfa9`、linux/arm64
+`sha256:1c8419b1…ddce`，两个平台的 `org.opencontainers.image.revision` 均为 `257f45830faf9b82031c1b7ebbe646120ff7fbc6`。
+
+状态 **aligned / Docker-published / awaiting-device-verification**。生产未访问，实际运行版本未知。已导入的书不会自动重新解析：
+设备核验时在阅读器“目录 → 修改规则”选“目录(章回、话)”后确定，确认目录按回切分；规则未变时应提示“未修改规则”。
