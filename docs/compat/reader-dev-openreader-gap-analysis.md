@@ -1,5 +1,15 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-04 P1 TXT 目录规则：阅读器内置规则切换与章回目录识别
+
+上游 `PopCatalog.vue` 164–252 的“修改规则”对 TXT 与 EPUB 都是 `$msgbox`：“请选择规则：”下拉（TXT 为 `getTxtTocRules` 全部 18 条，
+EPUB 为六个“根据 Spin/Toc 获取章节……”选项）+ 共用值的文本框，规则未变提示“未修改规则”。OpenReader 阅读器对 TXT 只有正则输入框、
+EPUB 是原生 `select` 且文案不同、规则未变也刷新（R1–R3 must-fix）。
+自动识别：上游与 Legado 都只在禁用的 -3/-4 认“回”，用户的“第x章 … 第x回 …”首回加其后“第x回 …”的书只识别出章，只有回的古典小说退化为
+10 KiB 伪章节，章回合并行超过 30 字不识别。新增 OpenReader 规则 -19“目录(章回、话)”并按 Legado 间隔计数至少多出 2 才接管（用户要求的
+intentional-redesign，没有回/话标题的书选择不变）；负向前瞻由整行排除改为精确位置（must-fix，对齐上游）。合同见
+[`txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md`](txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md)。状态 **contract-only**。
+
 ## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）
 
 从 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，`BEGIN IMMEDIATE`，尚未合入 main）切出，须在它之后合入。P1 合同第 4 节把三处局部绕行列为 deferred 事务读后升级失败的

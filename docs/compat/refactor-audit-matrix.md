@@ -1,5 +1,15 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-04 当前切片：TXT 目录规则——阅读器内置规则切换与章回识别（P1，R1–R5、D1–D7）
+
+见[`txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md`](txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md)。从 `origin/main` `8c3cf79` 切出。
+用户反馈两点：阅读器目录栏“修改规则”对 TXT 只有正则输入框，上游 `PopCatalog.vue` 是内置规则下拉 + 文本框（R1 must-fix；EPUB 同一弹窗与上游
+选项名 R2、规则未变提示“未修改规则”R3 must-fix）；“第x章 … 第x回 …”开头、其后各回只有“第x回 …”的书只识别出章（D1）。上游与 Legado
+（官方仓库已清空，镜像 `hectorqin/legado`）都只在禁用规则里认“回”，Readest 把章、回放在同一交替里。方案：追加 OpenReader 规则 -19
+“目录(章回、话)”（回/话必须带“第”，章回合并行回字前后各 30 字），自动识别时按 Legado 1000 字间隔计数至少多出 2 才接管
+（D1–D4 intentional-redesign，用户要求；D6 章行紧跟回行、D7 单处“第一回”保持不变）；负向前瞻改为只检查单位字后一位（D5 must-fix，对齐上游）。
+计划测试 T1–T6、C1–C5、P1–P8、浏览器 B1。状态 contract-only。
+
 ## 2026-11-04 当前切片：退役 SQLite BUSY 局部绕行（P2，R1–R4）
 
 见[`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。从 P1 分支 `5bfb0b8`（`BEGIN IMMEDIATE`，尚未合入 main）切出，须在 P1 之后合入。
