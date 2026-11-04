@@ -21,12 +21,20 @@ import (
 )
 
 const (
-	SessionTTL        = 7 * 24 * time.Hour
-	MaxUserSessions   = 64
+	SessionTTL      = 7 * 24 * time.Hour
+	MaxUserSessions = 64
+	// RenewInterval is how long a renewal stands. Authenticating within it
+	// still checks the session row but writes nothing, so a session expires
+	// at most RenewInterval earlier than SessionTTL after its latest use.
+	RenewInterval     = time.Minute
 	MigrationKey      = "authenticated-session-v1"
 	legacyDefaultKey  = "change-me-in-production"
 	currentDefaultKey = "change-this-before-deploy"
 )
+
+// liveSession matches a session row that is unrevoked, unexpired and of the
+// given auth version; the renewal check and the renewal itself share it.
+const liveSession = "id = ? AND user_id = ? AND auth_version = ? AND revoked_at IS NULL AND expires_at > ?"
 
 var ErrInvalidSession = errors.New("invalid authenticated session")
 
@@ -217,8 +225,18 @@ func (s *Service) RevokeUser(ctx context.Context, tx *gorm.DB, userID uint) erro
 }
 
 func (s *Service) renew(ctx context.Context, key string, userID uint, version uint64, now time.Time) error {
+	live, recent, err := s.lastRenewal(ctx, key, userID, version, now)
+	if err != nil {
+		return err
+	}
+	if !live {
+		return ErrInvalidSession
+	}
+	if recent {
+		return nil
+	}
 	result := s.db.WithContext(ctx).Model(&models.UserSession{}).
-		Where("id = ? AND user_id = ? AND auth_version = ? AND revoked_at IS NULL AND expires_at > ?", key, userID, version, now).
+		Where(liveSession, key, userID, version, now).
 		Updates(map[string]any{"last_seen_at": now, "expires_at": now.Add(SessionTTL)})
 	if result.Error != nil {
 		return result.Error
@@ -229,7 +247,31 @@ func (s *Service) renew(ctx context.Context, key string, userID uint, version ui
 	return nil
 }
 
+// lastRenewal reports whether key names a live session and whether it was
+// renewed less than RenewInterval before now. It only reads, so it takes no
+// write lock; the renewal update repeats its conditions, so a logout that
+// commits in between still wins.
+func (s *Service) lastRenewal(ctx context.Context, key string, userID uint, version uint64, now time.Time) (live, recent bool, err error) {
+	var sessions []models.UserSession
+	if err := s.db.WithContext(ctx).Select("last_seen_at").
+		Where(liveSession, key, userID, version, now).
+		Limit(1).Find(&sessions).Error; err != nil {
+		return false, false, err
+	}
+	if len(sessions) == 0 {
+		return false, false, nil
+	}
+	return true, now.Sub(sessions[0].LastSeenAt) < RenewInterval, nil
+}
+
 func (s *Service) adoptLegacy(ctx context.Context, key string, userID uint, now time.Time) error {
+	live, recent, err := s.lastRenewal(ctx, key, userID, 1, now)
+	if err != nil {
+		return err
+	}
+	if live && recent {
+		return nil
+	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		session := models.UserSession{
 			ID:          key,
