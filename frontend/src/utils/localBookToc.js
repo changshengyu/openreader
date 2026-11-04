@@ -1,10 +1,11 @@
+// reader-dev PopCatalog.vue 110–117 / Index.vue 3013–3020 option names.
 export const epubTocRuleOptions = [
-  { label: '按 Spine 排序，Toc 补充标题', value: 'spin+toc' },
-  { label: '按 Spine 排序，强制使用 Toc 标题', value: 'spin<toc' },
-  { label: '仅按 Spine 解析', value: 'spin' },
-  { label: '按 Toc 排序，Spine 补充标题', value: 'toc+spin' },
-  { label: '按 Toc 排序，强制使用 Spine 标题', value: 'toc<spin' },
-  { label: '仅按 Toc 解析', value: 'toc' },
+  { label: '根据 Spin 获取章节，使用 Toc 补充章节名', value: 'spin+toc' },
+  { label: '根据 Spin 获取章节，强制使用 Toc 章节名', value: 'spin<toc' },
+  { label: '根据 Spin 获取章节', value: 'spin' },
+  { label: '根据 Toc 获取章节，使用 Spin 补充章节名', value: 'toc+spin' },
+  { label: '根据 Toc 获取章节，强制使用 Spin 章节名', value: 'toc<spin' },
+  { label: '根据 Toc 获取章节', value: 'toc' },
 ]
 
 export function localBookFileName(book = {}) {

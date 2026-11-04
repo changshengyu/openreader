@@ -112,3 +112,14 @@ a {
     font-size: 21px;
   }
 }
+
+/* reader-dev PopCatalog.vue renderComp: "请选择规则：" and an inline rule select share one centred line and the
+   textarea spans the message box (txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md R1). */
+.reader-toc-rule-dialog .el-message-box__message {
+  flex: 1;
+}
+
+.reader-toc-rule-picker .reader-toc-rule-select {
+  --el-select-width: 200px;
+  max-width: 100%;
+}

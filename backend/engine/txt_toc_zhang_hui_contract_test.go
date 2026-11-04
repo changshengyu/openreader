@@ -292,3 +292,25 @@ func TestParseTXTLeadingTableOfContentsKeepsUpstreamRule(t *testing.T) {
 		t.Fatalf("a leading table of contents must keep rule -1, got %q", rule)
 	}
 }
+
+func TestMarkTXTNegativeLookaheadsOnlyRewritesLiteralLookaheads(t *testing.T) {
+	marked, lookaheads := markTXTNegativeLookaheads(`^第.部(?![分是门落])\(?!x\)[(?!y)](?!完|结)$`)
+	if want := `^第.部(?P<openreaderNegativeLookahead0>)\(?!x\)[(?!y)](?P<openreaderNegativeLookahead1>)$`; marked != want {
+		t.Fatalf("marked rule\n got %s\nwant %s", marked, want)
+	}
+	if len(lookaheads) != 2 || strings.Join(lookaheads[0].excluded, "") != "分是门落" || strings.Join(lookaheads[1].excluded, "|") != "完|结" {
+		t.Fatalf("unexpected lookaheads: %+v", lookaheads)
+	}
+	for _, rule := range []string{`^第.章(?!\d).*$`, `^第.章(?![^完]).*$`, `^第.章(?![a-z]).*$`} {
+		if _, err := compileTXTTitleMatcher(rule); err == nil {
+			t.Fatalf("non-literal lookahead %q must still be rejected explicitly", rule)
+		}
+	}
+	matcher, err := compileTXTTitleMatcher(`^第.部(?![分是门落]).*$`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matcher.MatchString("第一部分") || !matcher.MatchString("第一部 分开") {
+		t.Fatal("a literal class lookahead must only check the character right after its position")
+	}
+}

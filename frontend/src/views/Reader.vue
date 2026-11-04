@@ -339,7 +339,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
-import { refreshBook, refreshLocalBook } from '../api/books'
+import { listTXTTocRules, refreshBook, refreshLocalBook } from '../api/books'
 import { getRemoteReaderChapterContent, getRemoteReaderSession } from '../api/remoteReader'
 import { listSources } from '../api/sources'
 import { deleteAsset, uploadAsset } from '../api/uploads'
@@ -777,8 +777,10 @@ const {
 } = useReaderLocalTocRulePicker({
   book,
   isEPUBLocalBook,
-  prompt: (...args) => ElMessageBox.prompt(...args),
-  confirm: (...args) => ElMessageBox.confirm(...args),
+  msgbox: (...args) => ElMessageBox(...args),
+  loadTxtTocRules: async () => (await listTXTTocRules()).data,
+  notifyError: message => ElMessage.error(message),
+  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
 const {
   applySourceChange: applyReaderSourceChange,

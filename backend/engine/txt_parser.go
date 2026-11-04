@@ -17,13 +17,32 @@ const (
 
 	txtForwardDoubleTitleRule  = `(?m)(?<=[ \t　]{0,4})第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$(?=[\s　]{0,8}第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章)`
 	txtBackwardDoubleTitleRule = `(?m)(?<=[ \t　]{0,4}第[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$[\s　]{0,8})第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$`
+
+	// txtZhangHuiRule is OpenReader rule -19 "目录(章回、话)"
+	// (docs/compat/txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md
+	// section 6.1): upstream rule -2 "目录" plus 第x回/第x话 headings, which
+	// may follow a 第x章 (节、卷、集、部、篇) prefix on the same line. reader-dev
+	// and Legado only know 回 in disabled rules; Readest keeps 章 and 回 in
+	// one alternation so a 章 that wraps several 回 keeps both levels.
+	txtZhangHuiRuleID = -19
+	txtZhangHuiRule   = `^[ 　\t]{0,4}(?:序章|序言|卷首语|扉页|楔子|正文(?!完|结)|终章|后记|尾声|番外|第?\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张))|(?:第\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:章|节(?!课)|卷|集(?![合和])|部(?![分赛游])|篇(?!张)).{0,30}?[ 　\t])?第\s{0,4}[\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:回(?![合来事去])|话)).{0,30}$`
+
+	// Rule -19 only replaces reader-dev's automatic choice when, counting
+	// headings the way Legado's current getTocRule does (a match counts only
+	// when it starts more than txtSpacedHeadingDistance characters after the
+	// previously counted one ends), it finds txtZhangHuiMinimumLead more
+	// headings than every enabled upstream rule. A 章 line directly followed
+	// by its 回 line, a leading table of contents or one stray 第一回
+	// paragraph therefore keeps reader-dev's rule.
+	txtSpacedHeadingDistance = 1000
+	txtZhangHuiMinimumLead   = 2
 )
 
 var ChapterTitlePattern = regexp.MustCompile(`^(?:第[零一二三四五六七八九十百千万两〇○0-9０-９]+[章回节卷集部]|序章|楔子|引子|前言|尾声|后记|番外(?:篇)?|第[零一二三四五六七八九十百千万两〇○0-9０-９]+卷|[上中下]卷).{0,64}$`)
 
 type txtTitleMatcher struct {
 	pattern    *regexp.Regexp
-	exclusions []txtTitleExclusion
+	lookaheads []txtNegativeLookahead
 	context    txtTitleContext
 }
 
@@ -41,41 +60,40 @@ var (
 	txtBackwardTitlePattern      = regexp.MustCompile(`^第[\d零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}章.{0,30}$`)
 )
 
-type txtTitleExclusion struct {
-	token  string
-	chars  string
-	phrase string
+// txtNegativeLookahead stands in for a Java negative lookahead such as
+// 部(?![分赛游]): RE2 has no lookarounds, so the lookahead is compiled into an
+// empty named group and, after a match, the text right after that group must
+// not start with any excluded literal. Like Java, only the position the
+// lookahead sits at is checked, not the rest of the line.
+type txtNegativeLookahead struct {
+	name     string
+	group    int
+	excluded []string
 }
 
 func (matcher *txtTitleMatcher) MatchString(line string) bool {
 	if matcher == nil {
 		return ChapterTitlePattern.MatchString(line)
 	}
-	if !matcher.pattern.MatchString(line) {
+	if len(matcher.lookaheads) == 0 {
+		return matcher.pattern.MatchString(line)
+	}
+	match := matcher.pattern.FindStringSubmatchIndex(line)
+	if match == nil {
 		return false
 	}
-	for _, exclusion := range matcher.exclusions {
-		if exclusion.phrase != "" {
-			if strings.Contains(line, exclusion.phrase) {
-				return false
-			}
+	for _, lookahead := range matcher.lookaheads {
+		if lookahead.group <= 0 || 2*lookahead.group >= len(match) {
 			continue
 		}
-		index := strings.Index(line, exclusion.token)
-		for index >= 0 {
-			after := line[index+len(exclusion.token):]
-			if after != "" {
-				r, _ := utf8.DecodeRuneInString(after)
-				if strings.ContainsRune(exclusion.chars, r) {
-					return false
-				}
+		position := match[2*lookahead.group]
+		if position < 0 {
+			continue
+		}
+		for _, excluded := range lookahead.excluded {
+			if strings.HasPrefix(line[position:], excluded) {
+				return false
 			}
-			nextOffset := index + len(exclusion.token)
-			next := strings.Index(line[nextOffset:], exclusion.token)
-			if next < 0 {
-				break
-			}
-			index = nextOffset + next
 		}
 	}
 	return true
@@ -174,6 +192,8 @@ func DefaultTXTTocRules() []TXTTocRule {
 		{ID: -16, Enable: false, Name: "双标题(前向)", Rule: txtForwardDoubleTitleRule, SerialNumber: 15},
 		{ID: -17, Enable: false, Name: "双标题(后向)", Rule: txtBackwardDoubleTitleRule, SerialNumber: 16},
 		{ID: -18, Enable: true, Name: "标题 特殊符号 序号", Rule: `^.{1,20}[(（][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}[)）][ 　\t]{0,4}$`, SerialNumber: 17},
+		// OpenReader extension after the 18 fixed-upstream rules (see txtZhangHuiRule).
+		{ID: txtZhangHuiRuleID, Enable: true, Name: "目录(章回、话)", Rule: txtZhangHuiRule, SerialNumber: 18},
 	}
 }
 
@@ -386,10 +406,18 @@ func safeTXTBoundary(text string, index int) int {
 	return index
 }
 
+// detectTXTTitlePattern keeps reader-dev TextFile.getTocRule among the
+// fixed-upstream rules (enabled rules in reverse, raw per-line counts, `>=`
+// overwrite from at least one match) and lets OpenReader rule -19 replace
+// that choice only with txtZhangHuiMinimumLead more spaced headings than
+// every enabled upstream rule.
 func detectTXTTitlePattern(text string) (*txtTitleMatcher, string) {
 	bestCount := 1
 	var bestPattern *txtTitleMatcher
 	bestRule := ""
+	var zhangHuiPattern *txtTitleMatcher
+	zhangHuiSpaced := 0
+	upstreamSpaced := 0
 	rules := DefaultTXTTocRules()
 	for index := len(rules) - 1; index >= 0; index-- {
 		rule := rules[index]
@@ -397,29 +425,53 @@ func detectTXTTitlePattern(text string) (*txtTitleMatcher, string) {
 			continue
 		}
 		pattern, err := compileTXTTitleMatcher(rule.Rule)
-		if err == nil {
-			if count := countTXTTitleMatches(text, pattern); count >= bestCount {
-				bestCount = count
-				bestPattern = pattern
-				bestRule = rule.Rule
-			}
+		if err != nil {
+			continue
 		}
+		count, spaced := countTXTTitleMatches(text, pattern)
+		if rule.ID == txtZhangHuiRuleID {
+			zhangHuiPattern, zhangHuiSpaced = pattern, spaced
+			continue
+		}
+		if spaced > upstreamSpaced {
+			upstreamSpaced = spaced
+		}
+		if count >= bestCount {
+			bestCount = count
+			bestPattern = pattern
+			bestRule = rule.Rule
+		}
+	}
+	if zhangHuiPattern != nil && zhangHuiSpaced >= upstreamSpaced+txtZhangHuiMinimumLead {
+		return zhangHuiPattern, txtZhangHuiRule
 	}
 	return bestPattern, bestRule
 }
 
-func countTXTTitleMatches(text string, pattern *txtTitleMatcher) int {
+// countTXTTitleMatches returns reader-dev's raw count of matching lines and
+// Legado's spaced count, in which a matching line only counts when it starts
+// more than txtSpacedHeadingDistance characters after the end of the
+// previously counted line.
+func countTXTTitleMatches(text string, pattern *txtTitleMatcher) (int, int) {
 	count := 0
+	spaced := 0
+	offset := 0
+	lastCountedEnd := -1
 	for lineStart := 0; lineStart < len(text); {
 		lineEnd := nextLineEnd(text, lineStart)
 		lineText := strings.TrimRight(text[lineStart:lineEnd], "\r\n")
 		line := strings.TrimSpace(strings.TrimPrefix(lineText, "\ufeff"))
 		if line != "" && pattern.MatchText(text, lineStart, lineEnd, line) {
 			count++
+			if lastCountedEnd < 0 || offset-lastCountedEnd > txtSpacedHeadingDistance {
+				spaced++
+				lastCountedEnd = offset + utf8.RuneCountInString(lineText)
+			}
 		}
+		offset += utf8.RuneCountInString(text[lineStart:lineEnd])
 		lineStart = lineEnd
 	}
-	return count
+	return count, spaced
 }
 
 func compileTXTTitleMatcher(rule string) (*txtTitleMatcher, error) {
@@ -430,15 +482,19 @@ func compileTXTTitleMatcher(rule string) (*txtTitleMatcher, error) {
 	if rawRule == txtBackwardDoubleTitleRule {
 		return &txtTitleMatcher{pattern: txtBackwardTitlePattern, context: txtTitleContextBackward}, nil
 	}
-	exclusions := txtTitleExclusions(rule)
-	rule = normalizeTXTTitleRule(rule)
-	pattern, err := regexp.Compile(rule)
+	normalized, lookaheads := markTXTNegativeLookaheads(normalizeTXTTitleRule(rule))
+	pattern, err := regexp.Compile(normalized)
 	if err != nil {
 		return nil, err
 	}
-	return &txtTitleMatcher{pattern: pattern, exclusions: exclusions}, nil
+	for index := range lookaheads {
+		lookaheads[index].group = pattern.SubexpIndex(lookaheads[index].name)
+	}
+	return &txtTitleMatcher{pattern: pattern, lookaheads: lookaheads}, nil
 }
 
+// normalizeTXTTitleRule turns the upstream lookbehind prefixes into line
+// anchors: OpenReader matches each trimmed line on its own.
 func normalizeTXTTitleRule(rule string) string {
 	rule = strings.TrimSpace(rule)
 	rule = strings.TrimPrefix(rule, "(?m)")
@@ -448,13 +504,6 @@ func normalizeTXTTitleRule(rule string) string {
 		`(?<=[\s　])`, `^`,
 		`(?<=[\s　]{0,4})`, `^`,
 		`(?<=[ \t　]{0,4})`, `^`,
-		`(?!完|结)`, ``,
-		`(?!课)`, ``,
-		`(?![合和])`, ``,
-		`(?![分赛游])`, ``,
-		`(?!张)`, ``,
-		`(?![合来事去])`, ``,
-		`(?![和合比电是])`, ``,
 	}
 	for index := 0; index < len(replacements); index += 2 {
 		rule = strings.ReplaceAll(rule, replacements[index], replacements[index+1])
@@ -462,21 +511,77 @@ func normalizeTXTTitleRule(rule string) string {
 	return rule
 }
 
-func txtTitleExclusions(rule string) []txtTitleExclusion {
-	exclusions := make([]txtTitleExclusion, 0)
-	add := func(needle string, exclusion txtTitleExclusion) {
-		if strings.Contains(rule, needle) {
-			exclusions = append(exclusions, exclusion)
+// markTXTNegativeLookaheads replaces every negative lookahead whose body is a
+// literal alternation (完|结) or a literal character class ([合来事去]) with
+// an empty named group and returns what may not follow each group. Escaped
+// text and character classes are copied unchanged; any other lookaround is
+// left for regexp.Compile to reject explicitly.
+func markTXTNegativeLookaheads(rule string) (string, []txtNegativeLookahead) {
+	var marked strings.Builder
+	lookaheads := make([]txtNegativeLookahead, 0)
+	inClass := false
+	for index := 0; index < len(rule); {
+		char := rule[index]
+		switch {
+		case char == '\\':
+			_, size := utf8.DecodeRuneInString(rule[index+1:])
+			end := min(index+1+size, len(rule))
+			marked.WriteString(rule[index:end])
+			index = end
+			continue
+		case inClass:
+			if char == ']' {
+				inClass = false
+			}
+		case char == '[':
+			inClass = true
+			marked.WriteByte(char)
+			index++
+			if index < len(rule) && rule[index] == '^' {
+				marked.WriteByte('^')
+				index++
+			}
+			if index < len(rule) && rule[index] == ']' {
+				marked.WriteByte(']')
+				index++
+			}
+			continue
+		case strings.HasPrefix(rule[index:], "(?!"):
+			if end := strings.IndexByte(rule[index+3:], ')'); end >= 0 {
+				if excluded, ok := txtLookaheadLiterals(rule[index+3 : index+3+end]); ok {
+					name := "openreaderNegativeLookahead" + strconv.Itoa(len(lookaheads))
+					marked.WriteString("(?P<" + name + ">)")
+					lookaheads = append(lookaheads, txtNegativeLookahead{name: name, excluded: excluded})
+					index += 3 + end + 1
+					continue
+				}
+			}
+		}
+		marked.WriteByte(char)
+		index++
+	}
+	return marked.String(), lookaheads
+}
+
+func txtLookaheadLiterals(body string) ([]string, bool) {
+	if strings.HasPrefix(body, "[") && strings.HasSuffix(body, "]") && len(body) > 2 {
+		class := body[1 : len(body)-1]
+		if strings.ContainsAny(class, `\[]^-`) {
+			return nil, false
+		}
+		literals := make([]string, 0, utf8.RuneCountInString(class))
+		for _, char := range class {
+			literals = append(literals, string(char))
+		}
+		return literals, true
+	}
+	literals := strings.Split(body, "|")
+	for _, literal := range literals {
+		if literal == "" || strings.ContainsAny(literal, `\.+*?()[]{}^$|`) {
+			return nil, false
 		}
 	}
-	add(`正文(?!完|结)`, txtTitleExclusion{token: "正文", chars: "完结"})
-	add(`节(?!课)`, txtTitleExclusion{phrase: "节课"})
-	add(`集(?![合和])`, txtTitleExclusion{token: "集", chars: "合和"})
-	add(`部(?![分赛游])`, txtTitleExclusion{token: "部", chars: "分赛游"})
-	add(`篇(?!张)`, txtTitleExclusion{phrase: "篇张"})
-	add(`回(?![合来事去])`, txtTitleExclusion{token: "回", chars: "合来事去"})
-	add(`场(?![和合比电是])`, txtTitleExclusion{token: "场", chars: "和合比电是"})
-	return exclusions
+	return literals, true
 }
 
 func nextLineEnd(text string, start int) int {
