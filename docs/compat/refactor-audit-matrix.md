@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-04 当前切片：退役 SQLite BUSY 局部绕行（P2，R1–R4）
+
+见[`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。依赖 P1 `BEGIN IMMEDIATE`（`5bfb0b8`）合入 main。
+W1 RSS 六个写入的整笔重试、W2 命名空间初始化的进程级互斥与重试、W3 书源新建/导入的无值变更先写。R1 管理员重置与新用户首次访问互等
+53.8 s 为 must-fix；R2 删除三处绕行（命名空间复查移入事务）、R3 超过 5 秒的等待与其他写入一样失败为 acceptable-change；R4 按用户写锁、
+DSN/WAL/连接池/busy_timeout、续期频率不重开。计划测试：守护 G1–G7（没有绕行时在 immediate 下通过，在 deferred 下失败），红测 T1。
+状态 contract-only。
+
 ## 2026-11-04 当前切片：SQLite 写事务改为 BEGIN IMMEDIATE（P1，S1–S4）
 
 见[`sqlite-immediate-write-transactions-p1-contract.md`](sqlite-immediate-write-transactions-p1-contract.md)。

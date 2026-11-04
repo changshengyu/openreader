@@ -1,5 +1,15 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）
+
+依赖 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，`BEGIN IMMEDIATE`）。P1 合同第 4 节把三处局部绕行列为 deferred 事务读后升级失败的
+证据、第 10 节留待清理：`rss#retryRSSSQLiteWrite`（6 个写入，`5236389`）、`booksources#EnsureNamespace` 的进程级互斥与重试（`f9723ad`/`9a13d8e`）、
+`lockSourceLimit` 的 `UPDATE users SET source_limit = source_limit`（`d9ddc0f`）。immediate 下它们只在等写锁超过 5 秒时起作用（重试最长约 50 秒）。
+新发现：管理员重置用户书源在自己的事务里调用 `EnsureNamespace`，与另一新用户首次访问在互斥锁和写锁上互等，实测重置 53.8 s 后完成、
+首次访问 `database is locked`（R1 must-fix）。方案：删除三处绕行，命名空间复查移入事务（写锁下只复制一次默认书源）。超过 5 秒的等待改为与
+其他写入一样失败（R3 acceptable-change，与 P1 S3 一致）。合同见
+[`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。状态 **contract-only**。
+
 ## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
 
 BookInfo 追更真实接口合同第 8 节发现：另一个认证请求在 `PUT /api/books/:id` 事务期间提交时，该 `PUT` 返回
