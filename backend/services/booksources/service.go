@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -19,7 +18,6 @@ var (
 	ErrSourceLimitExceeded     = errors.New("source limit exceeded")
 	ErrNoDefault               = errors.New("default book sources are not configured")
 	ErrNamespaceNotInitialized = errors.New("user book sources are not initialized")
-	sourceNamespaceInitMu      sync.Mutex
 	sourceUserWriteLocks       = sourceUserLockRegistry{locks: make(map[uint]*sourceUserLock)}
 )
 
@@ -70,11 +68,7 @@ type RestoreUsersResult struct {
 	Skipped  int `json:"skipped"`
 }
 
-const (
-	managedCreateSessionKey       = "openreader:book-sources:managed-create"
-	namespaceInitRetryLimit       = 10
-	namespaceInitRetryBaseBackoff = 10 * time.Millisecond
-)
+const managedCreateSessionKey = "openreader:book-sources:managed-create"
 
 type sourceInUseError struct {
 	count int
@@ -112,40 +106,20 @@ func (s *Service) EnsureNamespace(userID uint) error {
 	if err != nil || initialized {
 		return err
 	}
-
-	// Two root-workspace requests can discover the same new user at once.
-	// SQLite cannot upgrade both deferred read transactions to writers, so the
-	// loser receives SQLITE_BUSY immediately even with busy_timeout configured.
-	// Serialize only the rare initialization path, then recheck after waiting.
-	sourceNamespaceInitMu.Lock()
-	defer sourceNamespaceInitMu.Unlock()
-	initialized, err = s.namespaceInitialized(userID)
-	if err != nil || initialized {
-		return err
-	}
-
-	for attempt := 0; attempt < namespaceInitRetryLimit; attempt++ {
-		err = s.initializeNamespace(userID)
-		if err == nil {
-			return nil
-		}
-		if !isSQLiteWriteContention(err) || attempt == namespaceInitRetryLimit-1 {
-			return err
-		}
-		time.Sleep(time.Duration(attempt+1) * namespaceInitRetryBaseBackoff)
-		initialized, checkErr := s.namespaceInitialized(userID)
-		if checkErr == nil && initialized {
-			return nil
-		}
-		if checkErr != nil && !isSQLiteWriteContention(checkErr) {
-			return checkErr
-		}
-	}
-	return err
+	return s.initializeNamespace(userID)
 }
 
 func (s *Service) initializeNamespace(userID uint) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Two root-workspace requests can discover the same new user at once.
+		// db.Open begins every transaction with BEGIN IMMEDIATE, so the second
+		// one waits here for the first to commit and then sees its namespace.
+		// It must not copy the defaults again: the user may already have
+		// removed some of them.
+		initialized, err := New(tx).namespaceInitialized(userID)
+		if err != nil || initialized {
+			return err
+		}
 		if userID != 0 {
 			var defaults []models.UserBookSource
 			if err := tx.Where("user_id = ? AND detached = ?", 0, false).
@@ -171,14 +145,6 @@ func (s *Service) initializeNamespace(userID uint) error {
 		return tx.Clauses(clause.OnConflict{DoNothing: true}).
 			Create(&models.BookSourceNamespace{UserID: userID}).Error
 	})
-}
-
-func isSQLiteWriteContention(err error) bool {
-	var sqliteError sqlite3.Error
-	if !errors.As(err, &sqliteError) {
-		return false
-	}
-	return sqliteError.Code == sqlite3.ErrBusy || sqliteError.Code == sqlite3.ErrLocked
 }
 
 func (s *Service) ListActive(userID uint) ([]models.BookSource, error) {
@@ -372,7 +338,7 @@ func (s *Service) Create(userID uint, source models.BookSource) (models.BookSour
 	source.CreatedAt = time.Time{}
 	source.UpdatedAt = time.Time{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		limit, err := lockSourceLimit(tx, userID)
+		limit, err := sourceLimit(tx, userID)
 		if err != nil {
 			return err
 		}
@@ -594,7 +560,7 @@ func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult
 
 	result := ImportResult{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		limit, err := lockSourceLimit(tx, userID)
+		limit, err := sourceLimit(tx, userID)
 		if err != nil {
 			return err
 		}
@@ -658,16 +624,12 @@ func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult
 	return result, err
 }
 
-func lockSourceLimit(tx *gorm.DB, userID uint) (int, error) {
+// sourceLimit reads the user's limit inside the caller's write transaction.
+// The transaction began with BEGIN IMMEDIATE (db.Open), so neither the limit
+// nor the active count checked against it can change before it commits.
+func sourceLimit(tx *gorm.DB, userID uint) (int, error) {
 	if userID == 0 {
 		return 0, nil
-	}
-	result := tx.Exec("UPDATE users SET source_limit = source_limit WHERE id = ?", userID)
-	if result.Error != nil {
-		return 0, result.Error
-	}
-	if result.RowsAffected == 0 {
-		return 0, gorm.ErrRecordNotFound
 	}
 	var user models.User
 	if err := tx.Select("source_limit").First(&user, userID).Error; err != nil {
