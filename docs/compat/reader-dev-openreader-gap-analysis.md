@@ -1,5 +1,17 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-04 P2 认证会话续期与活动写入节流：每个认证请求两次 SQLite 提交
+
+这是 immediate 写事务合同第 5 节方案 C 的后续性能切片。在 `5bfb0b8` 上核实：每个认证请求在处理前续期会话（`authsession.renew`），处理后写
+`users.last_active_at`（`TrackActivity`）。`GET /api/me` 与 WebDAV Bearer 每次提交 2 个写事务，WebDAV Basic 1 个；在 `_txlock=immediate` 下，
+每次提交都取一次全库写锁。上游 `fa22f27` 的 `BaseController.kt#checkAuth` 在已建立的 Vert.x 会话里不写用户存储，只在 token 自动登录时把历史
+token 延长七天并写 `last_login_at`。
+
+选定按 60 秒节流。每个请求仍读用户行和会话行，所以退出、改密、删用户和过期的检查保持精确。`last_seen_at` 满 60 秒才用原条件更新续期；
+`last_active_at` 读出后按时刻比较，满 60 秒才写。W1/W2 为 must-fix（性能）；W3（到期 ≥ 认证 + 7 天 − 60 秒）、W4（上次登录精度 60 秒）等为
+acceptable-change。immediate 切片的 T3/C3 夹具改用第二个会话，让并发提交仍然发生。合同见
+[`authenticated-request-write-throttle-p2-contract.md`](authenticated-request-write-throttle-p2-contract.md)。状态 **contract-only**。
+
 ## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
 
 BookInfo 追更真实接口合同第 8 节发现：另一个认证请求在 `PUT /api/books/:id` 事务期间提交时，该 `PUT` 返回

@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-04 当前切片：认证请求的会话续期与活动写入节流（P2，W1–W7）
+
+见[`authenticated-request-write-throttle-p2-contract.md`](authenticated-request-write-throttle-p2-contract.md)。基于 `claude/sqlite-immediate-write-transactions`，
+在它之后合入。每个认证请求提交两次（`renew` 与 `TrackActivity`）：`GET /api/me` 与 WebDAV Bearer 每次 2 个写事务，WebDAV Basic 1 个。
+W1/W2 must-fix：60 秒内只读不写，每次仍读会话行与用户行，检查保持精确。W3 滑动期限误差 ≤ 60 秒、W4 上次登录精度 60 秒、W5 修剪排序精度、
+W6 多两次主键读，均为 acceptable-change；W7 退出、改密、删用户与过期检查不变。计划红测：A1/A2（commit hook 计数）、U1/U2（注入时钟）、
+M1（真实时钟、混合时区）；对照 U3/U4 与既有会话测试；T3/C3 夹具改用第二个两分钟前续期的会话。状态 contract-only。
+
 ## 2026-11-04 当前切片：SQLite 写事务改为 BEGIN IMMEDIATE（P1，S1–S4）
 
 见[`sqlite-immediate-write-transactions-p1-contract.md`](sqlite-immediate-write-transactions-p1-contract.md)。
