@@ -1581,6 +1581,15 @@ four-viewport browser logout/relogin, real REST/WebDAV/WS lifecycle probes, Acti
 fresh GHCR pull all passed. The `a0edce3`/`latest` OCI index is
 `sha256:5d7fe23ba96107c5c545e9e44815514fe277e5a6f83eb25cb006859c5d515d78`.
 
+2026-11-04 write throttle (branch `claude/throttle-per-request-auth-writes`, after
+`claude/sqlite-immediate-write-transactions`): a session is renewed at most once a minute, so its expiry stays within
+60 s of seven days after the latest successful authentication. Protected REST and WebDAV requests rewrite the user's
+persisted `last_active_at` at most once a minute, so `lastLoginAt`/`lastActiveAt` in `GET /api/admin/users` and
+`GET /api/me` can trail the latest request by up to 60 s; login and registration still set it exactly. Every request
+still reads the user and session rows, so logout, password reset, user deletion and expiry take effect on the next
+request. Paths, bodies, status codes and errors are unchanged. Contract:
+[`authenticated-request-write-throttle-p2-contract.md`](authenticated-request-write-throttle-p2-contract.md).
+
 ## P2 default book-source snapshot lifecycle (2026-08-26 implemented/published)
 
 Existing default-source methods, paths, auth and success bodies remain unchanged. SQLite default namespace is the

@@ -7,6 +7,9 @@
 W1/W2 must-fix：60 秒内只读不写，每次仍读会话行与用户行，检查保持精确。W3 滑动期限误差 ≤ 60 秒、W4 上次登录精度 60 秒、W5 修剪排序精度、
 W6 多两次主键读，均为 acceptable-change；W7 退出、改密、删用户与过期检查不变。计划红测：A1/A2（commit hook 计数）、U1/U2（注入时钟）、
 M1（真实时钟、混合时区）；对照 U3/U4 与既有会话测试；T3/C3 夹具改用第二个两分钟前续期的会话。状态 contract-only。
+记录（2026-11-04，取代上段的状态）：合同 `dccc96d`、红测 `b312782`、实现 `b3ea517`。红测 A1/A2、U1/U2、M1 在 `5bfb0b8` 上失败，
+实现后通过；后端全量 31 个包与 vet、race 26 个包（api 1055.1 s） 通过；deferred `db.go` 下新 T3 仍失败、原 T3 空测通过。压力：并发 `GET` p50
+2.8–3.4 → 1.9–2.4 ms、p95 6.5–7.2 → 3.0–3.7 ms，0 失败。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-04 当前切片：SQLite 写事务改为 BEGIN IMMEDIATE（P1，S1–S4）
 

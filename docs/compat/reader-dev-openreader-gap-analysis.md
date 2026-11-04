@@ -11,6 +11,11 @@ token 延长七天并写 `last_login_at`。
 `last_active_at` 读出后按时刻比较，满 60 秒才写。W1/W2 为 must-fix（性能）；W3（到期 ≥ 认证 + 7 天 − 60 秒）、W4（上次登录精度 60 秒）等为
 acceptable-change。immediate 切片的 T3/C3 夹具改用第二个会话，让并发提交仍然发生。合同见
 [`authenticated-request-write-throttle-p2-contract.md`](authenticated-request-write-throttle-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-04，取代上段的状态）：合同 `dccc96d`、红测与夹具 `b312782`、实现 `b3ea517`（`authsession` +45/−3、`middleware` +22/−1）。
+在 `5bfb0b8` 上，A1/A2（commit hook 计数）、U1/U2（注入时钟）与 M1（UTC、UTC+8、UTC−5）失败；对照 U3/U4 与新夹具下的 T3/C3 通过。实现后
+全部通过，`-count=10` 稳定。`go vet ./...`、`go test ./...` 31 个包、race 26 个包（api 1055.1 s） 通过。在 deferred `db.go` 的导出树上，新 T3 仍返回
+500，原 T3 通过（空测）。压力（交替 3 轮）：并发 `GET` p50 2.8–3.4 → 1.9–2.4 ms，p95 6.5–7.2 → 3.0–3.7 ms；并发设置写 p95
+11.4–13.1 → 6.0–7.4 ms；两版都是 0 失败。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
 

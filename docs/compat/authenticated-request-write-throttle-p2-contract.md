@@ -138,10 +138,10 @@ OpenReader 用无状态 JWT 加 SQLite 会话行代替 Vert.x 内存会话（认
 
 **对照**（新旧实现都通过）：
 
-- U3 同包 `TestAuthenticateWithinAMinuteStillRejectsRevokedResetExpiredAndDeletedSessions`：60 秒内退出、`auth_version` 变化、
-  `expires_at` 已过、用户已删除，都返回 `ErrInvalidSession`。
-- U4 同包 `TestConcurrentRenewAfterAMinuteCannotResurrectRevokedSession`：会话已满 60 秒，16 个并发认证全都走续期更新，同时退出。
-  之后认证失败、行数为 0（含 `-race`）。
+- U3 同包 `TestAuthenticateWithinAMinuteStillRejectsRevokedResetExpiredAndDeletedSessions`：60 秒内退出、用户 `auth_version` 变化、
+  会话行代次不同、`expires_at` 已过、用户已删除，都返回 `ErrInvalidSession`。
+- U4 同包 `TestConcurrentRenewAfterAMinuteCannotResurrectRevokedSession`：会话已满 60 秒，16 个并发认证与退出竞争。先读到旧续期时间的
+  认证执行续期条件更新；续期提交后才读的只做检查。之后认证失败、行数为 0（含 `-race`）。
 - 既有测试。authsession：`TestIssueAuthenticateRenewAndRevokeSession`、`TestSessionRetentionCapAndExpiry`、
   `TestLegacySessionAdoptionWindowAndRevocationTombstone`、`TestConcurrentRenewCannotResurrectRevokedSession`。
   api：`TestAuthenticatedSessionLogoutRevokesOnlyCurrentLogin`、`TestDeletedUserTokenFailsBeforeRESTAndWebDAVSideEffects`、
@@ -173,4 +173,64 @@ T3（`TestBookPatchSurvivesConcurrentSessionRenew`）和 C3（`commit-before-tra
 
 ## 10. 状态
 
-**contract-only**。
+**contract-only**（由第 11 节记录取代）。
+
+## 11. 记录（2026-11-04）
+
+提交：
+
+- 合同 `dccc96d`；
+- 红测与 T3/C3 夹具 `b312782`；
+- 实现 `b3ea517`：`services/authsession/service.go` +45/−3，`middleware/auth.go` +22/−1。
+
+**红测在 `5bfb0b8` 上的失败原文**（对照全部通过）：
+
+- A1：三轮都失败，例如 `REST GET /api/me (round 1) committed 2 SQLite write transactions within a minute of the session's last
+  renewal, want 0`。WebDAV Bearer 每次 2 个，WebDAV Basic 每次 1 个。
+- A2：`GET /api/me right after a renewal committed 2 SQLite write transactions, want 0`。两分钟后的第一个请求恰好 2 个，这一步通过。
+- U1：`authentication 59s after issue renewed the session: last_seen_at=+59s expires_at=+168h0m59s, want +0s and +168h0m0s`。
+- U2：`legacy authentication 59s after adoption renewed the session: last_seen_at=+59s expires_at=+168h0m59s, want +0s and +168h0m0s`。
+- M1：三个“30 秒前”子测（UTC、UTC+8、UTC−5）失败，例如 `last_active_at stored 30 seconds ago in UTC+8 = {Time:2026-11-04
+  13:27:14.930913 +0800 +0800 Valid:true} after a request, want it kept at 2026-11-04 13:26:44.929924 +0800 UTC+8`。
+  两分钟前、零值与 NULL 子测通过。
+- 通过的对照：U3 的 5 种情况、U4、缺失用户、既有会话测试，以及新夹具下的 T3/C3。
+
+实现后同一批断言全部通过；新增测试 `-count=10` 稳定。
+
+**T3 夹具核验。** 用两棵临时导出树，都是 `b3ea517` 加上 `0f5e6b1` 的 deferred `db.go`：
+
+- 用新夹具时，T3 的 `follow`/`cover` 都失败：`PUT … while another authenticated request renewed its session = 500
+  {"error":"failed to update book"}, want 200`。这与 immediate 合同第 12 节记录的红测相同。
+- 换回 `5bfb0b8` 的原夹具时，T3 通过。可见节流后原测试确实成了空测，夹具更新是必要的。
+- C3 在两棵树上都通过：续期提交在事务开始之前，本来就不冲突。
+
+**回归：**
+
+- `go vet ./...` 通过；`go test ./...` 31 个包通过（api 119.2 s，沙箱外运行）。
+- `go test -race ./api ./db ./services/...`（`-timeout 40m`）：26 个包通过，无数据竞争（api 1055.1 s，沙箱外运行）。
+- 前端、依赖公告门与发布门没有重跑：本切片不改前端和依赖（`go.mod`、`go.sum`、`package-lock.json` 不变）。合入 main 时由
+  GitHub Actions 运行。
+
+**压力。** 用 `book-put-stress.mjs`，`5bfb0b8` 与 `b3ea517` 两个二进制交替各跑 3 轮，每轮交换先后顺序，每次起全新服务。
+表中 p50、p95 是 3 轮的范围，最大值取 3 轮最大，单位 ms：
+
+| 场景 | 构建 | `PUT` p50 / p95 | 并发请求 p50 / p95 / 最大 | 失败 |
+| --- | --- | --- | --- | --- |
+| 追更 + 4 个 `GET` | 前 | 3.8–3.9 / 7.0–7.3 | 2.8–3.0 / 6.5–6.7 / 13.4 | 0 |
+| 追更 + 4 个 `GET` | 后 | 2.3–2.4 / 3.3–3.5 | 1.9–2.0 / 3.0–3.1 / 5.7 | 0 |
+| 封面 + 4 个 `GET` | 前 | 4.4–4.9 / 7.7–8.5 | 3.1–3.4 / 7.0–7.2 / 21.4 | 0 |
+| 封面 + 4 个 `GET` | 后 | 3.3–3.6 / 4.3–5.1 | 2.2–2.4 / 3.4–3.7 / 5.1 | 0 |
+| 追更 + 4 个设置写 | 前 | 2.4–2.5 / 6.8–7.3 | 4.3–4.4 / 11.7–12.9 / 15.1 | 0 |
+| 追更 + 4 个设置写 | 后 | 2.0–2.2 / 4.4–4.7 | 2.9–3.1 / 6.0–6.6 / 13.5 | 0 |
+| 封面 + 4 个设置写 | 前 | 3.1–3.9 / 7.5–7.8 | 4.3–4.7 / 11.4–13.1 / 25.8 | 0 |
+| 封面 + 4 个设置写 | 后 | 3.3–3.6 / 5.7–6.5 | 3.6–3.9 / 7.0–7.4 / 14.2 | 0 |
+
+- 并发 `GET`：p50 从 2.8–3.4 ms 降到 1.9–2.4 ms，p95 从 6.5–7.2 ms 降到 3.0–3.7 ms。这与 immediate 合同第 5 节方案 C 的实验
+  （p50 1.8–2.2 ms）一致。
+- 并发设置写本身仍是写者，它的 p95 从 11.4–13.1 ms 降到 6.0–7.4 ms：每个请求少了两次排队取锁。
+- 无并发阶段两者相同（追更 `PUT` p50 前 1.6–1.9、后 1.8–1.9 ms；封面前 2.5–2.8、后 2.4–2.6 ms）。WAL 加 `synchronous=NORMAL`
+  下单次提交本身很便宜，收益来自不再排队等全库写锁。
+- 两个构建都是 0 失败，服务端都没有 `database is locked` 日志。并发保存的正确性由 immediate 切片保证。
+
+状态 **implementation-complete / regression-validated**。分支已推送，未合入 main（须在 `claude/sqlite-immediate-write-transactions`
+之后合入）。镜像未发布，生产未访问。
