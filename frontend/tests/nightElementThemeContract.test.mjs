@@ -315,11 +315,19 @@ test('OpenReader-only empty states and loading masks get the decided night look'
   assertDeclarations('.night-theme .el-loading-mask', { 'background-color': '#222' })
 })
 
-test('the EPUB catalog rule picker follows the night input colors and keeps its day colors', () => {
+// N9 was written for the native EPUB `select`. The 2026-11-04 TOC rule contract
+// (txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md R1/R2) restores reader-dev's
+// PopCatalog `el-select` + textarea for TXT and EPUB, so the picker now relies on the shared night rules.
+test('the catalog rule picker uses Element select and textarea that follow the night input colors', () => {
   const picker = source('composables/useReaderLocalTocRulePicker.js')
-  const style = picker.match(/style: '([^']+)'/)
-  assert.ok(style, 'the EPUB rule picker keeps one inline style')
-  assert.match(style[1], /border:1px solid var\(--el-input-border-color, var\(--el-border-color\)\)/)
-  assert.match(style[1], /background:var\(--el-input-bg-color, var\(--el-bg-color\)\)/)
-  assert.match(style[1], /color:var\(--el-input-text-color, var\(--el-text-color-primary\)\)/)
+  assert.match(picker, /import \{[^}]*\bElSelect\b[^}]*\} from 'element-plus'/)
+  assert.match(picker, /import \{[^}]*\bElInput\b[^}]*\} from 'element-plus'/)
+  assert.doesNotMatch(picker, /h\('select'/, 'no native select remains')
+  assert.doesNotMatch(picker, /style: '[^']*border:1px solid/, 'no inline native select colors remain')
+  assertDeclarations(['.night-theme .el-input', '.night-theme .el-textarea'], {
+    '--el-input-bg-color': '#444',
+    '--el-input-text-color': '#ddd',
+  })
+  assertDeclarations('.night-theme .el-select__wrapper:not(.is-disabled)', { 'background-color': '#444' })
+  assertDeclarations('.night-theme .el-message-box', {})
 })

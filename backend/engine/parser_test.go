@@ -269,9 +269,14 @@ func TestDefaultTXTTocRulesExactlyMatchFixedUpstream(t *testing.T) {
 		{ID: -18, Enable: true, Name: "标题 特殊符号 序号", Rule: `^.{1,20}[(（][\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8}[)）][ 　\t]{0,4}$`, SerialNumber: 17},
 	}
 
+	// The fixed-upstream rules come first and unchanged; OpenReader appends
+	// rule -19 (txt-toc-rule-selection-fixed-baseline-second-audit-p1
+	// contract section 6.1) after them so equal counts still pick upstream.
+	want = append(want, TXTTocRule{ID: -19, Enable: true, Name: "目录(章回、话)", Rule: wantZhangHuiRule, SerialNumber: 18})
+
 	got := DefaultTXTTocRules()
 	if len(got) != len(want) {
-		t.Fatalf("default TXT TOC rule count = %d, want %d", len(got), len(want))
+		t.Fatalf("default TXT TOC rule count = %d, want %d (18 fixed-upstream rules plus rule -19)", len(got), len(want))
 	}
 	for index := range want {
 		if got[index] != want[index] {

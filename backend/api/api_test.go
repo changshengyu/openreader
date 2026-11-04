@@ -230,8 +230,13 @@ func TestListTXTTocRules(t *testing.T) {
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("TXT TOC API did not preserve the fixed-upstream rule list\n got: %+v\nwant: %+v", rules, want)
 	}
-	if len(rules) != 18 || rules[2].ID != -3 || rules[2].Enable || rules[16].ID != -17 || rules[16].Enable {
+	if len(rules) != 19 || rules[2].ID != -3 || rules[2].Enable || rules[16].ID != -17 || rules[16].Enable {
 		t.Fatalf("TXT TOC API must expose disabled manual rules in upstream order: %+v", rules)
+	}
+	// OpenReader rule -19 follows the 18 fixed-upstream rules
+	// (txt-toc-rule-selection-fixed-baseline-second-audit-p1 contract).
+	if last := rules[18]; last.ID != -19 || !last.Enable || last.Name != "目录(章回、话)" || last.SerialNumber != 18 {
+		t.Fatalf("TXT TOC API must list rule -19 after the upstream rules: %+v", last)
 	}
 }
 
