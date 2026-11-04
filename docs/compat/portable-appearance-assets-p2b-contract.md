@@ -240,3 +240,70 @@ portable v1 既有“逻辑 transaction + 每本 archive rehydrate/补偿”保�
   `ghcr.io/changshengyu/openreader:54a528f` 与 `latest`。两个标签均经
   `docker buildx imagetools inspect` 核验为 OCI index
   `sha256:047f9636a78604a1d5320da2972d0b16256b95d47253320b79095eaf6101a571`。
+
+## 9. 书架封面浏览器断言复核（2026-11-03，门禁 4 维护，R1–R3）
+
+状态：**contract-only**。
+
+问题：`scripts/smoke/portable-appearance-assets-real-api-contract.mjs` 376–377 行在第一个视口 1440×900 失败：
+恢复后书架行 `.list-cover` 的计算 `background-image` 只有默认渐变
+（`radial-gradient(circle at 76% 18%, …), linear-gradient(135deg, rgb(251, 250, 244) 0%, rgb(244, 240, 223) 100%)`），
+不含 `restored.coverURL`。`69c27bc`（main）与 `claude/reader-menu-alignment` 上同样失败，早于 Reader 菜单切片。
+
+固定上游 `fa22f27`：
+
+- `web/src/views/Index.vue` 589–598：书架卡片 `.cover-img` 内是
+  `<el-image class="cover" :src="getCover(getBookCoverUrl(book), true)" fit="cover" lazy>`，即真实 `<img>`，不是 CSS 背景；
+  3295–3302 行 `.cover-img`、`.cover` 均为 84×112。
+- 同文件 2729–2731：`getBookCoverUrl(book)` 为 `book.customCoverUrl || book.coverUrl`。
+- `web/src/main.js` 78–104：`getImagePath` 只把 `http(s)://`、`//` 地址交给 `/cover?path=` 代理，其余（本地
+  `/assets/...`）为 `apiRoot + url`；`getCover(url, true)` 直接返回该地址。
+
+当前 OpenReader（`69c27bc`）：
+
+- `frontend/src/views/Home.vue` 63–68：`.cover-img` 内 `<BookCover class="list-cover" :book="book" />`。
+- `frontend/src/components/BookCover.vue`：`<img :src="bookCoverUrl(book)">`，加载成功给图片加 `loaded`、外层加
+  `has-cover`，失败回到“暂无封面”占位；外层始终保留共享渐变底色。
+- `frontend/src/utils/bookCover.js` 1–8：`customCoverUrl` 优先，其次 `coverResourceUrl`/`coverUrl`。
+- 恢复后的 `customCoverUrl` 是目标用户同源 `/uploads/users/<target-id>/covers/<random>.png`；脚本已在 API 层断言
+  前缀并按字节核对文件。
+
+历史：脚本在 `54a528f`（2026-07-23）写成时，书架 `.list-cover` 是带内联 `background-image: url(...)` 的 `<span>`。
+`ceb4baa`（2026-07-27，远程封面代理，见 [`book-cover-proxy-p2-contract.md`](book-cover-proxy-p2-contract.md)
+“加载失败回退”“重复封面逻辑”两行）把书架收敛到 `BookCover` 的 `<img>`，同时改了 `index-workspace-contract.mjs`，
+没有迁移本脚本的书架断言。此后 `.list-cover` 的背景永远只是渐变底色，该断言自 `ceb4baa` 起必然失败。
+
+实测（`69c27bc` 构建、真实 Go 服务、Chromium，临时插桩副本，未提交）：三个视口书架行 `.list-cover` 都含
+`<img src="/uploads/users/<target-id>/covers/portable-….png" class="loaded">`，`complete`、`naturalWidth` 1、不透明度 1、
+`object-fit: cover`、与 84×112 封面框重合，外层有 `has-cover`；脚本其后的 Reader 背景、字体与设置面板步骤三个视口
+全部通过。
+
+| 项 | 分类 | 处理 |
+|---|---|---|
+| R1 书架封面用 `<img>` 渲染，`customCoverUrl` 优先，同源地址直接加载 | 与上游一致（`el-image` 即 `<img>`） | 不改产品代码 |
+| R2 恢复映射：目标用户新随机 URL、字节一致 | 已符合本合同第 3、6 节 | 不改后端 |
+| R3 浏览器合同读取书架封面已不存在的 CSS 背景 | **must-fix（测试工具）** | 迁移断言 |
+
+目标：浏览器合同在书架行 `.list-cover` 内等待 `img.loaded`，断言其 `src` **等于** `restored.coverURL`（精确匹配，
+比原来的子串包含更严），`naturalWidth × naturalHeight` 为种子 PNG 的 1×1；写法沿用
+`local-book-cover-contract.mjs` 的 `loadedCover`。不再读取 `.list-cover` 的 `background-image`。没有新增允许差异。
+
+验证计划：
+
+1. 旧断言在 `69c27bc` 构建上的失败（上面的确切信息）就是本节的红；产品行为正确，不另造产品红测，也没有 `fix:` 提交。
+2. 新断言在同一构建三视口通过；两项临时变异（不提交）证明它能拦下真实回归：M1 `bookCoverUrl` 忽略
+   `customCoverUrl`（书架不显示恢复封面）、M2 恢复封面地址 404（图片加载失败回到占位）。
+3. 前端 `npm test`、`npm run build`，后端 `go test ./...`、`go vet ./...`。
+
+不重开：书架布局与封面几何（`bookshelf-visible-layout`）、封面代理与 capability（`book-cover-proxy-p2`）、portable v2
+格式与恢复事务。`claude/reader-menu-alignment` 改了本脚本 343 行的设置按钮选择器，与 376–377 行不冲突。
+
+记录（2026-11-03，取代本节状态）：合同 `2727bc9`、断言迁移 `df0ac15`（`test:`；产品无改动，没有 `fix:` 提交）。
+红：旧断言在 `69c27bc` 构建上于 1440×900 失败（本节开头的确切信息），从未走到另外两个视口。绿：同一构建上新断言
+1440×900、390×844、360×800 全部通过；`claude/reader-menu-alignment`（`3bc8788`）加上本断言迁移（自动合并，与 343 行
+改动不冲突）三视口同样通过。临时变异（未提交）都在 1440×900 被拦下：M1 忽略 `customCoverUrl`、M2 封面地址加
+`/api` 前缀而 404，都停在 “shelf cover image did not load: 暂无封面”；追加的 M3 可加载的 `?stale` 地址停在
+“shelf cover does not use restored URL”，旧的子串断言会放过它。前端 855/855 与 build、后端 `go test ./...`（31 个包
+通过、7 个无测试）与 `go vet ./...`、公告门自测 109/109 通过；实时公告扫描未跑：本节不涉及依赖，Go 实时门被
+GO-2026-5932 阻塞，另案处理。状态 **implementation-complete / regression-validated**（仅测试工具）。本分支只改文档与
+该脚本，都不在 `docker-publish.yml` 路径过滤内，单独合入 main 不会触发镜像发布。

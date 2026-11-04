@@ -89,6 +89,20 @@ awaiting-device-verification**；生产未访问。
 （接口复现：封面 60/150、追更 58/300；不并发 0），真实接口合同的封面一步因此偶发失败（18 次中 4 次）。状态
 **implementation-complete / regression-validated**，待合入与可信 Actions。
 
+## 2026-11-03 P2 可移植外观资产 书架封面浏览器断言（P2-B 门禁 4 维护）
+
+`portable-appearance-assets-real-api-contract.mjs` 在 1440×900 失败：恢复后书架行 `.list-cover` 的计算 `background-image` 只有渐变底色，
+不含恢复封面 URL；`69c27bc` 与 Reader 菜单分支同样失败。复核上游 `Index.vue` 589–598：书架封面是 `el-image`（真实 `<img>`，
+`customCoverUrl || coverUrl`，本地地址直接 `apiRoot + url`）。OpenReader 自 `ceb4baa`（远程封面代理）起书架也用 `BookCover` 的 `<img>`；
+`69c27bc` 三视口实测恢复封面 `img.loaded`、`src` 为目标用户新 URL，脚本其后 Reader 背景/字体/设置步骤全部通过。渲染（R1）与恢复映射（R2）
+与上游和本合同一致，不改产品；断言还停在 `54a528f` 写成时的内联背景写法，`ceb4baa` 未迁移（R3 **`must-fix`（测试工具）**）。目标：
+等待 `.list-cover img.loaded`，`src` 精确等于恢复 URL、图片 1×1。完整合同见
+[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md) 第 9 节。状态 **contract-only**。
+2026-11-03 记录（合同第 9 节）：合同 `2727bc9`、断言迁移 `df0ac15`（产品无改动，没有 `fix:` 提交）。旧断言在 `69c27bc` 构建 1440×900 失败；
+新断言在同一构建与 Reader 菜单分支 `3bc8788` 上三视口通过，三项临时变异（忽略 `customCoverUrl`、封面 404、可加载的 `?stale` 地址）都被
+拦下；前端 855/855 与 build、后端全量/vet、公告门自测 109/109 通过。状态 **implementation-complete / regression-validated**（仅测试工具）；
+未合入 main。
+
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
 前两个夜间切片（`24511c0`、`21d78ab`）只改了 Reader 自己画的工具栏、设置与列表；`html.dark-reader` 只改 `--app-*`，夜间所有

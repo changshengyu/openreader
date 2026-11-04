@@ -65,6 +65,18 @@ GO-2026-5932 变化（main 的 `544b980` 已固定），合入 `636b1ff` 预检�
 （`user_sessions` 续期写 + deferred 事务读后写），真实接口合同封面一步偶发失败。状态 implementation-complete / regression-validated，
 待合入与可信 Actions；镜像未发布，生产未动。
 
+## 2026-11-03 当前切片：可移植外观资产书架封面浏览器断言（P2-B 门禁 4 维护，R1–R3）
+
+见[`portable-appearance-assets-p2b-contract.md`](portable-appearance-assets-p2b-contract.md)第 9 节。真实接口合同在 1440×900 读取书架
+`.list-cover` 的 CSS 背景而失败；上游书架封面是 `el-image`（`<img>`），OpenReader 自 `ceb4baa` 起也是 `BookCover` 的 `<img>`，`69c27bc`
+三视口实测恢复封面已加载且为目标用户新 URL。R1 渲染、R2 恢复映射与上游和本合同一致，不改产品；R3 断言过时，must-fix（测试工具）：改为
+等待 `.list-cover img.loaded`，`src` 精确等于恢复 URL、1×1。计划：旧断言在改前构建的失败即红，新断言三视口通过，两项临时变异（忽略
+`customCoverUrl`、封面 404）证明有效。状态 contract-only。
+记录（2026-11-03，取代上段的状态）：合同 `2727bc9`、断言迁移 `df0ac15`（产品无改动）。旧断言在 `69c27bc` 构建 1440×900 失败；新断言在
+同一构建与 `3bc8788`（菜单分支，自动合并）三视口通过，三项临时变异（忽略 `customCoverUrl`、封面 404、可加载的 `?stale` 地址）都被拦下。
+前端 855/855 与 build、后端全量（31 包）/vet、公告门自测 109/109 通过；实时扫描未跑（不涉及依赖，Go 门被 GO-2026-5932 阻塞）。
+状态 implementation-complete / regression-validated；未合入 main，单独合入不触发镜像发布。
+
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 
 见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
