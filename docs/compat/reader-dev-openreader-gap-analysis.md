@@ -9,6 +9,11 @@ EPUB 是原生 `select` 且文案不同、规则未变也刷新（R1–R3 must-f
 10 KiB 伪章节，章回合并行超过 30 字不识别。新增 OpenReader 规则 -19“目录(章回、话)”并按 Legado 间隔计数至少多出 2 才接管（用户要求的
 intentional-redesign，没有回/话标题的书选择不变）；负向前瞻由整行排除改为精确位置（must-fix，对齐上游）。合同见
 [`txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md`](txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md)。状态 **contract-only**。
+记录（2026-11-04，取代上段的状态）：合同 `9d3ec44`、红测 `1fbd58d`、实现 `f8c20ab`、浏览器合同点击修正 `e61157f`。红测在 `8c3cf79`：
+用户版式只得 2 项（应 8），长合并行、只有回、只有话退化为伪章节，“目录”对 `第一章 部分真相` 等 0 命中，规则列表 18 条；前端 9 项失败
+（TXT 打开 prompt、EPUB 原生 select、EPUB 选项名等）。实现后同一断言转绿；对照（普通章节小说、章行紧跟回行、单处“第一回”、书首目录区）
+不变。后端全量 31 个包与 vet、race 26 个包（api 1049.6 s）；前端 877/877 与 build；公告门自测 114/114、实时扫描通过；浏览器合同 B1 三视口与本地导入合同
+三视口通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）
 
