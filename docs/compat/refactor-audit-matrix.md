@@ -26,6 +26,7 @@ M1（真实时钟、混合时区）；对照 U3/U4 与既有会话测试；T3/C3
 记录（2026-11-04，取代上段的状态）：合同 `dccc96d`、红测 `b312782`、实现 `b3ea517`。红测 A1/A2、U1/U2、M1 在 `5bfb0b8` 上失败，
 实现后通过；后端全量 31 个包与 vet、race 26 个包（api 1055.1 s） 通过；deferred `db.go` 下新 T3 仍失败、原 T3 空测通过。压力：并发 `GET` p50
 2.8–3.4 → 1.9–2.4 ms、p95 6.5–7.2 → 3.0–3.7 ms，0 失败。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
+发布（2026-11-04）：重新合入新 main（合并提交 `6006659`，基于 TXT 目录规则发布 `aa87cc6`，只有两份兼容文档顶部冲突、两边保留），合并树复跑后端全量/vet、race 26 包（api 1070.9 s）、前端 877/877 与 build、公告门自测 136/136 与实时扫描、Compose、存储合同、真实接口浏览器合同（认证会话生命周期、书籍信息完整模式五视口、目录规则三视口）通过；main 快进到 `6006659`（ls-remote 核验，未强推），run `41843829943` 43 步全部成功；`6006659`/`latest` = index `9b64829f…23e5`（amd64 `5b8dca3d…`、arm64 `98ac1c31…`，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 
 ## 2026-11-04 当前切片：退役 SQLite BUSY 局部绕行（P2，R1–R4）

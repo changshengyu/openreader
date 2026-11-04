@@ -32,6 +32,7 @@ acceptable-change。immediate 切片的 T3/C3 夹具改用第二个会话，让�
 全部通过，`-count=10` 稳定。`go vet ./...`、`go test ./...` 31 个包、race 26 个包（api 1055.1 s） 通过。在 deferred `db.go` 的导出树上，新 T3 仍返回
 500，原 T3 通过（空测）。压力（交替 3 轮）：并发 `GET` p50 2.8–3.4 → 1.9–2.4 ms，p95 6.5–7.2 → 3.0–3.7 ms；并发设置写 p95
 11.4–13.1 → 6.0–7.4 ms；两版都是 0 失败。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+发布（2026-11-04）：重新合入新 main（合并提交 `6006659`，基于 TXT 目录规则发布 `aa87cc6`，只有两份兼容文档顶部冲突、两边保留），合并树复跑后端全量/vet、race 26 包（api 1070.9 s）、前端 877/877 与 build、公告门自测 136/136 与实时扫描、Compose、存储合同、真实接口浏览器合同（认证会话生命周期、书籍信息完整模式五视口、目录规则三视口）通过；main 快进到 `6006659`（ls-remote 核验，未强推），run `41843829943` 43 步全部成功；`6006659`/`latest` = index `9b64829f…23e5`（amd64 `5b8dca3d…`、arm64 `98ac1c31…`，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 
 ## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）

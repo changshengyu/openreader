@@ -234,3 +234,23 @@ T3（`TestBookPatchSurvivesConcurrentSessionRenew`）和 C3（`commit-before-tra
 
 状态 **implementation-complete / regression-validated**。分支已推送，未合入 main（须在 `claude/sqlite-immediate-write-transactions`
 之后合入）。镜像未发布，生产未访问。
+
+## 12. 发布（2026-11-04）
+
+另一会话的合入预备 `8126f61`（本切片合到 `8c3cf79`）推送后，main 先发布了 TXT 目录规则（`aa87cc6`）。于是在 `aa87cc6` 上重新合并
+`8126f61`：合并提交 `6006659`，只有 `reader-dev-openreader-gap-analysis.md` 与 `refactor-audit-matrix.md` 顶部条目冲突，两边都保留
+（TXT 目录规则在前）。
+
+合并树回归：backend `go test ./...` 31 个包、`go vet ./...`；`go test -race ./api ./db ./services/...`（`-timeout 40m`）26 个包，
+无数据竞争（api 1070.9 s）；frontend `npm test` 877/877 与 `npm run build`；Go/前端/系统包公告门自测 136/136，实时 Go 与前端扫描
+`pass`、0 项；`docker compose config --quiet`；隔离存储 HTTP 合同；浏览器发布门自测 10/10；真实接口浏览器合同
+`authenticated-session-lifecycle-real-api-contract.mjs`（双端登录、退出 204/401、改密与删用户 401、REST/WebDAV/WebSocket，服务端
+无 `database is locked`）、`bookinfo-shelf-mutations-real-api-contract.mjs` 完整模式五视口、`reader-local-toc-rule-contract.mjs`
+三视口。
+
+main 快进到 `6006659`（ls-remote 核验，未强推）。可信 Actions `41843829943`（docker-publish）43 步全部成功。
+`ghcr.io/changshengyu/openreader:6006659` 与 `latest` 同为 OCI index
+`sha256:9b64829f88ada2cc7351c69a686076d558eb1017faee5cf43ca93a598bef23e5`：linux/amd64 `sha256:5b8dca3d…585d`、linux/arm64
+`sha256:98ac1c31…67a1`，两个平台的 `org.opencontainers.image.revision` 均为 `6006659e151ece10f640b233847a33e38df93218`。
+
+状态 **aligned / Docker-published / awaiting-device-verification**。生产未访问，实际运行版本未知。
