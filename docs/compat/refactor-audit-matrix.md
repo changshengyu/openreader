@@ -2,11 +2,14 @@
 
 ## 2026-11-04 当前切片：退役 SQLite BUSY 局部绕行（P2，R1–R4）
 
-见[`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。依赖 P1 `BEGIN IMMEDIATE`（`5bfb0b8`）合入 main。
+见[`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。从 P1 分支 `5bfb0b8`（`BEGIN IMMEDIATE`，尚未合入 main）切出，须在 P1 之后合入。
 W1 RSS 六个写入的整笔重试、W2 命名空间初始化的进程级互斥与重试、W3 书源新建/导入的无值变更先写。R1 管理员重置与新用户首次访问互等
 53.8 s 为 must-fix；R2 删除三处绕行（命名空间复查移入事务）、R3 超过 5 秒的等待与其他写入一样失败为 acceptable-change；R4 按用户写锁、
 DSN/WAL/连接池/busy_timeout、续期频率不重开。计划测试：守护 G1–G7（没有绕行时在 immediate 下通过，在 deferred 下失败），红测 T1。
 状态 contract-only。
+记录（2026-11-04，取代上段的状态）：合同 `8a7dd1b`、测试 `5166e03`、实现 `ed855a8`。T1 在 `5bfb0b8` 上 53.6 s 失败、实现后 0.42 s 通过；
+G1–G7 有无绕行都通过，deferred 且无绕行时失败；去掉事务内复查时 G2 失败。超过 5 秒的写锁等待改为与其他写入一样失败（实测 5.3 s）。
+后端全量/vet、race 26 个包、前端 870/870 与 build、公告门自测 114/114。状态 implementation-complete / regression-validated；分支已推送（基于 `5bfb0b8`，须在 P1 之后合入），未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-04 当前切片：SQLite 写事务改为 BEGIN IMMEDIATE（P1，S1–S4）
 

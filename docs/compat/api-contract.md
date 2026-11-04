@@ -195,10 +195,11 @@ server event names and existing business payloads remain stable.
   a normal same-user startup race must never expose a UNIQUE error as `500`.
 - Concurrent authenticated startup reads such as `GET /api/sources` and `GET /api/explore/sources` may both
   initialize the caller's book-source namespace. Every pooled SQLite connection must therefore inherit WAL and
-  a 5000 ms busy timeout, while all in-process book-source service instances serialize the rare uninitialized
-  namespace transaction. A bounded retry handles SQLite's immediate `BUSY/LOCKED` result when that read transaction
-  must upgrade behind an unrelated writer; ordinary initialization contention must retain the existing successful
-  response schemas instead of exposing `database is locked` as `500`.
+  a 5000 ms busy timeout and begin transactions with `BEGIN IMMEDIATE` (`db.Open`), so the namespace transaction
+  waits for the write lock instead of failing a read-to-write upgrade, and rechecks the namespace under that lock
+  so that only the first caller copies the defaults. No process-wide mutex or retry is involved (2026-11-04): a wait
+  longer than the busy timeout fails like every other write. Ordinary initialization contention must retain the
+  existing successful response schemas instead of exposing `database is locked` as `500`.
 - `PUT /api/settings/:key` may receive additive `force:true` only for the confirmed “备份用户配置” action.
   It bypasses stale-base comparison for that authenticated user's legal `reader/shelf/search` row only; ordinary
   background writes keep CAS. Explicit restore never creates a missing row as a side effect of reading it.

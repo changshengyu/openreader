@@ -2,13 +2,18 @@
 
 ## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）
 
-依赖 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，`BEGIN IMMEDIATE`）。P1 合同第 4 节把三处局部绕行列为 deferred 事务读后升级失败的
+从 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，`BEGIN IMMEDIATE`，尚未合入 main）切出，须在它之后合入。P1 合同第 4 节把三处局部绕行列为 deferred 事务读后升级失败的
 证据、第 10 节留待清理：`rss#retryRSSSQLiteWrite`（6 个写入，`5236389`）、`booksources#EnsureNamespace` 的进程级互斥与重试（`f9723ad`/`9a13d8e`）、
 `lockSourceLimit` 的 `UPDATE users SET source_limit = source_limit`（`d9ddc0f`）。immediate 下它们只在等写锁超过 5 秒时起作用（重试最长约 50 秒）。
 新发现：管理员重置用户书源在自己的事务里调用 `EnsureNamespace`，与另一新用户首次访问在互斥锁和写锁上互等，实测重置 53.8 s 后完成、
 首次访问 `database is locked`（R1 must-fix）。方案：删除三处绕行，命名空间复查移入事务（写锁下只复制一次默认书源）。超过 5 秒的等待改为与
 其他写入一样失败（R3 acceptable-change，与 P1 S3 一致）。合同见
 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-04，取代上段的状态）：合同 `8a7dd1b`、测试 `5166e03`（守护 G1–G7，红测 T1 在 `5bfb0b8` 上 53.6 s 后首次访问
+`database is locked`）、实现 `ed855a8`（T1 0.42 s 通过）。变异：deferred 且无绕行时 G1、G3–G7 全部 `database is locked`；去掉事务内复查时 G2
+复制回用户已删除的默认书源。另一连接持锁 6 s：有绕行时 RSS 写入与命名空间初始化 6.0 s 成功、普通写入 5.3 s 失败，无绕行时三者 5.3 s 失败。
+后端全量 31 个包与 vet、race 26 个包（api 1051.0 s）；前端 870/870 与 build；公告门自测 114/114。状态 **implementation-complete / regression-validated**；分支已推送、
+基于 `5bfb0b8`、须在 P1 之后合入；未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
 

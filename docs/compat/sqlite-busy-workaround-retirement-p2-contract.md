@@ -1,7 +1,8 @@
 # 退役 SQLite BUSY 局部绕行 P2 合同
 
-日期：2026-11-04。分支 `claude/retire-sqlite-busy-workarounds`，依赖 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，
-`db.Open` 的 DSN 加 `_txlock=immediate`）；该分支合入 main 之后才能推送本分支，推送前改为基于合入后的 origin/main。
+日期：2026-11-04。分支 `claude/retire-sqlite-busy-workarounds`，从 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，基于 main
+`0f5e6b1`；`db.Open` 的 DSN 加 `_txlock=immediate`）切出：用户 2026-11-04 暂不合入 P1，本分支依赖它的 immediate 语义。
+合入顺序：先合入 `claude/sqlite-immediate-write-transactions`，再合入本分支；本分支包含 P1 的全部提交，单独合入会把 P1 一并带入 main。
 
 ## 1. 背景与范围
 
@@ -134,4 +135,41 @@
 
 ## 11. 状态
 
-**contract-only**。
+**contract-only**（由第 12 节记录取代）。
+
+## 12. 记录（2026-11-04）
+
+提交：合同 `8a7dd1b`；测试 `5166e03`（守护 G1–G7、红测 T1，改写 G5）；实现 `ed855a8`（忽略缩进：rss +7/−57，booksources +16/−54）。
+
+在 `5bfb0b8`（immediate，绕行仍在）上：两个包的其余 30 项结果（含子测试）通过；T1 失败（两次运行 53.8 s、53.6 s），原文：
+`admin reset = <nil>, first access = database is locked after 53.599s, want both to succeed`，此前一行
+`after 4s the admin reset (done false) and the first access (done false) were still waiting on each other`。
+实现后 T1 0.42 s 通过，G1–G7 通过；两个包 `-count=3` 与 `-race -count=2` 通过。
+
+变异（第 9 节，本地临时改动，已还原）：
+
+- M1 deferred 且没有绕行：G1（4 次）、G3 `create`/`import`、G4（10 次，用户 2、3 只接受 2/3 与 3/4）、G5、G6 六个子测试、G7（7 次）以及原有
+  `TestEnsureNamespaceSerializesConcurrentFirstAccess` 都以 `database is locked` 失败，例如 G6 `create failed once another user's write tried
+  to commit between its read and its write: database is locked (concurrent commit error: <nil>)`。T1 也失败（重置事务的读快照过期）；G2 通过
+  （它不涉及并发提交）。
+- M2 immediate、没有绕行、删除事务内复查：G2 失败 `active sources after the losing first access = [1 2], want only 1; it copied back default 2
+  that the user had removed`；其余通过。
+
+长时间持锁（另一连接 `BEGIN IMMEDIATE` 持锁 6 s，三个调用同时开始）：
+
+| 服务代码 | RSS `CreateOrReplaceSource` | `EnsureNamespace`（新用户） | 普通 `UPDATE users` |
+| --- | --- | --- | --- |
+| `5bfb0b8`（有绕行） | 6.01 s 成功 | 6.04 s 成功 | 5.29 s `database is locked` |
+| `ed855a8`（无绕行） | 5.33 s `database is locked` | 5.34 s `database is locked` | 5.33 s `database is locked` |
+
+回归：
+
+- 后端：`go test ./...` 31 个包通过（api 122.5 s）；`go vet ./...` 通过，gofmt 无输出；`go test -race ./api ./db ./services/...` 26 个包通过、无数据竞争（api 1051.0 s，`-timeout 40m`）。
+- 前端未改：`npm test` 870/870、`npm run build` 通过（`node_modules` 克隆自锁文件相同的工作树）。
+- 公告门自测：114/114。
+
+未跑：现场公告扫描（没有依赖变化，合入 main 时 Actions 运行）；Compose、存储 HTTP 合同、fresh/历史卷与可移植备份门（不涉及，Actions 在推送 main 时运行）；
+浏览器 smoke（没有前端或接口形状变化）。
+
+状态 **implementation-complete / regression-validated**。分支已推送（基于 `5bfb0b8`），须在 P1 之后合入；未合入 main，镜像未发布，
+生产未访问。
