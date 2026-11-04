@@ -10,6 +10,12 @@ DSN/WAL/连接池/busy_timeout、续期频率不重开。计划测试：守护 G
 记录（2026-11-04，取代上段的状态）：合同 `8a7dd1b`、测试 `5166e03`、实现 `ed855a8`。T1 在 `5bfb0b8` 上 53.6 s 失败、实现后 0.42 s 通过；
 G1–G7 有无绕行都通过，deferred 且无绕行时失败；去掉事务内复查时 G2 失败。超过 5 秒的写锁等待改为与其他写入一样失败（实测 5.3 s）。
 后端全量/vet、race 26 个包、前端 870/870 与 build、公告门自测 114/114。状态 implementation-complete / regression-validated；分支已推送（基于 `5bfb0b8`，须在 P1 之后合入），未合入 main，镜像未发布，生产未动。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-11-04 当前切片：SQLite 写事务改为 BEGIN IMMEDIATE（P1，S1–S4）
 
@@ -22,6 +28,12 @@ acceptable-change；S4 续期频率、已有重试与先写绕行、WAL/连接�
 race 26 个包、前端 870/870 与 build、公告门与存储合同通过；动态探测 0 处事务内外层写入；压力 main 45–126 次失败 → 修复 0；BookInfo 真实接口
 合同：修复 18/18、交替运行的改前树 17/18（`cover state persisted` 超时）。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
 合入要求（2026-11-04 补充）：不能单独合入，须紧接着在同一次发布中合入 `claude/retire-sqlite-busy-workarounds`（`1ec50a6`）。原因：本分支上事务内的 `sourceNamespaceInitMu` 会造成 52.2 s 互相等待（合同第 13 节）。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-11-03 当前切片：Reader 菜单栏与弹出面板布局与逻辑（P0，A1–A7、B1–B6、C1–C6、D1、E1）
 
@@ -64,6 +76,12 @@ regression-validated，待合入 main 与可信 Actions；镜像未发布；生�
 GO-2026-5932 变化（main 的 `544b980` 已固定），合入 `636b1ff` 预检通过。另起：并发认证请求让 `PUT /api/books/:id` 500 `database is locked`
 （`user_sessions` 续期写 + deferred 事务读后写），真实接口合同封面一步偶发失败。状态 implementation-complete / regression-validated，
 待合入与可信 Actions；镜像未发布，生产未动。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-11-03 当前切片：可移植外观资产书架封面浏览器断言（P2-B 门禁 4 维护，R1–R3）
 
@@ -76,6 +94,12 @@ GO-2026-5932 变化（main 的 `544b980` 已固定），合入 `636b1ff` 预检�
 同一构建与 `3bc8788`（菜单分支，自动合并）三视口通过，三项临时变异（忽略 `customCoverUrl`、封面 404、可加载的 `?stale` 地址）都被拦下。
 前端 855/855 与 build、后端全量（31 包）/vet、公告门自测 109/109 通过；实时扫描未跑（不涉及依赖，Go 门被 GO-2026-5932 阻塞）。
 状态 implementation-complete / regression-validated；未合入 main，单独合入不触发镜像发布。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 

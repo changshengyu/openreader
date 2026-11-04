@@ -307,3 +307,16 @@ portable v1 既有“逻辑 transaction + 每本 archive rehydrate/补偿”保�
 通过、7 个无测试）与 `go vet ./...`、公告门自测 109/109 通过；实时公告扫描未跑：本节不涉及依赖，Go 实时门被
 GO-2026-5932 阻塞，另案处理。状态 **implementation-complete / regression-validated**（仅测试工具）。本分支只改文档与
 该脚本，都不在 `docker-publish.yml` 路径过滤内，单独合入 main 不会触发镜像发布。
+
+## 10. 书架封面断言发布（2026-11-04）
+
+与 SQLite 写事务（`5bfb0b8`/`170f5df`）、退役 BUSY 绕行（`1ec50a6`）、BookInfo 追更（`5afc0c0`）
+、可移植书架封面断言（`9aeebc9`）按此顺序以合并提交 `eea7d78` → `47505c2` → `4970225` → `1b50602` 一起合入（只有两本总账顶部冲突，
+全部保留）。合并树复跑：后端 `go test ./...` 31 包与 `go vet`、`go test -race ./api ./db ./services/...` 26 包（api `-timeout 40m`，
+1050.9 s，无数据竞争；默认 10 分钟超时下 api 会超时，与 P1/P2 记录一致）、前端 872/872 与 build、
+公告门自测 114/114、Go 实时扫描 0 个发现、前端实时扫描、`docker compose config`、存储读写/列表生命周期合同、
+真实接口合同（书籍信息书架变更五视口含本地/远程追更、可移植外观资产含书架封面、书架刷新进度、阅读外观资产、书源解析、删除收敛）与 Reader 移动/菜单浏览器合同全部通过。
+main 快进到 `1b50602`（ls-remote 核验，未强推），可信 Actions run `41799562504` 43/43 步成功（08:26–08:43 UTC）
+；`ghcr.io/changshengyu/openreader:1b50602` 与 `latest` 为 OCI index `sha256:cb74b843c53c28cb8c9a91bf1ef2b19ad3fe4b04b6fe957db2395bb0ff519f14`（linux/amd64 `sha256:910aa91a…`、
+linux/arm64 `sha256:189b738f…`），两平台 `org.opencontainers.image.revision` 均为 `1b50602396862e3c3e27285a32a9619a57a70dbb`。
+状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。

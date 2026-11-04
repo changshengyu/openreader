@@ -14,6 +14,12 @@
 复制回用户已删除的默认书源。另一连接持锁 6 s：有绕行时 RSS 写入与命名空间初始化 6.0 s 成功、普通写入 5.3 s 失败，无绕行时三者 5.3 s 失败。
 后端全量 31 个包与 vet、race 26 个包（api 1051.0 s）；前端 870/870 与 build；公告门自测 114/114。状态 **implementation-complete / regression-validated**；分支已推送、
 基于 `5bfb0b8`、须在 P1 之后合入；未合入 main，镜像未发布，生产未访问。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
 
@@ -31,6 +37,12 @@ main 失败 56/150、92/150、60/300、134/300；只节流续期，或连 `Track
 压力：main 62/150、92/150、45/300、126/300 → 修复 0/150、0/150、0/300、0/300；BookInfo 原脚本封面 0/150、追更 0/300。BookInfo 真实接口合同
 完整模式五视口：修复树 18/18 通过，交替运行的改前树 17/18（第 11 轮在 `1024: cover state persisted` 超时）。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 合入要求（2026-11-04 补充）：不能单独合入。事务内取得的 `sourceNamespaceInitMu` 在本分支上会让管理员重置书源与另一用户首次访问互相等待 52.2 s（main 上是 0.46 s 快速失败）。由 `claude/retire-sqlite-busy-workarounds`（`1ec50a6`）修复（0.37 s 通过），须在同一次发布中、紧接本分支合入；详见合同第 13 节。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-11-03 P0 Reader 菜单栏与弹出面板（移动/桌面）布局与逻辑
 
@@ -88,6 +100,12 @@ awaiting-device-verification**；生产未访问。
 （另起）：`a0edce3` 起每个认证请求都写 `user_sessions`，并发时 `PUT /api/books/:id` 的 deferred 事务读后写失败，500 `database is locked`
 （接口复现：封面 60/150、追更 58/300；不并发 0），真实接口合同的封面一步因此偶发失败（18 次中 4 次）。状态
 **implementation-complete / regression-validated**，待合入与可信 Actions。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-11-03 P2 可移植外观资产 书架封面浏览器断言（P2-B 门禁 4 维护）
 
@@ -102,6 +120,12 @@ awaiting-device-verification**；生产未访问。
 新断言在同一构建与 Reader 菜单分支 `3bc8788` 上三视口通过，三项临时变异（忽略 `customCoverUrl`、封面 404、可加载的 `?stale` 地址）都被
 拦下；前端 855/855 与 build、后端全量/vet、公告门自测 109/109 通过。状态 **implementation-complete / regression-validated**（仅测试工具）；
 未合入 main。
+发布（2026-11-04）：与 SQLite 写事务、退役 BUSY 绕行、BookInfo 追更、可移植书架封面断言一起经合并提交 `1b50602` 合入，
+合并树复跑后端全量/vet、race 26 包（api 40m）、前端 872/872 与 build、公告门与实时扫描、Compose、存储合同、
+真实接口与 Reader 浏览器合同通过；main 快进到 `1b50602`（ls-remote 核验，未强推），run `41799562504` 全部成功；
+`1b50602`/`latest` = index `cb74b843…9f14`（amd64 `910aa91a…`、arm64 `189b738f…`，
+revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；
+生产未动。
 
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
