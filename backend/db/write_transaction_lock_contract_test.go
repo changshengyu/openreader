@@ -140,6 +140,49 @@ func TestOpenGormTransactionSurvivesConcurrentCommitBetweenReadAndWrite(t *testi
 	}
 }
 
+func TestOpenKeepsConfiguredDSNParametersAndImmediateTransactions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data", "openreader.db")
+	database, err := Open(config.Config{DatabasePath: path + "?_cache_size=-4096"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDatabase.Close()
+	if err := database.Exec("CREATE TABLE write_lock_probe(id INTEGER PRIMARY KEY, value TEXT NOT NULL)").Error; err != nil {
+		t.Fatal(err)
+	}
+	other, err := sql.Open("sqlite3", path+"?_busy_timeout=0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+
+	ctx := context.Background()
+	connection, err := sqlDatabase.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	var cacheSize int
+	if err := connection.QueryRowContext(ctx, "PRAGMA cache_size;").Scan(&cacheSize); err != nil {
+		t.Fatal(err)
+	}
+	if cacheSize != -4096 {
+		t.Errorf("configured cache size = %d, want -4096", cacheSize)
+	}
+	tx, err := connection.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := other.ExecContext(ctx, "INSERT INTO write_lock_probe(id, value) VALUES (1, ?)", "并发写入"); !isSQLiteBusy(err) {
+		t.Fatalf("another connection's write while a transaction is open = %v, want SQLITE_BUSY when the configured path carries its own parameters", err)
+	}
+}
+
 func TestOpenWriteTransactionDoesNotBlockReaders(t *testing.T) {
 	database, other := openWriteTransactionLockFixture(t)
 	ctx := context.Background()
