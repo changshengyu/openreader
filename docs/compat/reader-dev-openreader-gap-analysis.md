@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-04 P1 SQLite 写事务加锁：并发写入让先读后写事务立即 `database is locked`
+
+BookInfo 追更真实接口合同第 8 节发现：另一个认证请求在 `PUT /api/books/:id` 事务期间提交时，该 `PUT` 返回
+`500 {"error":"failed to update book"}`（`api/books.go:599 database is locked`）。核实：`db.Open` 的 DSN 没有 `_txlock`，mattn 默认
+deferred `BEGIN`；SQLite 3.51.3 中已持有读快照的事务升级为写时不调用 busy handler，另一连接持锁或已提交即立即失败。每个认证请求提交
+两次（`authsession.renew`，`a0edce3` 起；`TrackActivity`，首个提交起），所以窗口早于 `a0edce3`。审计 62 个显式事务：40 个先读后写
+（书籍修改、登录签发、进度上传、书源、RSS、分类、替换规则、备份与恢复、后台更新、本地导入等），22 个先写，没有只读事务。压力对比：
+main 失败 56/150、92/150、60/300、134/300；只节流续期，或连 `TrackActivity` 一起去掉都不够（任何真实写者仍让 51%–86% 失败）；
+`_txlock=immediate` 四种场景 0 失败。选定 DSN 加 `_txlock=immediate`（不禁用 WAL、不改单连接、不迁移）。合同见
+[`sqlite-immediate-write-transactions-p1-contract.md`](sqlite-immediate-write-transactions-p1-contract.md)。状态 **contract-only**。
+
 ## 2026-11-03 P0 Reader 菜单栏与弹出面板（移动/桌面）布局与逻辑
 
 用户要求移动端点中间唤起的菜单栏及其次级布局、桌面菜单栏布局和内部逻辑都与上游对齐（已要求过的优化除外）。本次把上游 `web/`

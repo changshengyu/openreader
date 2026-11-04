@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-04 当前切片：SQLite 写事务改为 BEGIN IMMEDIATE（P1，S1–S4）
+
+见[`sqlite-immediate-write-transactions-p1-contract.md`](sqlite-immediate-write-transactions-p1-contract.md)。
+deferred 事务先读后写，另一连接持锁或提交时立即 `database is locked`；每个认证请求提交两次，让 `PUT /api/books/:id` 的封面/追更在并发
+请求下返回 500。S1 `PUT /api/books/:id`、S2 其余 39 个先读后写事务 must-fix；S3 写事务从 `BEGIN` 起持锁、并发写者最多等 5 秒，为
+acceptable-change；S4 续期频率、已有重试与先写绕行、WAL/连接池/busy_timeout、smoke 轮询不重开。计划红测：db 层 T1/T2（`_busy_timeout=0`
+探测连接在读与写之间提交）、api 层 T3（真实 `authsession` 续期，追更与封面）；对照 C1–C3。状态 contract-only。
+
 ## 2026-11-03 当前切片：Reader 菜单栏与弹出面板布局与逻辑（P0，A1–A7、B1–B6、C1–C6、D1、E1）
 
 见[`reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md`](reader-menu-chrome-panels-fixed-baseline-second-audit-p0-contract.md)。
