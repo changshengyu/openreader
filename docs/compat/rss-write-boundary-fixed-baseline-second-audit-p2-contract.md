@@ -194,6 +194,7 @@ fresh/historical mounted-volume 与 portable backup 门，再由本机完成 amd
   均有 API 与真实 HTTP 证据。
 - source create/import/update/delete 共享按 user ID 引用计数回收的窄锁和事务；SQLite `BUSY/LOCKED`
   对整笔 RSS 写事务做有界重试。同用户并发同 URL 收敛到一行，不新增历史数据不兼容的唯一索引。
+  （2026-11-04：`BEGIN IMMEDIATE` 后整笔重试已退役，按用户写锁保留，见 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。）
 - source/article 不再使用 `Save` 提交 existing row；state、refresh metadata 和 detail content 各自只写
   所拥有列，成功后重读 fresh row。SQLite trigger 证明并发字段不被旧快照覆盖、删除行不复活。
 - refresh/content 的网络工作不持锁；提交阶段重新确认 caller-owned source/article。受控远程 callback

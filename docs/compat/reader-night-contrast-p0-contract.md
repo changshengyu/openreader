@@ -221,6 +221,7 @@ EPUB 只向 iframe 的 `body` 和 `p` 注入字体/颜色，并不会清除 EPUB
   返回 `database is locked`。随后以确定性失败测试锁定“同命名空间并发”和“无关写事务占锁”
   两种场景，`f9723ad` 跨 Service 串行化首次初始化，`9a13d8e` 仅对 SQLite
   `BUSY/LOCKED` 增加有限重试。路由、成功响应、数据库结构和持久数据均未改变。
+  （2026-11-04：`BEGIN IMMEDIATE` 后串行化与重试已退役，复查移入初始化事务，见 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。）
 - 最终提交 `9a13d8e8edf3059042fc9ad2bc19e017e926401b` 已推送 `main`；本地构建并发布
   `ghcr.io/changshengyu/openreader:9a13d8e` 与 `:latest`。两者共同指向多架构 OCI 索引
   `sha256:777bcb96fa59d718b413b22756b3b30696b891bed7826930af168ce15d0e6bed`，

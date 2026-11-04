@@ -71,49 +71,33 @@ func TestEnsureNamespaceSerializesConcurrentFirstAccess(t *testing.T) {
 	}
 }
 
-func TestEnsureNamespaceRetriesReadUpgradeBlockedByConcurrentWriter(t *testing.T) {
-	database := sourceServiceDatabase(t)
+func TestEnsureNamespaceHoldsTheWriteLockAgainstAnUnrelatedWriter(t *testing.T) {
+	database, other := immediateSourceDatabase(t)
 	service := New(database)
-	user := createSourceUser(t, database, "source-initialize-retry")
+	user := createSourceUser(t, database, "source-initialize-unrelated-writer")
 
-	namespaceRead := make(chan struct{})
-	writerLocked := make(chan struct{})
-	var intercepted atomic.Bool
-	const callbackName = "openreader:test:namespace-write-contention"
-	if err := database.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
-		if tx.Statement.Table != "user_book_sources" || !intercepted.CompareAndSwap(false, true) {
-			return
-		}
-		close(namespaceRead)
-		select {
-		case <-writerLocked:
-		case <-time.After(2 * time.Second):
-		}
-	}); err != nil {
-		t.Fatal(err)
+	// An unrelated request touches the user row between the namespace
+	// transaction's first read and its first write.
+	touchUser := func() error {
+		_, err := other.Exec("UPDATE users SET updated_at = ? WHERE id = ?", time.Now().UTC(), user.ID)
+		return err
 	}
-	defer database.Callback().Query().Remove(callbackName)
-
-	writerDone := make(chan error, 1)
-	go func() {
-		<-namespaceRead
-		writerDone <- database.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&models.User{}).
-				Where("id = ?", user.ID).
-				UpdateColumn("updated_at", time.Now().UTC()).Error; err != nil {
-				return err
-			}
-			close(writerLocked)
-			time.Sleep(150 * time.Millisecond)
-			return nil
-		})
-	}()
+	var writerErr error
+	var intercepted atomic.Bool
+	afterSourceQuery(t, database, "openreader:test:namespace-write-contention", func(tx *gorm.DB) {
+		if tx.Statement.Table == "user_book_sources" && intercepted.CompareAndSwap(false, true) {
+			writerErr = touchUser()
+		}
+	})
 
 	if err := service.EnsureNamespace(user.ID); err != nil {
-		t.Fatalf("first access under unrelated write contention returned %v", err)
+		t.Fatalf("first access under unrelated write contention returned %v (concurrent writer error: %v)", err, writerErr)
 	}
-	if err := <-writerDone; err != nil {
-		t.Fatalf("concurrent writer returned %v", err)
+	if !isSQLiteBusy(writerErr) {
+		t.Fatalf("unrelated write while the namespace transaction was open = %v, want SQLITE_BUSY until it commits", writerErr)
+	}
+	if err := touchUser(); err != nil {
+		t.Fatalf("concurrent writer returned %v after first access committed", err)
 	}
 	var namespaces int64
 	if err := database.Model(&models.BookSourceNamespace{}).

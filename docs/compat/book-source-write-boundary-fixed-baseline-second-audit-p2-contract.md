@@ -196,6 +196,7 @@ production build。该切片无前端几何变化；隔离生产形态真实 HTT
   SQLite writer lock，再读取 authoritative `sourceLimit` 和 active association 数。import 先完整分类
   update/new/duplicate，再统一做 projected quota；确认容量后才执行 COW/update/create。`sourceLimit=0`、
   满额已有 identity update、满额 COW、历史超额 update 和 detached 不计数均有合同测试。
+  （2026-11-04：`BEGIN IMMEDIATE` 后事务从开始就持有写锁，无值变更先写已退役，只读取限额，见 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。）
 - focused API/source-service tests、同用户 create/create、create/import、import/import 的
   `go test -race -count=3`、`go vet ./...` 和完整 `go test ./...` 通过；前端 `740/740` 与 Vite production
   build 通过。本批无前端 DOM/CSS/路由变化，因此使用隔离生产形态真实 HTTP 代替无关浏览器几何门。
