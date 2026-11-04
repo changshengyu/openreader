@@ -10,6 +10,11 @@ deferred `BEGIN`；SQLite 3.51.3 中已持有读快照的事务升级为写时�
 main 失败 56/150、92/150、60/300、134/300；只节流续期，或连 `TrackActivity` 一起去掉都不够（任何真实写者仍让 51%–86% 失败）；
 `_txlock=immediate` 四种场景 0 失败。选定 DSN 加 `_txlock=immediate`（不禁用 WAL、不改单连接、不迁移）。合同见
 [`sqlite-immediate-write-transactions-p1-contract.md`](sqlite-immediate-write-transactions-p1-contract.md)。状态 **contract-only**。
+记录（2026-11-04，取代上段的状态）：合同 `7eaf51d`、红测 `7a15fe1`（T1/T2/T3 在 `0f5e6b1` 上 10/10 失败，对照 C1–C3 通过）与
+`2f023ab`（带参数的 `OPENREADER_DB`）、实现 `cd0d96a`（`db.go` +15/−1）。后端全量 31 个包与 vet、关键包 race 26 个包（api 1048.7 s）、
+前端 870/870 与 build、公告门自测 114/114 与现场双门 0 个发现、Compose、存储 HTTP 合同通过；动态探测 api/db 测试 0 处事务内外层写入。
+压力：main 62/150、92/150、45/300、126/300 → 修复 0/150、0/150、0/300、0/300；BookInfo 原脚本封面 0/150、追更 0/300。BookInfo 真实接口合同
+完整模式五视口：修复树 18/18 通过，交替运行的改前树 17/18（第 11 轮在 `1024: cover state persisted` 超时）。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-03 P0 Reader 菜单栏与弹出面板（移动/桌面）布局与逻辑
 

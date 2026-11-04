@@ -184,4 +184,40 @@ CLAUDE.md 禁止的禁用 WAL、改单连接不考虑。
 
 ## 11. 状态
 
-**contract-only**。
+**contract-only**（由第 12 节记录取代）。
+
+## 12. 记录（2026-11-04）
+
+提交：合同 `7eaf51d`；红测 `7a15fe1`（T1/T2/T3 与对照 C1–C3）和 `2f023ab`（`OPENREADER_DB` 已带参数时也要 immediate，补到第 7 节目标 1）；
+实现 `cd0d96a`（`backend/db/db.go` +15/−1，`sqliteDSN` 追加 `_txlock=immediate`）。
+
+红测在 `0f5e6b1` 上的失败原文（`-count=10` 每次都失败；对照每次都通过）：
+
+- T1：`connection 1: write after read failed once another connection tried to commit: database is locked (concurrent commit error: <nil>)`
+- T2：`read-then-write transaction failed once another connection tried to commit: database is locked (concurrent commit error: <nil>)`
+- T3 `follow`/`cover`：`PUT {"canUpdate":false}`（及 `{"customCoverUrl":…}`）`while another authenticated request renewed its session = 500 {"error":"failed to update book"}, want 200 (concurrent renew error: <nil>)`
+- 带参数 DSN：`another connection's write while a transaction is open = <nil>, want SQLITE_BUSY when the configured path carries its own parameters`
+  （配置的 `_cache_size` 本来就保留；`busy_timeout` 不能用来检查，因为 `db.Open` 显式的 `PRAGMA busy_timeout = 5000` 会在执行它的连接上覆盖 DSN 值，属第 10 节不重开的 PRAGMA 写法。）
+
+实现后同一批断言 `-count=10` 全部通过。
+
+回归：
+
+- 后端：`go test ./...` 31 个包通过（api 123.4 s）；`go vet ./...` 通过；`go test -race ./api ./db ./services/...` 26 个包通过、无数据竞争
+  （api 1048.7 s，`-timeout 40m`）。
+- 前端未改：`npm ci` 后 `npm test` 870/870、`npm run build` 通过。
+- 发布门：公告门自测 114/114；现场 Go 门与前端门 `pass`、0 个发现；`docker compose config --quiet` 通过；存储 HTTP 合同
+  `store-read-list-lifecycle-contract.mjs` 通过。
+- 动态探测（只在临时导出目录给 `db.Open` 加池包装，不提交）：自检中事务内的外层 `UPDATE` 与外层 `BEGIN` 都被报告，各自等约 5 秒后
+  `database is locked`，证明探测有效；用它跑 api 与 db 测试（2205 个用例通过）报告 0 处，测试输出中 0 条 `database is locked`、0 条慢 SQL。
+- 压力（安静机器、同一脚本、各起全新服务）：main `0f5e6b1` 失败 62/150、92/150、45/300、126/300；修复 `cd0d96a` 为 0/150、0/150、
+  0/300、0/300，服务端 0 条 `database is locked`。并发时修复版 `PUT` p50 2.7–5.6 ms、p95 8.3–9.5 ms、最大 17.7 ms；并发请求
+  p95 7.8–13.9 ms、最大 17.3 ms（main 分别为 5.5–6.8 ms 与 6.3–8.2 ms，含失败的快速返回）。无并发阶段两者相同（`PUT` p50 2.0–3.0 ms）；
+  第 5 节的 261 ms 单次最大值未复现。BookInfo 会话的原脚本：封面 0/150、追更 0/300（原记录 60/150、58/300）。
+- BookInfo 真实接口合同完整模式（五视口 1440×900、390×844、360×800、1024×1366、1366×1024）：用分支 `claude/bookinfo-follow-update-toggle`
+  的 smoke、前端修复与单元测试（`69c27bc..5afc0c0` 的 `frontend/`、`scripts/` 改动）叠加到本分支 `HEAD` 的临时导出树；另一份导出树把
+  `db.go` 换回 `0f5e6b1`。两树交替各跑 18 轮：修复树 18/18 通过（每轮 25–28 s）；改前树 17/18，第 11 轮在 `1024: cover state persisted` 超时，与 BookInfo 合同第 8 节记录的失败相同（smoke 只在服务启动失败时打印服务端输出，这次的 `database is locked` 行没有留下）。smoke 的轮询只是偶尔撞上竞争（BookInfo 会话 4/18、本次 1/18），主要证据是上面的压力脚本。
+
+未跑：fresh/历史卷与可移植备份门（GitHub Actions 在推送 main 时运行；DSN 参数不改数据文件）。
+
+状态 **implementation-complete / regression-validated**。分支已推送待合入；未合入 main，镜像未发布，生产未访问。
