@@ -72,6 +72,23 @@ Go 门 0 个发现）。`ghcr.io/changshengyu/openreader:fbbd890` 与 `latest` �
 两平台 `org.opencontainers.image.revision` 均为 `fbbd8908e11dc7ab6cdf8cc0ecf2ebf774975c14`。状态 **aligned / Docker-published /
 awaiting-device-verification**；生产未访问。
 
+## 2026-11-03 P2 BookInfo 追更：本地书架书与真实接口合同种子
+
+书籍信息的追更开关按上游对所有书架书可见（`7f7e2ef`），但 `useOverlayBookInfo#toggleBookCanUpdate` 仍在 `!book.sourceId` 时直接返回：
+本地书点追更没有请求、不翻转、没有提示；上游 `BookInfo.vue` 235–237 对任何在架书都 `saveBook`，`BookController.kt#saveBook` 同样保存本地书。
+真实接口合同 `bookinfo-shelf-mutations-real-api-contract` 用 `POST /api/books` 带 `sourceId` 造“远程书”，而该兼容 DTO 自 `8de9a38` 起按设计
+忽略书源字段，“远程书”变成无书源书，于是完整模式在第一个视口的追更一步超时。F1 本地追更 **`must-fix`**；F2 合同种子改走
+`POST /api/books/remote` + 本机回环夹具书源、F3 本地分支实际切追更（测试侧 **`must-fix`**）；精确 `{canUpdate}` 与开关跟随服务端为既有
+`acceptable-change`；`POST /api/books` 收窄与后端不重开。完整合同见
+[`bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md`](bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+2026-11-03 记录（合同第 7、8 节）：合同 `1f6cced`、红测 `b8a106d`（单元 T1/T2 失败；浏览器远程分支通过、停在本地追更）、实现 `408cf1a`
+（`toggleBookCanUpdate` 只要求 `id`）。frontend 857/857 与 build、后端全量 31 个包与 vet、公告门自测 109/109、前端公告门、真实接口合同
+完整五视口与两个聚焦模式三视口通过；合入 `636b1ff` 的预检只在两份文档顶部冲突，frontend 872/872、Go 公告门与真实接口合同通过。新发现
+（另起）：`a0edce3` 起每个认证请求都写 `user_sessions`，并发时 `PUT /api/books/:id` 的 deferred 事务读后写失败，500 `database is locked`
+（接口复现：封面 60/150、追更 58/300；不并发 0），真实接口合同的封面一步因此偶发失败（18 次中 4 次）。状态
+**implementation-complete / regression-validated**，待合入与可信 Actions。
+
 ## 2026-10-30 P1 夜间 Element Plus 组件外观（上游 `App.vue` `.night-theme`）
 
 前两个夜间切片（`24511c0`、`21d78ab`）只改了 Reader 自己画的工具栏、设置与列表；`html.dark-reader` 只改 `--app-*`，夜间所有

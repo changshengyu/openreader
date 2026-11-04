@@ -52,6 +52,19 @@ regression-validated，待合入 main 与可信 Actions；镜像未发布；生�
 发布（2026-11-03）：main 快进到 fbbd890（ls-remote 核验，未强推），run 41636824884 全部成功；fbbd890/latest = index `1c159363…6b8b`
 （amd64 `44452254…`、arm64 `6afeeb90…`，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
+## 2026-11-03 当前切片：BookInfo 追更开关（P2，F1–F3）
+
+见[`bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md`](bookinfo-follow-toggle-fixed-baseline-second-audit-p2-contract.md)。
+本地书架书的追更开关可见但点了无效（处理函数要求 `sourceId`）；真实接口合同的“远程书”因 `POST /api/books` 忽略书源字段而实为无书源书，
+完整模式在第一个视口追更一步超时。F1 本地追更同上游保存，must-fix；F2 合同远程书改走 `POST /api/books/remote` + 回环夹具书源，F3 本地分支
+实际切追更并在本地更新后核对。计划红测：单元 T1/T2（本地切追更成功/失败）、浏览器 T4（本地分支等待 PUT 超时）；T3 远程分支为对照。
+状态 contract-only。
+记录（2026-11-03，取代上段的状态）：合同 `1f6cced`、红测 `b8a106d`（T1/T2 失败，浏览器停在本地追更第 508 行）、实现 `408cf1a`。frontend
+857/857 与 build、后端全量/vet、公告门自测、前端公告门、真实接口合同完整五视口与两个聚焦模式通过；Go 公告门在 `69c27bc` 基础上报
+GO-2026-5932 变化（main 的 `544b980` 已固定），合入 `636b1ff` 预检通过。另起：并发认证请求让 `PUT /api/books/:id` 500 `database is locked`
+（`user_sessions` 续期写 + deferred 事务读后写），真实接口合同封面一步偶发失败。状态 implementation-complete / regression-validated，
+待合入与可信 Actions；镜像未发布，生产未动。
+
 ## 2026-10-30 当前切片：夜间 Element Plus 组件外观（P1，N1–N22、O1–O3）
 
 见[`night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md`](night-element-plus-theme-fixed-baseline-second-audit-p1-contract.md)。
