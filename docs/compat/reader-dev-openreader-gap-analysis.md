@@ -1,5 +1,22 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-04 P2 认证会话续期与活动写入节流：每个认证请求两次 SQLite 提交
+
+这是 immediate 写事务合同第 5 节方案 C 的后续性能切片。在 `5bfb0b8` 上核实：每个认证请求在处理前续期会话（`authsession.renew`），处理后写
+`users.last_active_at`（`TrackActivity`）。`GET /api/me` 与 WebDAV Bearer 每次提交 2 个写事务，WebDAV Basic 1 个；在 `_txlock=immediate` 下，
+每次提交都取一次全库写锁。上游 `fa22f27` 的 `BaseController.kt#checkAuth` 在已建立的 Vert.x 会话里不写用户存储，只在 token 自动登录时把历史
+token 延长七天并写 `last_login_at`。
+
+选定按 60 秒节流。每个请求仍读用户行和会话行，所以退出、改密、删用户和过期的检查保持精确。`last_seen_at` 满 60 秒才用原条件更新续期；
+`last_active_at` 读出后按时刻比较，满 60 秒才写。W1/W2 为 must-fix（性能）；W3（到期 ≥ 认证 + 7 天 − 60 秒）、W4（上次登录精度 60 秒）等为
+acceptable-change。immediate 切片的 T3/C3 夹具改用第二个会话，让并发提交仍然发生。合同见
+[`authenticated-request-write-throttle-p2-contract.md`](authenticated-request-write-throttle-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-04，取代上段的状态）：合同 `dccc96d`、红测与夹具 `b312782`、实现 `b3ea517`（`authsession` +45/−3、`middleware` +22/−1）。
+在 `5bfb0b8` 上，A1/A2（commit hook 计数）、U1/U2（注入时钟）与 M1（UTC、UTC+8、UTC−5）失败；对照 U3/U4 与新夹具下的 T3/C3 通过。实现后
+全部通过，`-count=10` 稳定。`go vet ./...`、`go test ./...` 31 个包、race 26 个包（api 1055.1 s） 通过。在 deferred `db.go` 的导出树上，新 T3 仍返回
+500，原 T3 通过（空测）。压力（交替 3 轮）：并发 `GET` p50 2.8–3.4 → 1.9–2.4 ms，p95 6.5–7.2 → 3.0–3.7 ms；并发设置写 p95
+11.4–13.1 → 6.0–7.4 ms；两版都是 0 失败。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+
 ## 2026-11-04 P2 退役 SQLite BUSY 局部绕行（RSS 重试、命名空间互斥与重试、书源限额先写）
 
 从 `claude/sqlite-immediate-write-transactions`（`5bfb0b8`，`BEGIN IMMEDIATE`，尚未合入 main）切出，须在它之后合入。P1 合同第 4 节把三处局部绕行列为 deferred 事务读后升级失败的

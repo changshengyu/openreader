@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -126,6 +127,10 @@ func SessionIdentity(c *gin.Context) (authsession.Identity, bool) {
 	return identity, ok
 }
 
+// ActivityInterval is the resolution of users.last_active_at: after the
+// handler, a request rewrites it only once the stored instant is this old.
+const ActivityInterval = time.Minute
+
 func TrackActivity(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
@@ -133,8 +138,24 @@ func TrackActivity(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		_ = db.Table("users").Where("id = ?", userID).Update("last_active_at", time.Now()).Error
+		now := time.Now()
+		if activityUpToDate(db, userID, now) {
+			return
+		}
+		_ = db.Table("users").Where("id = ?", userID).Update("last_active_at", now).Error
 	}
+}
+
+// activityUpToDate reports whether the user is gone or was recorded active
+// less than ActivityInterval before now. It compares instants in Go: the
+// stored text keeps whichever offset wrote it (local here, UTC at login), so
+// SQLite's text order can be off by hours.
+func activityUpToDate(db *gorm.DB, userID uint, now time.Time) bool {
+	var lastActive []sql.NullTime
+	if err := db.Table("users").Where("id = ?", userID).Limit(1).Pluck("last_active_at", &lastActive).Error; err != nil {
+		return false
+	}
+	return len(lastActive) == 0 || (lastActive[0].Valid && now.Sub(lastActive[0].Time) < ActivityInterval)
 }
 
 func UserID(c *gin.Context) (uint, bool) {
