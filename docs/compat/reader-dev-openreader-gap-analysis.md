@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-10 P2 退役书源与 RSS 按用户写锁（备份恢复事务内互等）
+
+基于 main `9076cfa`。P1 合同第 13 节与退役 BUSY 绕行合同第 10 节留下的同类问题：备份恢复在自己的事务里经 `ReplaceActive → Create` 取同一用户的
+书源写锁 `lockSourceUserWrite`（L1，`d9ddc0f` 起），同一用户此时新建或导入书源就与恢复互等。真实路由实测：`POST /api/backup/restore-legado` 在事务内
+暂停，同一用户的 `POST /api/sources` 到达 `BEGIN` 后让它继续，2 s 后两者仍在互等；书源写入 5.19 s 后 `500 failed to create source`（导入 5.20 s 后
+`500 failed to import sources`），恢复随后才 200，期间另一用户的写入等 5.3–5.4 s（R1 must-fix）。静态（SSA/VTA，62 个事务回调）与动态（60 个锁位点、
+完整测试）审计都只发现 L1 在事务内取得。immediate 事务已串行化全部写入，L1 与 RSS 六个写入的同类锁 L2 不再提供正确性保证（R2 acceptable-change），
+方案为删除两者、分两个提交。代价：同一用户的并发写入改为与其他写入一样在 `BEGIN` 最多等 5 秒（R3 acceptable-change；同一用户 4 个并发 5,000 条
+RSS 导入时第 4 个失败）。合同见 [`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-04 P1 TXT 目录规则：阅读器内置规则切换与章回目录识别
 
 上游 `PopCatalog.vue` 164–252 的“修改规则”对 TXT 与 EPUB 都是 `$msgbox`：“请选择规则：”下拉（TXT 为 `getTxtTocRules` 全部 18 条，

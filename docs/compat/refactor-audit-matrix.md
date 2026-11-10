@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-10 当前切片：退役书源与 RSS 按用户写锁（P2，R1–R4）
+
+见[`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。基于 main `9076cfa`。
+L1 书源 `Create`/`Import` 与 L2 RSS 六个写入的按用户进程内写锁。R1 备份恢复事务经 `ReplaceActive → Create` 在事务内取 L1，与同一用户的
+新建/导入互等约 5.2 s、后者 500，为 must-fix；R2 删除 L1/L2（immediate 事务已串行化写入）、R3 同用户并发写入改为在 `BEGIN` 最多等 5 秒为
+acceptable-change；R4 其余跨事务持有的锁、DSN/WAL/连接池/busy_timeout、RSS URL 查找索引不重开。计划测试：红测 T1（真实路由恢复与同用户
+新建/导入），守护为既有同用户并发与限额合同，实现后静态与动态审计应为 0。状态 contract-only。
+
 ## 2026-11-04 当前切片：TXT 目录规则——阅读器内置规则切换与章回识别（P1，R1–R5、D1–D7）
 
 见[`txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md`](txt-toc-rule-selection-fixed-baseline-second-audit-p1-contract.md)。从 `origin/main` `8c3cf79` 切出。
