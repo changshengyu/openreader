@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-10 P2 RSS 订阅源按用户与 URL 查找的非唯一索引
+
+基于 main `752aa4e`。上一切片退役 RSS 按用户写锁后留下的性能问题：新建、更新冲突检查、导入（每个候选一次）与备份恢复（每个条目一次）
+按 `user_id = ? AND url = ?` 查找，而 `rss_sources` 只有 `user_id` 索引，计划为 `SEARCH … USING INDEX idx_rss_sources_user_id (user_id=?)`，
+每次遍历该用户的全部行。一次 5,000 条导入是一个 `BEGIN IMMEDIATE` 事务，持写锁时间随用户行数线性增长：1 万行 2.7 s、2 万行 6.1 s、
+4 万行 11.3 s，超过 busy_timeout 后其他写入 `database is locked`（U1 must-fix）。上游 `RssSourceController.kt#saveRssSources` 在内存列表中按第一个
+相等的 `sourceUrl` 查找，没有这项代价。方案：模型标签声明非唯一索引 `idx_rss_sources_user_url (user_id, url)`，由 `AutoMigrate` 在全新库与
+历史库上建立；历史重复行可能存在，所以不加唯一约束（U2 acceptable-change），重复行行为不变（U3）。实测加索引后同一导入 0.17–0.22 s、
+与用户行数无关；恢复中缺少 `customOrder` 的条目每条一次 `MAX(custom_order)` 仍需另起切片（U4）。合同见
+[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。状态 **contract-only**。
+
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 
 可信 Actions run `42775373137`（`95f2840`）的 OS APK 门报 `zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`（两平台），卷门与发布被跳过，没有发布镜像

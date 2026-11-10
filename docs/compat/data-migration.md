@@ -2,6 +2,16 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## 2026-11-10 RSS source (user_id, url) index (additive index, contract-only)
+
+`rss_sources` gains the non-unique index `idx_rss_sources_user_url (user_id, url)`, declared in the `models.RSSSource`
+tags and created by the existing `AutoMigrate` at startup when missing (fresh and historical databases). It is not
+UNIQUE because historical databases may hold several rows of one user for one URL; those rows stay as they are and
+keep today's behavior (the lowest id is the one rewritten). No column, table statement, row, backup member, cache or
+library change; `idx_rss_sources_user_id` stays. Building it is one atomic statement (about 68 ms for 200,000 rows).
+Older images ignore the extra index on rollback. See
+[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md).
+
 ## 2026-10-22 instance signing secret (new data file, no schema migration)
 
 When `OPENREADER_JWT_SECRET` is unset, blank or a published default, the first start creates

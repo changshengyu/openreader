@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-10 当前切片：RSS 订阅源按用户与 URL 查找的非唯一索引（P2，U1–U5）
+
+见[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。基于 main `752aa4e`。U1 新建、更新冲突、导入与备份恢复四处
+按 URL 查找遍历该用户全部行（5,000 条导入在 1 万/2 万/4 万行时持写锁 2.7/6.1/11.3 s）为 must-fix；U2 经 `AutoMigrate` 新增非唯一索引
+`idx_rss_sources_user_url (user_id, url)` 为 acceptable-change（历史重复行原样保留，不加唯一约束）；U3 重复行行为、U4 恢复的逐条 `MAX(custom_order)`、
+U5 唯一约束/重复清理/旧索引/文章表索引/DSN/WAL/连接池/busy_timeout 不重开。计划测试：红测 T1（真实路由查询计划）、T2（4 万行用户的满额导入
+不让并发写入失败）、T3/T4（全新库与含重复行的历史库迁移）；对照 C1（重复行行为）、H1（历史卷夹具与 smoke）。状态 contract-only。
+
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 
 见[`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)。基于 main `95f2840`。run `42775373137`
