@@ -8,6 +8,8 @@
 3.23.6、unknown origin 复审期限（2026-11-16，另起切片）不重开。状态 contract-only。
 记录（2026-11-10，取代上段的状态）：合同 `fdee10a`、测试 `db81534`（实现前 10/24 红）、构建 `00fff33`；OS 门测试 24/24、公告门自测 138/138。
 状态 build-fix-applied / locally-validated / Actions-pending；镜像仍为 `6006659`，生产未动。
+发布（2026-11-10）：main 快进到 `74cf0d0`，run `42780054569` 43/43 步成功，两平台 OS 门通过（16/16 包、74 组比较无待修复项）；`74cf0d0`/`latest` =
+index `d2ed3607…eb92`（amd64 `bb760ee4…`、arm64 `812f0093…`，revision 标签核验）。状态 released / Docker-published；生产未动。复审期限 2026-11-16 仍开放。
 
 ## 2026-11-10 当前切片：退役书源与 RSS 按用户写锁（P2，R1–R4）
 
@@ -19,6 +21,9 @@ acceptable-change；R4 其余跨事务持有的锁、DSN/WAL/连接池/busy_time
 记录（2026-11-10，取代上段的状态）：合同 `883c0c2`、红测 `faa6cab`、实现 `8141c28`/`59b8f95`、守护补充 `4935b3c`（同用户并发书源写入，deferred 且无锁时
 5/5 失败）。T1 在 `9076cfa` 上 5.19–5.42 s 后 500，实现后 0.05–0.07 s 通过；事务内取得的 Go 锁静态与动态审计都为 0。后端全量/vet、race db/services 25 包、
 race api（40m，1069.2 s）、前端 877/877 与 build、公告门自测 136/136。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-10）：main 快进到 `95f2840` 后 run `42775373137` 被 OS 门的 zlib CVE-2026-4738 拦下（没有发布镜像）；zlib 修复后 main 快进到 `74cf0d0`，
+run `42780054569` 43/43 步成功，`74cf0d0`/`latest` = index `d2ed3607…eb92`（amd64 `bb760ee4…`、arm64 `812f0093…`，revision 标签核验）。
+状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-04 当前切片：TXT 目录规则——阅读器内置规则切换与章回识别（P1，R1–R5、D1–D7）
 

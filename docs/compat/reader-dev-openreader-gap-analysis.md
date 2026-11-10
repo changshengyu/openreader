@@ -9,6 +9,9 @@
 状态 **contract-only**。
 记录（2026-11-10，取代上段的状态）：合同 `fdee10a`、测试 `db81534`（实现前 10/24 个门测试红）、构建 `00fff33`。OS 门测试 24/24，公告门自测 138/138，
 固定 base 上同一安装的 16 个包身份与新基线一致。状态 build-fix-applied / locally-validated / Actions-pending；镜像仍为 `6006659`，生产未访问。
+发布（2026-11-10）：main 快进到 `74cf0d0`（ls-remote 核验，未强推），run `42780054569` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`
+（16/16 包、74 组比较无待修复项）；`74cf0d0`/`latest` = index `d2ed3607…eb92`（amd64 `bb760ee4…`、arm64 `812f0093…`，revision 标签核验），
+已发布镜像内 zlib 1.4-r0 的 `C:` 与 pin 相同。状态 released / Docker-published；生产未动。
 
 ## 2026-11-10 P2 退役书源与 RSS 按用户写锁（备份恢复事务内互等）
 
@@ -25,6 +28,9 @@ RSS 导入时第 4 个失败）。合同见 [`sqlite-source-user-lock-retirement
 deferred 且无锁时 5/5 失败、deferred 有锁与实现后都通过；api RSS 同 URL 守护在 deferred 且无锁时 31 次 500。实现后静态与动态审计在事务内取得的
 Go 锁都为 0。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1069.2 s）；前端 877/877 与 build；公告门自测 136/136、smoke 自测 10/10、现场 Go 与前端扫描 0 发现。
 状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
+发布（2026-11-10）：main 快进到 `95f2840` 后 run `42775373137` 被 OS 门的 zlib CVE-2026-4738 拦下（没有发布镜像）；修复 zlib 后 main 快进到 `74cf0d0`，
+run `42780054569` 43/43 步成功，`74cf0d0`/`latest` = index `d2ed3607…eb92`（amd64 `bb760ee4…`、arm64 `812f0093…`，revision 标签核验）。
+状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-04 P1 TXT 目录规则：阅读器内置规则切换与章回目录识别
 

@@ -221,3 +221,14 @@ T1 在 `9076cfa` 上 3 次运行都失败：新建 5.189/5.367/5.424 s 后 `500 
 
 状态 **implementation-complete / regression-validated**。分支 `claude/sqlite-restore-user-lock` 已推送（基于 `9076cfa`），未合入 main，镜像未发布，
 生产未访问。
+
+## 14. 发布（2026-11-10）
+
+经用户确认，推送前在同一树上另跑 `docker compose config --quiet` 与存储读写/列表生命周期合同（通过），main 由 `9076cfa` 快进到 `95f2840`
+（ls-remote 核验，未强推）。可信 Actions run `42775373137` 30/41 步后在 OS APK 门失败（两平台 `zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`，该 secdb 条目在
+run 开始前约两分钟发布），卷门与发布被跳过，没有发布镜像。经用户批准按
+[`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md) 修复后，main 快进到 `74cf0d0`，可信 Actions run
+`42780054569` 43/43 步成功；`ghcr.io/changshengyu/openreader:74cf0d0` 与 `latest` 为 OCI index
+`sha256:d2ed3607a1fb3d888ed919fe618c16386de2f676f2218243b02e9ce2fbd2eb92`（linux/amd64 `sha256:bb760ee4…`、linux/arm64 `sha256:812f0093…`），
+两平台 revision 标签均为 `74cf0d04dfba41703a3903316705412eb384f59c`。本切片的 `8141c28`、`59b8f95` 随该镜像发布。
+状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。

@@ -89,3 +89,22 @@ community secdb（Last-Modified Sat, 07 Nov 2026 07:30:27 GMT，sha256 `fee2491c
 
 未验证：含 zlib 1.4-r0 的候选镜像实际构建、两平台 OS 门实际运行、卷门与可信双平台发布，需合入 main 后由 Actions 执行；本地不构建、不推送
 镜像。状态 **build-fix-applied / locally-validated / Actions-pending**；镜像仍为 `6006659`；生产未访问。
+
+## 9. 发布（2026-11-10）
+
+推送前复查：main 仍为 `95f2840`、没有进行中的发布、现场 Go 与前端扫描 `pass`/0 个发现、main secdb 仍为 07:25:11 GMT 版本且运行时 origin
+记录与夹具相同。main 由 `95f2840` 快进到 `74cf0d0`（ls-remote 核验，未强推）。可信 Actions run `42780054569` 43/43 步成功
+（08:06–08:27 UTC）：amd64 验证镜像 1m46s、arm64 验证镜像 11m14s，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、
+仅 `etc/shadow`、74 组比较无待修复项、secdb main 11-10 `d51b07b4…` 与 community 11-07 `fee2491c…`、5 个 unknown origin，复审期限
+2026-11-16），fresh/历史卷与可移植备份（含未设 JWT secret 的两组）、推送 11s 与平台核验通过。
+
+镜像：`ghcr.io/changshengyu/openreader:74cf0d0` 与 `latest` 指向 OCI index
+`sha256:d2ed3607a1fb3d888ed919fe618c16386de2f676f2218243b02e9ce2fbd2eb92`；linux/amd64
+`sha256:bb760ee4335c2451ecf3afdb3a5601a325cf16d7de5712ee586fb00d866e041c`，linux/arm64
+`sha256:812f0093c085b36e21231889b1b570b19cd237a55b27b1c183fb8b18e9877cbb`，另有 attestation。两平台 `org.opencontainers.image.revision`
+均为 `74cf0d04dfba41703a3903316705412eb384f59c`。
+
+发布后独立核验（按平台 digest 运行，`--network none`）：两平台数据库中 zlib 为 1.4-r0，`C:` 分别为 `Q1w8ww/Ov6R+0J7O4tgeMeDsf/vp0=` 与
+`Q1w+byPv5bYwvQ54Xq5EaEc9vy8Go=`，与基线 pin 相同；musl/musl-utils 1.2.5-r24 身份不变；world 与基线相同；`usr/lib/libz.so.1 → libz.so.1.4`。
+
+状态 **released / Docker-published**；生产未访问，实际运行版本未知。仍开放：unknown origin 复审期限 2026-11-16 到期前需复审。
