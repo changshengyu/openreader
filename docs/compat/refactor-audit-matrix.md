@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-10 当前切片：OS 门 unknown origin 复审续期与运行时 CA bundle 20261020-r0（P1）
+
+见[`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。基于 main `752aa4e`。复审期限 2026-11-16
+到期后所有发布失败关闭（O1 must-fix：理由按 11-10 证据重写，期限改为 2026-12-10）。复审发现 base 的 CA bundle 20260909-r0 仍信任 emSign ECC Root CA - G3
+（其 eMudhra 中间 CA 的私钥可以恢复）及 C1/C3（O2 must-fix：构建期精确安装签名的 `ca-certificates-bundle=20261020-r0`）；alpine-release 3.23.8-r0 只是
+版本标记（O3 acceptable-change）；门逻辑、base 3.23.6、索引中 apk-tools/openssl 的新版本不重开。状态 contract-only。
+
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 
 见[`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)。基于 main `95f2840`。run `42775373137`
