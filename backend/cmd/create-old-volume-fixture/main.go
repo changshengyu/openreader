@@ -226,6 +226,13 @@ func main() {
 	if err := createLegacyGlobalSourceFixtures(database, user, otherUser); err != nil {
 		log.Fatalf("create legacy global source fixtures: %v", err)
 	}
+	if err := createDuplicateRSSSourceFixtures(database, user, otherUser); err != nil {
+		log.Fatalf("create duplicate RSS source fixtures: %v", err)
+	}
+	// Releases before idx_rss_sources_user_url had no (user_id, url) index.
+	if err := database.Exec("DROP INDEX IF EXISTS idx_rss_sources_user_url").Error; err != nil {
+		log.Fatalf("remove the RSS source URL index from the legacy fixture: %v", err)
+	}
 
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
 		if err := database.Migrator().DropColumn(&models.Chapter{}, field); err != nil {
@@ -252,7 +259,25 @@ func main() {
 		log.Fatalf("close fixture database: %v", err)
 	}
 
-	fmt.Printf("created old mounted-volume fixture: owner=%s archives=txt,epub,umd,cbz,relative-cache sources=2 other=%s\n", fixtureUsername, fixtureOtherUsername)
+	fmt.Printf("created old mounted-volume fixture: owner=%s archives=txt,epub,umd,cbz,relative-cache sources=2 rss-duplicates=2 other=%s\n", fixtureUsername, fixtureOtherUsername)
+}
+
+// legacyDuplicateRSSURL is one URL that the owner has two RSS rows for, as
+// volumes written before idx_rss_sources_user_url could, and the other user
+// one. The upgrade must index them without changing any of them.
+const legacyDuplicateRSSURL = "https://legacy-rss.example/feed.xml"
+
+func createDuplicateRSSSourceFixtures(database *gorm.DB, owner, other models.User) error {
+	for _, source := range []models.RSSSource{
+		{UserID: owner.ID, Title: "旧卷 RSS 最早", URL: legacyDuplicateRSSURL, CustomOrder: 1, Enabled: true},
+		{UserID: owner.ID, Title: "旧卷 RSS 重复", URL: legacyDuplicateRSSURL, CustomOrder: 2, Enabled: true},
+		{UserID: other.ID, Title: "旧卷 RSS 用户B", URL: legacyDuplicateRSSURL, CustomOrder: 1, Enabled: true},
+	} {
+		if err := database.Create(&source).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func createLegacyGlobalSourceFixtures(database *gorm.DB, owner, other models.User) error {
