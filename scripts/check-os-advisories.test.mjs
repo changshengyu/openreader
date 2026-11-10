@@ -19,25 +19,34 @@ const zlibIndex = JSON.parse(await data('zlib-1.3.2-r1-apkindex.json'))
 const muslIndex = JSON.parse(await data('musl-1.2.5-r24-apkindex.json'))
 const secdbMusl = JSON.parse(await data('secdb-v3.23-main-subset-2026-10-21.json'))
 const nativeMusl = JSON.parse(await data('apk-version-native-2026-10-21-musl.json')).results
+// Signed v3.23 main APKINDEX records plus the real installed blocks after the exact build-time zlib 1.4-r0 install,
+// the 2026-11-10 main and 2026-11-07 community secdb records for the installed origins and the native comparisons they add.
+const zlib14Index = JSON.parse(await data('zlib-1.4-r0-apkindex.json'))
+const secdbZlib = {main:JSON.parse(await data('secdb-v3.23-main-subset-2026-11-10.json')),
+  community:JSON.parse(await data('secdb-v3.23-community-subset-2026-11-07.json'))}
+const nativeZlib = JSON.parse(await data('apk-version-native-2026-11-10-zlib.json')).results
 const apkSum = value => `Q1${createHash('sha1').update(value).digest('base64')}`
 const apkArch = arch => arch === 'amd64' ? 'x86_64' : 'aarch64'
 // usr/lib/os-release is owned by alpine-release, so the fixture must be the exact published bytes.
 const osRelease = 'NAME="Alpine Linux"\nID=alpine\nVERSION_ID=3.23.6\nPRETTY_NAME="Alpine Linux v3.23"\n'
   + 'HOME_URL="https://alpinelinux.org/"\nBUG_REPORT_URL="https://gitlab.alpinelinux.org/alpine/aports/-/issues"\n'
 
-function fixedDatabase(arch, {zlib = true, musl = true} = {}) {
+// zlib is false (the published 1.3.2-r0), '1.3.2-r1' (the 2026-10-16/10-22 releases) or '1.4-r0' (the candidate).
+function fixedDatabase(arch, {zlib = '1.4-r0', musl = true} = {}) {
   const blocks = published[arch].trim().split('\n\n')
   const replace = (name, block) => {
     blocks[blocks.findIndex(item => item.includes(`\nP:${name}\n`))] = block
   }
   // The signed index record carries the package identity; file hashes come from the package itself.
-  if (zlib) replace('zlib', `${zlibIndex[apkArch(arch)].record}\nF:usr\nF:usr/lib\nR:libz.so.1\na:0:0:777\nZ:${apkSum('libz.so.1.3.2')}`
+  if (zlib === '1.3.2-r1') replace('zlib', `${zlibIndex[apkArch(arch)].record}\nF:usr\nF:usr/lib\nR:libz.so.1\na:0:0:777\nZ:${apkSum('libz.so.1.3.2')}`
     + `\nR:libz.so.1.3.2\na:0:0:755\nZ:${apkSum(`fixture zlib 1.3.2-r1 ${arch}`)}`)
+  if (zlib === '1.4-r0') replace('zlib', zlib14Index[apkArch(arch)].installed)
   if (musl) for (const name of ['musl', 'musl-utils']) replace(name, muslIndex[apkArch(arch)].installed[name])
   return `${blocks.join('\n\n')}\n\n`
 }
 const candidateDatabase = arch => fixedDatabase(arch)
-const zlibFixedDatabase = arch => fixedDatabase(arch, {musl:false})
+const previousCandidateDatabase = arch => fixedDatabase(arch, {zlib:'1.3.2-r1'})
+const zlibFixedDatabase = arch => fixedDatabase(arch, {zlib:'1.3.2-r1', musl:false})
 const muslFixedDatabase = arch => fixedDatabase(arch, {zlib:false})
 function filesFor(database, world) {
   const files = new Map()
@@ -72,9 +81,19 @@ const check = (change, options) => evaluateOsInventory(inputs(change, options))
 const setText = (image, path, text) => image.files.set(path, {type:'file', checksum:apkSum(text), content:Buffer.from(text)})
 // etc/apk/world of the pinned official alpine:3.23.6 base before any build-time install.
 const officialBaseWorld = ['alpine-baselayout','alpine-keys','alpine-release','apk-tools','busybox','musl-utils']
-const publishedPolicy = names => {
-  // The reviewed baseline with the named packages back at their exact published identities and world entries.
+// The 2026-10-22 release: both earlier build-time fixes, zlib at the signed 1.3.2-r1.
+const previousPolicy = (() => {
   const policy = structuredClone(baseline)
+  for (const [platform, arch] of [['linux/amd64','amd64'],['linux/arm64','arm64']]) {
+    policy.platforms[platform].packages.zlib = {version:'1.3.2-r1', origin:'zlib',
+      checksum:/^C:(.*)$/m.exec(zlibIndex[apkArch(arch)].record)[1]}
+  }
+  policy.world = policy.world.map(item => item.startsWith('zlib=') ? 'zlib=1.3.2-r1' : item)
+  return policy
+})()
+const publishedPolicy = (names, from = baseline) => {
+  // The given policy with the named packages back at their exact published identities and world entries.
+  const policy = structuredClone(from)
   for (const [platform, arch] of [['linux/amd64','amd64'],['linux/arm64','arm64']]) {
     for (const name of names) {
       const block = published[arch].split('\n\n').find(item => item.includes(`\nP:${name}\n`))
@@ -89,32 +108,48 @@ const publishedPolicy = names => {
   })
   return policy
 }
-// The pinned official base plus only the zlib build-time fix, and the pinned official base before any build-time fix.
-const zlibOnly = publishedPolicy(['musl', 'musl-utils'])
+// The pinned official base plus only the zlib 1.3.2-r1 build-time fix, and the pinned official base before any build-time fix.
+const zlibOnly = publishedPolicy(['musl', 'musl-utils'], previousPolicy)
 const baseOnly = publishedPolicy(['musl', 'musl-utils', 'zlib'])
 const secdbOn20261021 = value => {
   value.secdb.main = {document:structuredClone(secdbMusl), lastModified:'Wed, 21 Oct 2026 18:11:19 GMT'}
   value.now = Date.parse('2026-10-22T12:00:00Z')
 }
+// The secdb the 2026-11-10 release run read: since 10-21 only zlib 1.4-r0 (CVE-2026-4738) is new for the installed origins.
+// Its musl 1.2.5-r24 fix and the zlib fix each add one planned native comparison for the installed versions.
+const secdbOn20261110 = (value, zlibVersion) => {
+  value.secdb.main = {document:structuredClone(secdbZlib.main), lastModified:'Tue, 10 Nov 2026 07:25:11 GMT'}
+  value.secdb.community = {document:structuredClone(secdbZlib.community), lastModified:'Sat, 07 Nov 2026 07:30:27 GMT'}
+  value.now = Date.parse('2026-11-10T12:00:00Z')
+  value.comparisons.set('1.2.5-r24|1.2.5-r24', nativeMusl['1.2.5-r24|1.2.5-r24'])
+  value.comparisons.set(`${zlibVersion}|1.4-r0`, nativeZlib[`${zlibVersion}|1.4-r0`])
+}
 
 test('pre-fix policies keep the exact published identities and drop only the build-time pins', () => {
   assert.deepEqual([...baseOnly.world].sort(), officialBaseWorld)
   assert.deepEqual([...zlibOnly.world].sort(), [...officialBaseWorld, 'zlib=1.3.2-r1'])
+  assert.deepEqual([...previousPolicy.world].sort(), [...officialBaseWorld.filter(name => name !== 'musl-utils'),
+    'musl-utils=1.2.5-r24', 'musl=1.2.5-r24', 'zlib=1.3.2-r1'].sort())
   for (const platform of ['linux/amd64', 'linux/arm64']) {
     assert.equal(baseOnly.platforms[platform].packages.zlib.version, '1.3.2-r0')
+    assert.equal(zlibOnly.platforms[platform].packages.zlib.version, '1.3.2-r1')
+    assert.equal(previousPolicy.platforms[platform].packages.zlib.version, '1.3.2-r1')
+    assert.equal(previousPolicy.platforms[platform].packages.musl.version, '1.2.5-r24')
     for (const policy of [baseOnly, zlibOnly]) {
       assert.equal(policy.platforms[platform].packages.musl.version, '1.2.5-r23')
       assert.equal(policy.platforms[platform].packages['musl-utils'].version, '1.2.5-r23')
     }
   }
 })
-test('published fc4692c inventory is rejected by the reviewed identity pin on both platforms', () => {
+test('published fc4692c and earlier release inventories are rejected by the reviewed identity pin on both platforms', () => {
   assert.throws(() => check(() => {}, {database:arch => published[arch], world:baseOnly.world}),
     /musl 1\.2\.5-r23 .* expected 1\.2\.5-r24/s)
   assert.throws(() => check(() => {}, {database:zlibFixedDatabase, world:zlibOnly.world}),
     /musl 1\.2\.5-r23 .* expected 1\.2\.5-r24/s)
   assert.throws(() => check(() => {}, {database:muslFixedDatabase, world:baseOnly.world}),
-    /zlib.*1\.3\.2-r0.*1\.3\.2-r1/s)
+    /zlib.*1\.3\.2-r0.*1\.4-r0/s)
+  assert.throws(() => check(() => {}, {database:previousCandidateDatabase, world:previousPolicy.world}),
+    /zlib.*1\.3\.2-r1.*1\.4-r0/s)
 })
 test('pinned base with only the zlib fix fails on the exact pending musl secfix of the 2026-10-21 secdb', () => {
   assert.throws(() => check(value => {
@@ -133,12 +168,29 @@ test('candidate with exact signed musl 1.2.5-r24 passes the 2026-10-21 secdb', (
   assert.deepEqual(summary.secdb.map(db => [db.name, db.lastModified]), [['main','2026-10-21T18:11:19.000Z'],['community','2026-10-09T18:09:41.000Z']])
   assert.equal(summary.comparisons, 73)
 })
+test('previous release with zlib 1.3.2-r1 fails on the exact pending zlib secfix of the 2026-11-10 secdb', () => {
+  // The same rejection as trusted run 42775373137, from the candidate it built.
+  assert.throws(() => check(value => secdbOn20261110(value, '1.3.2-r1'),
+    {database:previousCandidateDatabase, world:previousPolicy.world, policy:previousPolicy}),
+  error => /pending Alpine secfix/.test(error.message) && ['linux/amd64', 'linux/arm64']
+    .every(platform => error.message.includes(`${platform} zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`))
+    && !/musl|busybox|apk-tools|openssl|libcrypto|libssl/.test(error.message))
+})
+test('candidate with exact signed zlib 1.4-r0 passes the 2026-11-10 secdb', () => {
+  const summary = check(value => secdbOn20261110(value, '1.4-r0'))
+  assert.equal(summary.status, 'pass-with-unknown-origins')
+  assert.deepEqual(summary.secdb.map(db => [db.name, db.lastModified]), [['main','2026-11-10T07:25:11.000Z'],['community','2026-11-07T07:30:27.000Z']])
+  assert.deepEqual(summary.platforms.map(p => [p.platform, p.packages, p.files]), [['linux/amd64',16,110],['linux/arm64',16,109]])
+  assert.equal(summary.comparisons, 74)
+  assert.deepEqual(summary.buildTimeFixes.zlib, {from:'1.3.2-r0', to:'1.4-r0', ids:['CVE-2026-85091', 'CVE-2026-4738'],
+    aportsCommit:'0436c6d655a04cbfd7987202a970f5aa7870a901', index:'v3.23.8-20-g8b367fdee54'})
+})
 test('pinned base without the build-time fix fails on the exact pending zlib secfix, not a lexical compare', () => {
   assert.throws(() => check(() => {}, {database:arch => published[arch], world:baseOnly.world, policy:baseOnly}),
     error => /pending Alpine secfix/.test(error.message) && /linux\/amd64 zlib 1\.3\.2-r0 < 1\.3\.2-r1 CVE-2026-85091/.test(error.message)
       && /linux\/arm64 zlib 1\.3\.2-r0 < 1\.3\.2-r1 CVE-2026-85091/.test(error.message))
 })
-test('candidate with exact signed zlib 1.3.2-r1 and musl 1.2.5-r24 passes and reports unknown origins, never clean', () => {
+test('candidate with exact signed zlib 1.4-r0 and musl 1.2.5-r24 passes and reports unknown origins, never clean', () => {
   const summary = check()
   assert.equal(summary.status, 'pass-with-unknown-origins')
   assert.deepEqual(summary.unknownOrigins, ['alpine-base','alpine-baselayout','alpine-keys','ca-certificates','pax-utils'])
@@ -152,12 +204,14 @@ test('APK database parser rejects empty, truncated, unknown-field, orphan and du
   const valid = candidateDatabase('amd64')
   assert.equal(parseApkDatabase(valid, 'x86_64').size, 16)
   const broken = [
-    '', '\n', valid.slice(0, -2).replace(/\n[^\n]*$/, ''), valid.replace(/^V:1\.3\.2-r1\n/m, ''),
-    valid.replace(/^o:zlib\n/m, ''), valid.replace(/^C:Q1jut3b[^\n]*\n/m, ''), valid.replace(/^L:Zlib\n/m, 'L:Zlib\nY:new\n'),
+    '', '\n', valid.slice(0, -2).replace(/\n[^\n]*$/, ''), valid.replace(/^V:1\.4-r0\n/m, ''),
+    valid.replace(/^o:zlib\n/m, ''), valid.replace(/^C:Q1w8ww[^\n]*\n/m, ''), valid.replace(/^L:Zlib\n/m, 'L:Zlib\nY:new\n'),
     valid.replace(/(P:zlib[\s\S]*?)F:usr\nF:usr\/lib\n/, '$1'), valid.replace(/\nZ:Q1[^\n]*\n\n/, '\n\n'), valid.replace(/^T:A compression/m, 'T:A compression\nT:twice'),
-    `${valid}${valid.split('\n\n')[0]}\n\n`, valid.replace('V:1.3.2-r1', 'V:1.3.2 r1'), valid.replace('C:Q1jut3b', 'C:Q2jut3b'),
+    `${valid}${valid.split('\n\n')[0]}\n\n`, valid.replace('V:1.4-r0', 'V:1.4 r0'), valid.replace('C:Q1w8ww', 'C:Q2w8ww'),
     valid.replace(/^R:libz\.so\.1$/m, 'R:../libz.so.1'),
   ]
+  // Every mutation must change the text, or the assertion below would pass vacuously.
+  for (const text of broken) assert.notEqual(text, valid)
   for (const text of broken) assert.throws(() => parseApkDatabase(text, 'x86_64'), undefined, JSON.stringify(text.slice(-60)))
 })
 test('wrong package architecture fails closed', () => {
@@ -186,21 +240,25 @@ test('os-release, repositories and world must match the reviewed baseline exactl
     value => value.images[0].files.delete('usr/lib/os-release'),
     value => setText(value.images[1], 'etc/apk/repositories', `${baseline.repositories.join('\n')}\nhttps://example.invalid/alpine/edge/testing\n`),
     value => setText(value.images[1], 'etc/apk/repositories', baseline.repositories.join('\n').replaceAll('https://', 'http://')),
-    value => setText(value.images[0], 'etc/apk/world', `${baseline.world.join('\n').replace('zlib=1.3.2-r1', 'zlib')}\n`),
+    value => setText(value.images[0], 'etc/apk/world', `${baseline.world.join('\n').replace('zlib=1.4-r0', 'zlib')}\n`),
+    value => setText(value.images[0], 'etc/apk/world', `${baseline.world.join('\n').replace('zlib=1.4-r0', 'zlib=1.3.2-r1')}\n`),
     value => setText(value.images[0], 'etc/apk/world', `${baseline.world.join('\n')}\nopenssl\n`),
   ]) assert.throws(() => check(change))
 })
 test('package identity drift, extra and missing packages fail closed', () => {
   const amd64 = candidateDatabase('amd64')
   for (const text of [
-    amd64.replace('C:Q1jut3bNPRHp/JoWp0GWNhtIWnnQE=', `C:${apkSum('locally rebuilt zlib')}`),
-    amd64.replace('V:1.3.2-r1', 'V:1.3.2-r2'),
+    amd64.replace('C:Q1w8ww/Ov6R+0J7O4tgeMeDsf/vp0=', `C:${apkSum('locally rebuilt zlib')}`),
+    amd64.replace('V:1.4-r0', 'V:1.4-r1'),
     `${amd64}C:${apkSum('extra')}\nP:extra\nV:1.0-r0\nA:x86_64\no:extra\n\n`,
     amd64.split('\n\n').filter(block => !block.includes('\nP:scanelf\n')).join('\n\n'),
-  ]) assert.throws(() => check(value => setText(value.images[0], 'lib/apk/db/installed', text)), /identity|package/)
+  ]) {
+    assert.notEqual(text, amd64)
+    assert.throws(() => check(value => setText(value.images[0], 'lib/apk/db/installed', text)), /identity|package/)
+  }
 })
 test('overlay changes to APK-owned files fail closed; only the pinned official modification is allowed', () => {
-  assert.throws(() => check(value => value.images[0].files.set('usr/lib/libz.so.1.3.2', {type:'file', checksum:apkSum('old zlib')})), /usr\/lib\/libz\.so\.1\.3\.2/)
+  assert.throws(() => check(value => value.images[0].files.set('usr/lib/libz.so.1.4', {type:'file', checksum:apkSum('old zlib')})), /usr\/lib\/libz\.so\.1\.4/)
   assert.throws(() => check(value => value.images[1].files.delete('usr/lib/libz.so.1')), /usr\/lib\/libz\.so\.1/)
   assert.throws(() => check(value => value.images[0].files.set('etc/shadow', {type:'file', checksum:apkSum('changed again')})), /etc\/shadow/)
   assert.throws(() => check(value => value.images[0].files.set('etc/ssl/certs/ca-certificates.crt', {type:'file', checksum:apkSum('builder bundle')})), /ca-certificates\.crt/)
@@ -231,11 +289,11 @@ test('secdb schema, freshness and identifiers fail closed', () => {
   ]) assert.throws(() => check(change))
 })
 test('every planned native comparison must be present and valid', () => {
-  assert.throws(() => check(value => value.comparisons.delete('1.3.2-r1|1.3.2-r1')), /comparison/)
-  assert.throws(() => check(value => value.comparisons.set('1.3.2-r1|1.3.2-r1', '<=')), /comparison/)
+  assert.throws(() => check(value => value.comparisons.delete('1.4-r0|1.3.2-r1')), /comparison/)
+  assert.throws(() => check(value => value.comparisons.set('1.4-r0|1.3.2-r1', '<=')), /comparison/)
   assert.throws(() => check(value => value.comparisons.set('9.9-r9|0', '>')), /comparison/)
-  // A native "<" for the installed fix itself is a real pending result, never coerced to clean.
-  assert.throws(() => check(value => value.comparisons.set('1.3.2-r1|1.3.2-r1', '<')), /pending Alpine secfix/)
+  // A native "<" for an installed version is a real pending result, never coerced to clean.
+  assert.throws(() => check(value => value.comparisons.set('1.4-r0|1.3.2-r1', '<')), /pending Alpine secfix/)
 })
 test('unlisted origins require explicit unexpired review and become stale once secdb lists them', () => {
   assert.throws(() => check(value => {delete value.baseline.unlistedOrigins['pax-utils']}), /pax-utils/)
@@ -346,7 +404,7 @@ test('runtime Dockerfile installs only the exact signed zlib and musl fixes at b
   const runtime = source.slice(source.lastIndexOf('\nFROM '))
   assert.ok(runtime.startsWith(`\nFROM ${baseline.baseImage}\n`))
   const apk = runtime.split('\n').filter(line => /\bapk\b/.test(line) && !line.trimStart().startsWith('#'))
-  assert.deepEqual(apk, ["RUN apk add --no-cache 'zlib=1.3.2-r1' 'musl=1.2.5-r24' 'musl-utils=1.2.5-r24'"])
+  assert.deepEqual(apk, ["RUN apk add --no-cache 'zlib=1.4-r0' 'musl=1.2.5-r24' 'musl-utils=1.2.5-r24'"])
   const code = runtime.split('\n').filter(line => !line.trimStart().startsWith('#')).join('\n')
   assert.ok(!/--allow-untrusted|\bupgrade\b|--repository|\s-X\s|--force|:latest/.test(code))
   assert.ok(runtime.includes('CMD ["/app/openreader"]'))

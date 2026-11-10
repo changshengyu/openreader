@@ -1,0 +1,20 @@
+{
+  "x86_64": {
+    "indexSha256": "f961a8b173cf90b7fc388e1c201ebc356a694b4498b8160198773a3d3a51e3e0",
+    "indexDescription": "v3.23.8-20-g8b367fdee54",
+    "record": "C:Q1w8ww/Ov6R+0J7O4tgeMeDsf/vp0=\nP:zlib\nV:1.4-r0\nA:x86_64\nS:56762\nI:108376\nT:A compression/decompression Library\nU:https://zlib.net/\nL:Zlib\no:zlib\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1793989562\nc:0436c6d655a04cbfd7987202a970f5aa7870a901\nD:so:libc.musl-x86_64.so.1\np:so:libz.so.1=1.4",
+    "installed": "C:Q1w8ww/Ov6R+0J7O4tgeMeDsf/vp0=\nP:zlib\nV:1.4-r0\nA:x86_64\nS:56762\nI:108376\nT:A compression/decompression Library\nU:https://zlib.net/\nL:Zlib\no:zlib\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1793989562\nc:0436c6d655a04cbfd7987202a970f5aa7870a901\nD:so:libc.musl-x86_64.so.1\np:so:libz.so.1=1.4\nF:usr\nF:usr/lib\nR:libz.so.1\na:0:0:777\nZ:Q1MRhDGR4gDUEgMdrhw6ZB3CJjhdw=\nR:libz.so.1.4\na:0:0:755\nZ:Q1MChQK6QesCHZSZGdURFrc/a7KN0=",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/APKINDEX.tar.gz",
+    "lastModified": "Tue, 10 Nov 2026 07:25:31 GMT",
+    "signature": ".SIGN.RSA.alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub"
+  },
+  "aarch64": {
+    "indexSha256": "7a580b06d20ba285dcf10f86cd79c8a9708d54ddd3b3da4457c4510a854e1ce4",
+    "indexDescription": "v3.23.8-20-g8b367fdee54",
+    "record": "C:Q1w+byPv5bYwvQ54Xq5EaEc9vy8Go=\nP:zlib\nV:1.4-r0\nA:aarch64\nS:55052\nI:133008\nT:A compression/decompression Library\nU:https://zlib.net/\nL:Zlib\no:zlib\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1793989562\nc:0436c6d655a04cbfd7987202a970f5aa7870a901\nD:so:libc.musl-aarch64.so.1\np:so:libz.so.1=1.4",
+    "installed": "C:Q1w+byPv5bYwvQ54Xq5EaEc9vy8Go=\nP:zlib\nV:1.4-r0\nA:aarch64\nS:55052\nI:133008\nT:A compression/decompression Library\nU:https://zlib.net/\nL:Zlib\no:zlib\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1793989562\nc:0436c6d655a04cbfd7987202a970f5aa7870a901\nD:so:libc.musl-aarch64.so.1\np:so:libz.so.1=1.4\nF:usr\nF:usr/lib\nR:libz.so.1\na:0:0:777\nZ:Q1MRhDGR4gDUEgMdrhw6ZB3CJjhdw=\nR:libz.so.1.4\na:0:0:755\nZ:Q1ELeu3GzpUJ0wym059hVouBUm+ig=",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/APKINDEX.tar.gz",
+    "lastModified": "Tue, 10 Nov 2026 07:25:30 GMT",
+    "signature": ".SIGN.RSA.alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub"
+  }
+}
