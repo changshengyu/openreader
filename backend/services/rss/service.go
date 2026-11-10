@@ -3,7 +3,6 @@ package rss
 import (
 	"errors"
 	"strings"
-	"sync"
 
 	"gorm.io/gorm"
 
@@ -16,19 +15,15 @@ var (
 	ErrSourceNotFound    = errors.New("RSS source not found")
 	ErrSourceURLConflict = errors.New("RSS source URL already exists")
 	ErrArticleNotFound   = errors.New("RSS article not found")
-	rssSourceWriteLocks  = sourceUserLockRegistry{locks: make(map[uint]*sourceUserLock)}
 )
 
-type sourceUserLock struct {
-	mutex sync.Mutex
-	refs  int
-}
-
-type sourceUserLockRegistry struct {
-	mutex sync.Mutex
-	locks map[uint]*sourceUserLock
-}
-
+// Service writes take no lock of their own. Each one reads the identity,
+// collision, order or liveness it depends on and writes in one transaction,
+// which db.Open begins with BEGIN IMMEDIATE, so writes of the same user (for
+// example two creates of one URL) wait at BEGIN and see each other's commit.
+// A Service may also run on a caller's transaction that already holds
+// SQLite's write lock; a Go lock taken here could then wait for a request
+// that is itself waiting at BEGIN for that caller.
 type Service struct {
 	db *gorm.DB
 }
@@ -53,32 +48,7 @@ func New(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
-func lockSourceUserWrite(userID uint) func() {
-	rssSourceWriteLocks.mutex.Lock()
-	entry := rssSourceWriteLocks.locks[userID]
-	if entry == nil {
-		entry = &sourceUserLock{}
-		rssSourceWriteLocks.locks[userID] = entry
-	}
-	entry.refs++
-	rssSourceWriteLocks.mutex.Unlock()
-
-	entry.mutex.Lock()
-	return func() {
-		entry.mutex.Unlock()
-		rssSourceWriteLocks.mutex.Lock()
-		entry.refs--
-		if entry.refs == 0 {
-			delete(rssSourceWriteLocks.locks, userID)
-		}
-		rssSourceWriteLocks.mutex.Unlock()
-	}
-}
-
 func (s *Service) CreateOrReplaceSource(userID uint, input SourceInput) (models.RSSSource, bool, error) {
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
-
 	var source models.RSSSource
 	created := false
 	missing := false
@@ -137,9 +107,6 @@ func (s *Service) CreateOrReplaceSource(userID uint, input SourceInput) (models.
 }
 
 func (s *Service) UpdateSource(userID, sourceID uint, input SourceInput) (models.RSSSource, error) {
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
-
 	var source models.RSSSource
 	missing := false
 	conflict := false
@@ -195,9 +162,6 @@ func (s *Service) UpdateSource(userID, sourceID uint, input SourceInput) (models
 }
 
 func (s *Service) ImportSources(userID uint, candidates []models.RSSSource) (ImportResult, error) {
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
-
 	result := ImportResult{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var maxOrder int
@@ -257,9 +221,6 @@ func (s *Service) ImportSources(userID uint, candidates []models.RSSSource) (Imp
 }
 
 func (s *Service) DeleteSource(userID, sourceID uint) error {
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
-
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var source models.RSSSource
 		if err := tx.Where("user_id = ? AND id = ?", userID, sourceID).First(&source).Error; err != nil {
@@ -278,9 +239,6 @@ func (s *Service) DeleteSource(userID, sourceID uint) error {
 }
 
 func (s *Service) UpsertArticlePage(userID, sourceID uint, sortName string, articles []models.RSSArticle) ([]models.RSSArticle, int, error) {
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
-
 	persisted := make([]models.RSSArticle, 0, len(articles))
 	created := 0
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -435,9 +393,6 @@ func (s *Service) UpdateArticleState(userID, articleID uint, isRead, favorite *b
 }
 
 func (s *Service) CommitArticleContent(userID, sourceID, articleID uint, content *string) (models.RSSArticle, error) {
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
-
 	var article models.RSSArticle
 	sourceMissing := false
 	articleMissing := false
