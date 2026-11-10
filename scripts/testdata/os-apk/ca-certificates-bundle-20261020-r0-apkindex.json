@@ -1,0 +1,31 @@
+{
+  "x86_64": {
+    "indexSha256": "f961a8b173cf90b7fc388e1c201ebc356a694b4498b8160198773a3d3a51e3e0",
+    "indexDescription": "v3.23.8-20-g8b367fdee54",
+    "record": "C:Q1GWiqMbsMKDpDSINOqReDnfKrxJg=\nP:ca-certificates-bundle\nV:20261020-r0\nA:x86_64\nS:107116\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0",
+    "installed": "C:Q1GWiqMbsMKDpDSINOqReDnfKrxJg=\nP:ca-certificates-bundle\nV:20261020-r0\nA:x86_64\nS:107116\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0\nr:libressl2.7-libcrypto libcrypto1.1\nF:etc\nF:etc/ssl\nR:cert.pem\na:0:0:777\nZ:Q1Nj6gTBdkZpTFW/obJGdpfvK0StA=\nF:etc/ssl/certs\nR:ca-certificates.crt\nZ:Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=\nF:etc/ssl1.1\nR:cert.pem\na:0:0:777\nZ:Q1tlrPS9O4v/nypdyJVPoUkUfBJ3g=\nR:certs\na:0:0:777\nZ:Q1qE3WqZ1tRpwrmptYdQcZwzvJgds=",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/APKINDEX.tar.gz",
+    "lastModified": "Tue, 10 Nov 2026 07:25:31 GMT",
+    "signature": ".SIGN.RSA.alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub",
+    "package": {
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ca-certificates-bundle-20261020-r0.apk",
+      "sha256": "a4c5de1bf37652cd98cbe71aec209512ae0508a964961957a6c9650f795e46c4",
+      "lastModified": "Tue, 20 Oct 2026 15:37:49 GMT"
+    }
+  },
+  "aarch64": {
+    "indexSha256": "7a580b06d20ba285dcf10f86cd79c8a9708d54ddd3b3da4457c4510a854e1ce4",
+    "indexDescription": "v3.23.8-20-g8b367fdee54",
+    "record": "C:Q1pIV20Ndb7zRnRnaqozseLjzimd0=\nP:ca-certificates-bundle\nV:20261020-r0\nA:aarch64\nS:107097\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0",
+    "installed": "C:Q1pIV20Ndb7zRnRnaqozseLjzimd0=\nP:ca-certificates-bundle\nV:20261020-r0\nA:aarch64\nS:107097\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0\nr:libressl2.7-libcrypto libcrypto1.1\nF:etc\nF:etc/ssl\nR:cert.pem\na:0:0:777\nZ:Q1Nj6gTBdkZpTFW/obJGdpfvK0StA=\nF:etc/ssl/certs\nR:ca-certificates.crt\nZ:Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=\nF:etc/ssl1.1\nR:cert.pem\na:0:0:777\nZ:Q1tlrPS9O4v/nypdyJVPoUkUfBJ3g=\nR:certs\na:0:0:777\nZ:Q1qE3WqZ1tRpwrmptYdQcZwzvJgds=",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/APKINDEX.tar.gz",
+    "lastModified": "Tue, 10 Nov 2026 07:25:30 GMT",
+    "signature": ".SIGN.RSA.alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub",
+    "package": {
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/ca-certificates-bundle-20261020-r0.apk",
+      "sha256": "bdf6033710a251d8239f63236eacf40c84afdf8f7b25bb58d69a2c75202350e7",
+      "lastModified": "Tue, 20 Oct 2026 22:13:23 GMT"
+    }
+  },
+  "installedDerivation": "Not captured from a live install (no container runtime in the review sandbox). Derived the way apk-tools 3.0.8 writes lib/apk/db/installed: the signed index record, r: from the package .PKGINFO replaces, then F:/R:/a:/Z: from the data tar and its APK-TOOLS.checksum.SHA1 PAX records. The control SHA1 equals the index C: and the data sha256 equals the .PKGINFO datahash. Checked on the pinned base: the identity lines of its 7 unchanged packages equal the index record plus r:/q:, and the same rule rebuilds its 20260909-r0 file section byte for byte."
+}
