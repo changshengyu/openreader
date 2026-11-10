@@ -77,4 +77,15 @@ community secdb（Last-Modified Sat, 07 Nov 2026 07:30:27 GMT，sha256 `fee2491c
 
 ## 7. 状态
 
-**contract-only**。
+**contract-only**（由第 8 节记录取代）。
+
+## 8. 记录（2026-11-10）
+
+提交：合同 `fdee10a`；测试 `db81534`（夹具与 24 个门测试，实现前 10 个红，全部是 zlib 身份 pin 与 Dockerfile 安装行；上一次发布候选在
+11-10 secdb 下精确报出与 run `42775373137` 相同的两条待修复项）；构建 `00fff33`（Dockerfile 一行，基线 world、`buildTimeFixes.zlib` 与两平台身份）。
+
+验证：OS 门测试 24/24；Go、前端、OS 公告门自测共 138/138；浏览器 smoke 自测 10/10；`docker compose config` 通过。在固定 base 上执行运行时阶段
+同一条安装后，两平台已安装的 16 个包（版本、origin、`C:`）与新基线完全一致。
+
+未验证：含 zlib 1.4-r0 的候选镜像实际构建、两平台 OS 门实际运行、卷门与可信双平台发布，需合入 main 后由 Actions 执行；本地不构建、不推送
+镜像。状态 **build-fix-applied / locally-validated / Actions-pending**；镜像仍为 `6006659`；生产未访问。

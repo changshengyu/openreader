@@ -7,6 +7,8 @@
 按 zlib/musl 先例在构建期安装签名索引中的精确 `zlib=1.4-r0`，更新基线身份、world 与构建期修复记录，门逻辑与基础镜像 3.23.6 不变
 （Z1/Z2 must-fix，Z3 acceptable-change）。合同见 [`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)。
 状态 **contract-only**。
+记录（2026-11-10，取代上段的状态）：合同 `fdee10a`、测试 `db81534`（实现前 10/24 个门测试红）、构建 `00fff33`。OS 门测试 24/24，公告门自测 138/138，
+固定 base 上同一安装的 16 个包身份与新基线一致。状态 build-fix-applied / locally-validated / Actions-pending；镜像仍为 `6006659`，生产未访问。
 
 ## 2026-11-10 P2 退役书源与 RSS 按用户写锁（备份恢复事务内互等）
 
