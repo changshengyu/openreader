@@ -1,0 +1,56 @@
+{
+  "x86_64": {
+    "indexSha256": "f961a8b173cf90b7fc388e1c201ebc356a694b4498b8160198773a3d3a51e3e0",
+    "indexDescription": "v3.23.8-20-g8b367fdee54",
+    "record": "C:Q1GWiqMbsMKDpDSINOqReDnfKrxJg=\nP:ca-certificates-bundle\nV:20261020-r0\nA:x86_64\nS:107116\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0",
+    "installed": "C:Q1GWiqMbsMKDpDSINOqReDnfKrxJg=\nP:ca-certificates-bundle\nV:20261020-r0\nA:x86_64\nS:107116\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0\nr:libressl2.7-libcrypto libcrypto1.1\nF:etc\nF:etc/ssl\nR:cert.pem\na:0:0:777\nZ:Q1Nj6gTBdkZpTFW/obJGdpfvK0StA=\nF:etc/ssl/certs\nR:ca-certificates.crt\nZ:Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=\nF:etc/ssl1.1\nR:cert.pem\na:0:0:777\nZ:Q1tlrPS9O4v/nypdyJVPoUkUfBJ3g=\nR:certs\na:0:0:777\nZ:Q1qE3WqZ1tRpwrmptYdQcZwzvJgds=",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/APKINDEX.tar.gz",
+    "lastModified": "Tue, 10 Nov 2026 07:25:31 GMT",
+    "signature": ".SIGN.RSA.alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub"
+  },
+  "aarch64": {
+    "indexSha256": "7a580b06d20ba285dcf10f86cd79c8a9708d54ddd3b3da4457c4510a854e1ce4",
+    "indexDescription": "v3.23.8-20-g8b367fdee54",
+    "record": "C:Q1pIV20Ndb7zRnRnaqozseLjzimd0=\nP:ca-certificates-bundle\nV:20261020-r0\nA:aarch64\nS:107097\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0",
+    "installed": "C:Q1pIV20Ndb7zRnRnaqozseLjzimd0=\nP:ca-certificates-bundle\nV:20261020-r0\nA:aarch64\nS:107097\nI:178791\nT:Pre generated bundle of Mozilla certificates\nU:https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/\nL:MPL-2.0 AND MIT\no:ca-certificates\nm:Natanael Copa <ncopa@alpinelinux.org>\nt:1792510320\nc:ac857c298f6fd212498ce76bb87836d940cdba2d\np:ca-certificates-cacert=20261020-r0\nr:libressl2.7-libcrypto libcrypto1.1\nF:etc\nF:etc/ssl\nR:cert.pem\na:0:0:777\nZ:Q1Nj6gTBdkZpTFW/obJGdpfvK0StA=\nF:etc/ssl/certs\nR:ca-certificates.crt\nZ:Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=\nF:etc/ssl1.1\nR:cert.pem\na:0:0:777\nZ:Q1tlrPS9O4v/nypdyJVPoUkUfBJ3g=\nR:certs\na:0:0:777\nZ:Q1qE3WqZ1tRpwrmptYdQcZwzvJgds=",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/APKINDEX.tar.gz",
+    "lastModified": "Tue, 10 Nov 2026 07:25:30 GMT",
+    "signature": ".SIGN.RSA.alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub"
+  },
+  "bundle": {
+    "path": "etc/ssl/certs/ca-certificates.crt",
+    "before": {
+      "package": "ca-certificates-bundle 20260909-r0",
+      "checksum": "Q1reWe8OzoZ6gWJYQl50oNHcmLboc=",
+      "roots": 121,
+      "source": "alpine:3.23.6@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 layer sha256:d0c1d894c237d8192cbcd37e435031ad4eddec173299568a5a05869c2e40dfa3"
+    },
+    "after": {
+      "package": "ca-certificates-bundle 20261020-r0",
+      "checksum": "Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=",
+      "roots": 118,
+      "certdata": "NSS_3_131_1_RTM"
+    },
+    "removed": [
+      {
+        "subject": "CN=emSign ECC Root CA - C3,O=eMudhra Inc,OU=emSign PKI,C=US",
+        "sha256": "bc4d809b15189d78db3e1d8cf4f9726a795da1643ca5f1358e1ddb0edc0d7eb3"
+      },
+      {
+        "subject": "CN=emSign ECC Root CA - G3,O=eMudhra Technologies Limited,OU=emSign PKI,C=IN",
+        "sha256": "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+      },
+      {
+        "subject": "CN=emSign Root CA - C1,O=eMudhra Inc,OU=emSign PKI,C=US",
+        "sha256": "125609aa301da0a249b97a8239cb6a34216f44dcac9f3954b14292f2e8c8608f"
+      }
+    ],
+    "added": [],
+    "references": [
+      "https://bugzilla.mozilla.org/show_bug.cgi?id=2083709",
+      "https://bugzilla.mozilla.org/show_bug.cgi?id=2084101",
+      "CVE-2026-22063",
+      "CVE-2026-114406"
+    ]
+  }
+}
