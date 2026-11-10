@@ -270,11 +270,15 @@ type ReplaceRule struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+// RSSSource writes find a user's source by URL through
+// idx_rss_sources_user_url. The index is not unique: databases written
+// before it may hold several rows of one user for one URL, and writes keep
+// choosing the one with the lowest id.
 type RSSSource struct {
 	ID              uint      `json:"id" gorm:"primaryKey"`
-	UserID          uint      `json:"userId" gorm:"not null;index"`
+	UserID          uint      `json:"userId" gorm:"not null;index;index:idx_rss_sources_user_url,priority:1"`
 	Title           string    `json:"title" gorm:"size:160;not null"`
-	URL             string    `json:"url" gorm:"size:800;not null"`
+	URL             string    `json:"url" gorm:"size:800;not null;index:idx_rss_sources_user_url,priority:2"`
 	Icon            string    `json:"icon" gorm:"size:800"`
 	Group           string    `json:"group" gorm:"size:120"`
 	Comment         string    `json:"comment" gorm:"type:text"`
