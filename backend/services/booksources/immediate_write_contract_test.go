@@ -439,3 +439,56 @@ func TestConcurrentSourceWritesStayWithinEachUsersLimit(t *testing.T) {
 		}
 	}
 }
+
+// Two writes of one user must not both read the user row before either
+// writes: a deferred transaction that read first fails its later write once
+// the other commits. Book source writes used to take a per-user process lock
+// for that; BEGIN IMMEDIATE now keeps the second transaction at BEGIN until
+// the first commits, so the first writer waits in vain for a partner here.
+func TestSameUserSourceWritesSerializeWithoutAProcessLock(t *testing.T) {
+	database := sourceServiceDatabase(t)
+	user := createSourceUser(t, database, "source-same-user-concurrent")
+	markSourceNamespace(t, database, user.ID)
+
+	overlap := overlapFirstTwo(200 * time.Millisecond)
+	afterSourceQuery(t, database, "openreader:test:same-user-source-overlap", func(tx *gorm.DB) {
+		if tx.Statement.Table == "users" && inSourceTransaction(tx) {
+			overlap()
+		}
+	})
+
+	const writes = 6
+	start := make(chan struct{})
+	failures := make(chan error, writes)
+	var writers sync.WaitGroup
+	for index := range writes {
+		writers.Add(1)
+		go func() {
+			defer writers.Done()
+			<-start
+			source := models.BookSource{
+				Name:    fmt.Sprintf("同用户并发书源 %d", index),
+				BaseURL: fmt.Sprintf("https://same-user-concurrent-%d.example", index),
+				Enabled: true,
+			}
+			var err error
+			if index%2 == 0 {
+				_, err = New(database).Create(user.ID, source)
+			} else {
+				_, err = New(database).Import(user.ID, []models.BookSource{source})
+			}
+			if err != nil {
+				failures <- fmt.Errorf("write %d: %w", index, err)
+			}
+		}()
+	}
+	close(start)
+	writers.Wait()
+	close(failures)
+	for err := range failures {
+		t.Errorf("concurrent same-user source write returned %v, want success", err)
+	}
+	if active := len(activeSourceIDs(t, database, user.ID)); active != writes {
+		t.Fatalf("active sources after %d concurrent same-user writes = %d, want %d", writes, active, writes)
+	}
+}
