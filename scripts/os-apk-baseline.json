@@ -237,11 +237,11 @@
     }
   },
   "unlistedOrigins": {
-    "alpine-base": "no record in the v3.23 main/community secdb snapshot of 2026-10-13; unknown, not clean",
-    "alpine-baselayout": "no record in the v3.23 main/community secdb snapshot of 2026-10-13; unknown, not clean",
-    "alpine-keys": "no record in the v3.23 main/community secdb snapshot of 2026-10-13; unknown, not clean",
-    "ca-certificates": "no record in the v3.23 main/community secdb snapshot of 2026-10-13; unknown, not clean",
-    "pax-utils": "no record in the v3.23 main/community secdb snapshot of 2026-10-13; unknown, not clean"
+    "alpine-base": "no record in the v3.23 main (2026-11-10) or community (2026-11-07) secdb, nor in v3.22 or edge; alpine-release 3.23.6-r0 is the pinned base's own data-only release marker (os-release, issue, secfixes.d) and moves only with the base; unknown, not clean",
+    "alpine-baselayout": "no record in the v3.23 main (2026-11-10) or community (2026-11-07) secdb, nor in v3.22 or edge; 3.7.2-r0 is still the current signed v3.23 build and ships only /etc configuration files and directories; unknown, not clean",
+    "alpine-keys": "no record in the v3.23 main (2026-11-10) or community (2026-11-07) secdb, nor in v3.22 or edge; 2.6-r0 is still the current signed v3.23 build and ships only the public repository signing keys; unknown, not clean",
+    "ca-certificates": "no record in the v3.23 main (2026-11-10) or community (2026-11-07) secdb, nor in v3.22 or edge; the signed 20261020-r0 (NSS 3.131.1) is installed at build time because the base's 20260909-r0 still trusts the emSign roots removed after the eMudhra intermediate key compromise; unknown, not clean",
+    "pax-utils": "no record in the v3.23 main (2026-11-10) or community (2026-11-07) secdb, nor in v3.22 or edge; scanelf 1.3.8-r2 is still the current signed v3.23 build, a local ELF scanner pulled in by musl-utils that the openreader command never runs; unknown, not clean"
   },
-  "reviewUntil": "2026-11-16T00:00:00Z"
+  "reviewUntil": "2026-12-10T00:00:00Z"
 }
