@@ -1,5 +1,13 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
+
+可信 Actions run `42775373137`（`95f2840`）的 OS APK 门报 `zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`（两平台），卷门与发布被跳过，没有发布镜像
+（`latest` 仍为 `6006659`）。v3.23 main secdb 11-10 在运行时 origin 中只新增这一项；签名索引已不再提供 1.3.2-r1，无缓存构建也会失败。
+按 zlib/musl 先例在构建期安装签名索引中的精确 `zlib=1.4-r0`，更新基线身份、world 与构建期修复记录，门逻辑与基础镜像 3.23.6 不变
+（Z1/Z2 must-fix，Z3 acceptable-change）。合同见 [`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-10 P2 退役书源与 RSS 按用户写锁（备份恢复事务内互等）
 
 基于 main `9076cfa`。P1 合同第 13 节与退役 BUSY 绕行合同第 10 节留下的同类问题：备份恢复在自己的事务里经 `ReplaceActive → Create` 取同一用户的

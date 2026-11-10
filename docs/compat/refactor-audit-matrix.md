@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
+
+见[`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)。基于 main `95f2840`。run `42775373137`
+在 OS APK 门失败（两平台 `zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`），没有发布镜像。Z1/Z2（待修复项、1.3.2-r1 已不在签名索引）为 must-fix：
+构建期精确安装 `zlib=1.4-r0`，基线身份与 world 同步；Z3（共享库改名 `libz.so.1.4`，仅 apk-tools 使用）为 acceptable-change；门逻辑、base
+3.23.6、unknown origin 复审期限（2026-11-16，另起切片）不重开。状态 contract-only。
+
 ## 2026-11-10 当前切片：退役书源与 RSS 按用户写锁（P2，R1–R4）
 
 见[`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。基于 main `9076cfa`。

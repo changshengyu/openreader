@@ -14,6 +14,9 @@
 [`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)
 第 11 节；本合同的门设计与结论不重开。
 
+2026-11-10：OS APK 门在发布时读到 zlib 1.4-r0（CVE-2026-4738）待修复项，签名索引也已不再提供 1.3.2-r1，按同一先例在构建期安装
+签名精确修复，见 [`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)；本合同的门设计与结论不重开。
+
 ## 1. 上游产品语义与已签收适配
 
 MAIN读取精确fa22的 `WebdavController.kt:726–823`：登录及secure下enable_webdav权限、
