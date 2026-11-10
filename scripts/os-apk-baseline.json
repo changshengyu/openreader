@@ -18,7 +18,7 @@
     "busybox",
     "musl=1.2.5-r24",
     "musl-utils=1.2.5-r24",
-    "zlib=1.3.2-r1"
+    "zlib=1.4-r0"
   ],
   "command": [
     "/app/openreader"
@@ -26,12 +26,13 @@
   "buildTimeFixes": {
     "zlib": {
       "from": "1.3.2-r0",
-      "to": "1.3.2-r1",
+      "to": "1.4-r0",
       "ids": [
-        "CVE-2026-85091"
+        "CVE-2026-85091",
+        "CVE-2026-4738"
       ],
-      "aportsCommit": "b92621a82657b055485976b304462bddf9aa9183",
-      "index": "v3.23.6-61-g95654076fb0"
+      "aportsCommit": "0436c6d655a04cbfd7987202a970f5aa7870a901",
+      "index": "v3.23.8-20-g8b367fdee54"
     },
     "musl": {
       "from": "1.2.5-r23",
@@ -123,9 +124,9 @@
           "checksum": "Q1W27Ak5z8m+R9lnejFSxUfMGLXt0="
         },
         "zlib": {
-          "version": "1.3.2-r1",
+          "version": "1.4-r0",
           "origin": "zlib",
-          "checksum": "Q1jut3bNPRHp/JoWp0GWNhtIWnnQE="
+          "checksum": "Q1w8ww/Ov6R+0J7O4tgeMeDsf/vp0="
         }
       }
     },
@@ -208,9 +209,9 @@
           "checksum": "Q1gy9qWYcbvxYTV3MWRqCzY5fVHes="
         },
         "zlib": {
-          "version": "1.3.2-r1",
+          "version": "1.4-r0",
           "origin": "zlib",
-          "checksum": "Q1932/MXUWsUUsB2j59i8WBsgG3S0="
+          "checksum": "Q1w+byPv5bYwvQ54Xq5EaEc9vy8Go="
         }
       }
     }
