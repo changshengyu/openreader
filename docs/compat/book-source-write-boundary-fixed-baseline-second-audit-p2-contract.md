@@ -197,6 +197,8 @@ production build。该切片无前端几何变化；隔离生产形态真实 HTT
   update/new/duplicate，再统一做 projected quota；确认容量后才执行 COW/update/create。`sourceLimit=0`、
   满额已有 identity update、满额 COW、历史超额 update 和 detached 不计数均有合同测试。
   （2026-11-04：`BEGIN IMMEDIATE` 后事务从开始就持有写锁，无值变更先写已退役，只读取限额，见 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。）
+  （2026-11-10：同用户写锁也已退役：限额、身份与写入都在同一个 immediate 事务里，同用户的并发写入在 `BEGIN` 排队；备份恢复经 `ReplaceActive`
+  在事务内调用 `Create` 时不再与同用户的新建/导入互等，见 [`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。）
 - focused API/source-service tests、同用户 create/create、create/import、import/import 的
   `go test -race -count=3`、`go vet ./...` 和完整 `go test ./...` 通过；前端 `740/740` 与 Vite production
   build 通过。本批无前端 DOM/CSS/路由变化，因此使用隔离生产形态真实 HTTP 代替无关浏览器几何门。

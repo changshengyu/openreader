@@ -131,6 +131,7 @@
 - 按用户写锁 `lockSourceUserWrite`（rss 与 booksources）。immediate 下它们对同进程写入也多余；另有一处既有隐患：备份恢复在自己的事务里
   经 `ReplaceActive → Create` 取该用户的写锁，同一用户同时在另一请求里新建或导入书源时，后者持有用户锁在 `BEGIN` 等写锁，两者互等到
   后者 5 秒超时（deferred 时由 W3 的先写同样等 5 秒，不是本切片引入）。可另起切片一并处理。
+  （2026-11-10 已处理：两把锁都已退役，见 [`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。）
 - DSN、WAL、连接池、busy_timeout、会话续期频率（另一会话处理）、长事务（备份导出、恢复）的持锁时间。
 
 ## 11. 状态

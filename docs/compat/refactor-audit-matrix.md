@@ -7,6 +7,9 @@ L1 书源 `Create`/`Import` 与 L2 RSS 六个写入的按用户进程内写锁�
 新建/导入互等约 5.2 s、后者 500，为 must-fix；R2 删除 L1/L2（immediate 事务已串行化写入）、R3 同用户并发写入改为在 `BEGIN` 最多等 5 秒为
 acceptable-change；R4 其余跨事务持有的锁、DSN/WAL/连接池/busy_timeout、RSS URL 查找索引不重开。计划测试：红测 T1（真实路由恢复与同用户
 新建/导入），守护为既有同用户并发与限额合同，实现后静态与动态审计应为 0。状态 contract-only。
+记录（2026-11-10，取代上段的状态）：合同 `883c0c2`、红测 `faa6cab`、实现 `8141c28`/`59b8f95`、守护补充 `4935b3c`（同用户并发书源写入，deferred 且无锁时
+5/5 失败）。T1 在 `9076cfa` 上 5.19–5.42 s 后 500，实现后 0.05–0.07 s 通过；事务内取得的 Go 锁静态与动态审计都为 0。后端全量/vet、race db/services 25 包、
+race api（40m，1069.2 s）、前端 877/877 与 build、公告门自测 136/136。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-04 当前切片：TXT 目录规则——阅读器内置规则切换与章回识别（P1，R1–R5、D1–D7）
 

@@ -240,7 +240,8 @@ CLAUDE.md 禁止的禁用 WAL、改单连接不考虑。
 | `1ec50a6`（去掉互斥锁与重试，事务内复查） | 两边都成功，0.37 s |
 
 另据 `1ec50a6` 分支记录：恢复事务内的 `lockSourceUserWrite`（`ReplaceActive` → `Create`）是同类模式，最多停顿 5 s，尚未修复，
-需另起切片。
+需另起切片。（2026-11-10 已处理：书源与 RSS 的按用户写锁都已退役，静态与动态审计在事务内取得的 Go 锁为 0，见
+[`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。）
 
 `claude/throttle-per-request-auth-writes`（`9128e02`）同样叠在 `5bfb0b8` 上，是可选的性能改动，不是合入本分支的前提。
 同批合入时，三个分支都在两本总账顶部追加条目，冲突时全部保留，新的在上。

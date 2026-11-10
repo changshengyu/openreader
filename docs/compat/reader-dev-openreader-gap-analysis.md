@@ -10,6 +10,11 @@
 方案为删除两者、分两个提交。代价：同一用户的并发写入改为与其他写入一样在 `BEGIN` 最多等 5 秒（R3 acceptable-change；同一用户 4 个并发 5,000 条
 RSS 导入时第 4 个失败）。合同见 [`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。
 状态 **contract-only**。
+记录（2026-11-10，取代上段的状态）：合同 `883c0c2`、红测 `faa6cab`、实现 `8141c28`（书源）与 `59b8f95`（RSS）、守护补充 `4935b3c`。T1 在 `9076cfa` 上
+3 次都失败（新建/导入 5.19–5.42 s 后 500），实现后每个子测试 0.05–0.07 s 通过。新增守护 `TestSameUserSourceWritesSerializeWithoutAProcessLock`：
+deferred 且无锁时 5/5 失败、deferred 有锁与实现后都通过；api RSS 同 URL 守护在 deferred 且无锁时 31 次 500。实现后静态与动态审计在事务内取得的
+Go 锁都为 0。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1069.2 s）；前端 877/877 与 build；公告门自测 136/136、smoke 自测 10/10、现场 Go 与前端扫描 0 发现。
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-04 P1 TXT 目录规则：阅读器内置规则切换与章回目录识别
 

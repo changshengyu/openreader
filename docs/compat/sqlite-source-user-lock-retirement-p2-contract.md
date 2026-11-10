@@ -180,4 +180,44 @@ T1 在 `9076cfa` 上（实现前）：
 
 ## 12. 状态
 
-**contract-only**。
+**contract-only**（由第 13 节记录取代）。
+
+## 13. 记录（2026-11-10）
+
+提交：合同 `883c0c2`；红测 `faa6cab`（T1）；实现 `8141c28`（书源，L1，+8/−38）与 `59b8f95`（`refactor(rss)`，L2，+7/−52）；守护补充 `4935b3c`。
+
+T1 在 `9076cfa` 上 3 次运行都失败：新建 5.189/5.367/5.424 s 后 `500 {"error":"failed to create source"}`，导入 5.199/5.400/5.366 s 后
+`500 {"error":"failed to import sources"}`，每次之前都有 `2s after the restore resumed, … were still waiting on each other`。`8141c28` 后
+`-count=3` 通过，每个子测试 0.05–0.07 s。
+
+守护补充（第 9 节没有列出，实现后发现需要）：变异显示，现有守护不能单独说明 L1 当初提供了什么——`services/booksources` 的 G3/G4 与
+`services/rss` 的 G6/G7 在 deferred 下有锁、无锁都失败（它们测的是跨用户写入，只有 immediate 能修），api
+`TestBookSourceLimitSerializesConcurrentFinalSlot` 只有两个不同步的请求，deferred 且无锁时 3 次运行也没有撞上。新增
+`TestSameUserSourceWritesSerializeWithoutAProcessLock`：同一用户 6 个并发新建/导入在事务内读取用户行处会合（最多等 200 ms）。
+
+| 守护 | 实现（immediate，无锁） | deferred，无锁 | deferred，有锁（`9076cfa` 的服务代码） |
+| --- | --- | --- | --- |
+| `TestSameUserSourceWritesSerializeWithoutAProcessLock` | 5/5 通过 | 5/5 失败：`database is locked`（共 21 次），6 个只留下 1–2 个 | 5/5 通过 |
+| api `TestRSSSourceIdentitySerializesConcurrentCreateAndImport` | 通过 | 3/3 失败：三种场景共 31 次 `500` | 3/3 通过 |
+| api `TestBookSourceLimitSerializesConcurrentFinalSlot` | 通过 | 3/3 通过（两个请求没有重叠） | 3/3 通过 |
+| G3/G4、G6/G7 | 通过 | 失败（G4 共 35 次 `database is locked`） | 失败（G4 共 21 次） |
+
+即：deferred 下同一用户的串行化原来靠 L1/L2；immediate 下没有它们也成立。
+
+审计（第 4 节方法，`4935b3c`）：静态 62 个事务回调、可达 359 个模块函数、有锁位点的模块函数 50 个，事务内可达的锁位点 **0**；
+动态（54 个插桩位点、完整 `go test ./...`）：**0** 条报告（实现前 18 条）。唯一失败的仍是第 4 节的审计假象，它也证明包装连接池已安装；
+另加的阳性对照（事务内外各调用一次检查）只报告事务内那一次。
+
+回归：
+
+- 后端（`59b8f95`）：`go test ./...` 31 个包通过（api 128.2 s）；`go vet ./...` 通过，gofmt 无输出；`go test -race ./db ./services/...` 25 个包
+  通过、无数据竞争；`go test -race -timeout 40m ./api` 通过、无数据竞争（1069.2 s）。之后的 `4935b3c` 只加了 `services/booksources` 的守护测试，该包
+  `-count=3` 与 `-race -count=2` 通过。
+- 前端未改：`npm test` 877/877、`npm run build` 通过（`node_modules` 克隆自锁文件相同的工作树）。
+- 发布门自测：Go、前端、OS 三个公告门 136/136，浏览器 smoke 自测 10/10；现场 Go 与前端公告扫描 `pass`、0 个发现。
+
+未跑：Compose、存储 HTTP 合同、fresh/历史卷与可移植备份门（不涉及数据文件，Actions 在推送 main 时运行）；浏览器 smoke（没有前端或接口形状
+变化）。
+
+状态 **implementation-complete / regression-validated**。分支 `claude/sqlite-restore-user-lock` 已推送（基于 `9076cfa`），未合入 main，镜像未发布，
+生产未访问。

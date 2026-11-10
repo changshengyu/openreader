@@ -90,6 +90,9 @@ SQLite source/article cache、事务、post-commit event 和 bounded fetch 是�
 - create/import/update/delete 必须按 user ID 使用窄 source mutation lock；refresh/content 的持久提交阶段也
   进入同一边界以复验 source 存活，但远端网络工作不得持锁。锁内执行事务并重新读取身份、owner、
   collision 与 max order。不得使用全局锁，也不得让一个用户阻塞另一用户。
+  （2026-11-10：这一同用户串行化改由每个写入自己的 `BEGIN IMMEDIATE` 事务提供，进程内按用户锁已退役；事务内仍重新读取身份、owner、
+  collision、max order 与存活。immediate 下所有写事务本来就在 SQLite 写锁上串行，见
+  [`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。）
 - 同用户并发 create/create、create/import 或 import/import 的相同 normalized URL 最终只能有一条 active
   row；最终配置按获得同用户锁后的提交顺序决定。不同 URL 仍使用现有 custom order 规则，批量新项按
   输入顺序追加。
@@ -194,7 +197,8 @@ fresh/historical mounted-volume 与 portable backup 门，再由本机完成 amd
   均有 API 与真实 HTTP 证据。
 - source create/import/update/delete 共享按 user ID 引用计数回收的窄锁和事务；SQLite `BUSY/LOCKED`
   对整笔 RSS 写事务做有界重试。同用户并发同 URL 收敛到一行，不新增历史数据不兼容的唯一索引。
-  （2026-11-04：`BEGIN IMMEDIATE` 后整笔重试已退役，按用户写锁保留，见 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。）
+  （2026-11-04：`BEGIN IMMEDIATE` 后整笔重试已退役，按用户写锁保留，见 [`sqlite-busy-workaround-retirement-p2-contract.md`](sqlite-busy-workaround-retirement-p2-contract.md)。
+  2026-11-10：按用户写锁也已退役，同用户并发同 URL 仍收敛到一行，见 [`sqlite-source-user-lock-retirement-p2-contract.md`](sqlite-source-user-lock-retirement-p2-contract.md)。）
 - source/article 不再使用 `Save` 提交 existing row；state、refresh metadata 和 detail content 各自只写
   所拥有列，成功后重读 fresh row。SQLite trigger 证明并发字段不被旧快照覆盖、删除行不复活。
 - refresh/content 的网络工作不持锁；提交阶段重新确认 caller-owned source/article。受控远程 callback

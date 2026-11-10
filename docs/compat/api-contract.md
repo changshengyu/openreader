@@ -293,7 +293,7 @@ Status: **aligned / regression-validated / Docker-published** on 2026-08-12. Ful
 
 | Method / path | Request boundary | Durable-write contract |
 |---|---|---|
-| `POST /api/rss/sources` | One non-null JSON object, 8 MiB actual-read; overflow `413`. Preserve aliases, validation/defaults, `201` create and `200` same-user same-URL replace. | Serialize source mutations per user; transactionally recheck URL identity/order and use explicit columns. Same-user concurrent create/import cannot create duplicate active URLs. |
+| `POST /api/rss/sources` | One non-null JSON object, 8 MiB actual-read; overflow `413`. Preserve aliases, validation/defaults, `201` create and `200` same-user same-URL replace. | Serialize source mutations per user (since 2026-11-10 by each write's `BEGIN IMMEDIATE` transaction, with no process lock); transactionally recheck URL identity/order and use explicit columns. Same-user concurrent create/import cannot create duplicate active URLs. |
 | `POST /api/rss/sources/import` | One non-empty JSON array, 8 MiB actual-read and 5,000 raw records; malformed/overflow/cardinality retain flat `400 invalid RSS source import`. | One per-user serialized transaction; preserve skip/order/counts and same-URL in-place replacement; one post-commit event only when changed. |
 | `PUT /api/rss/sources/:id` | Owner/missing lookup precedes one non-null 8 MiB JSON object; overflow `413`; URL collision remains `409`. | Revalidate caller-owned row and collision inside the per-user source transaction; explicit configuration-column update, fresh response, zero affected `404`, no `Save` resurrection. |
 | `PUT /api/rss/articles/:id` | Owner/missing lookup precedes one non-null 16 KiB JSON object; at least one explicit non-null boolean `isRead`/`favorite`; overflow `413`. | Update only supplied state columns under `user_id + id`; preserve refresh/content columns, return fresh row, zero affected `404`, one durable event. |
@@ -1139,6 +1139,9 @@ batch and remote URL controls), a 5,000-entry local/remote import ceiling, and a
 per-user `sourceLimit` for future active associations. `sourceLimit=0` remains unlimited; historical/default/restore
 data stays readable and is never truncated or deleted. Same-user create/import races are serialized around one
 authoritative SQLite transaction; existing identity updates and COW remain available at or above quota.
+Since 2026-11-10 that transaction's `BEGIN IMMEDIATE` write lock alone serializes them: the per-user process lock is
+retired, so a backup restore that creates sources inside its own transaction no longer stalls behind the same
+user's create or import (see `sqlite-source-user-lock-retirement-p2-contract.md`).
 
 Search, explore, remote-book, change-source, Reader content/cache and scheduler consumers now resolve the same
 association service. New/read-by-selection operations require caller-active enabled sources, while an existing
