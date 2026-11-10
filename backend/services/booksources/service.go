@@ -3,7 +3,6 @@ package booksources
 import (
 	"errors"
 	"strings"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -18,40 +17,7 @@ var (
 	ErrSourceLimitExceeded     = errors.New("source limit exceeded")
 	ErrNoDefault               = errors.New("default book sources are not configured")
 	ErrNamespaceNotInitialized = errors.New("user book sources are not initialized")
-	sourceUserWriteLocks       = sourceUserLockRegistry{locks: make(map[uint]*sourceUserLock)}
 )
-
-type sourceUserLock struct {
-	mutex sync.Mutex
-	refs  int
-}
-
-type sourceUserLockRegistry struct {
-	mutex sync.Mutex
-	locks map[uint]*sourceUserLock
-}
-
-func lockSourceUserWrite(userID uint) func() {
-	sourceUserWriteLocks.mutex.Lock()
-	entry := sourceUserWriteLocks.locks[userID]
-	if entry == nil {
-		entry = &sourceUserLock{}
-		sourceUserWriteLocks.locks[userID] = entry
-	}
-	entry.refs++
-	sourceUserWriteLocks.mutex.Unlock()
-
-	entry.mutex.Lock()
-	return func() {
-		entry.mutex.Unlock()
-		sourceUserWriteLocks.mutex.Lock()
-		entry.refs--
-		if entry.refs == 0 {
-			delete(sourceUserWriteLocks.locks, userID)
-		}
-		sourceUserWriteLocks.mutex.Unlock()
-	}
-}
 
 type ImportResult struct {
 	Imported int `json:"imported"`
@@ -326,12 +292,16 @@ func (s *Service) FindExistingForBook(userID, sourceID uint) (models.BookSource,
 	return source, err
 }
 
+// Create needs no lock of its own: its limit check and insert share one
+// transaction, which db.Open begins with BEGIN IMMEDIATE, so a concurrent
+// write of the same user waits at its BEGIN until this one commits.
+// ReplaceActive also calls Create inside a restore transaction that already
+// holds SQLite's write lock. A Go lock taken here would make that restore wait
+// for a request that is itself waiting at BEGIN for the restore.
 func (s *Service) Create(userID uint, source models.BookSource) (models.BookSource, error) {
 	if err := s.EnsureNamespace(userID); err != nil {
 		return models.BookSource{}, err
 	}
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
 
 	source.ID = 0
 	source.UsedBookCount = 0
@@ -551,12 +521,12 @@ func (s *Service) BatchDelete(userID uint, sourceIDs []uint) (int, int, error) {
 	return affected, skippedUsed, err
 }
 
+// Import, like Create, relies on its BEGIN IMMEDIATE transaction alone: the
+// limit, the identity lookup and every write happen inside it.
 func (s *Service) Import(userID uint, sources []models.BookSource) (ImportResult, error) {
 	if err := s.EnsureNamespace(userID); err != nil {
 		return ImportResult{}, err
 	}
-	unlock := lockSourceUserWrite(userID)
-	defer unlock()
 
 	result := ImportResult{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
