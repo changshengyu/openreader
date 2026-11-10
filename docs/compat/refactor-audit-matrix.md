@@ -1,5 +1,14 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-10 当前切片：发布门未列来源复审与运行时证书包 20261020-r0（P1，U1–U7）
+
+见[`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。基于 main `7ab3fe3`。
+5 个无 secdb 记录的 origin 复审 2026-11-16 到期（U1 must-fix，发布阻塞）。复审证据：11-10 secdb 与签名索引（验签）、aports、NVD/OSV、固定 base 上的
+真实安装。U2 must-fix：ca-certificates 20261020-r0 是 Alpine 标注的 security upgrade（NSS 3.131.1 移除 eMudhra 3 个 emSign 根证书，8 个中间证书
+私钥泄露），构建期精确安装并固定两平台身份；U3 alpine-release 3.23.8 与 U7 新期限 2026-12-16 为 acceptable-change；U4 其余三者 aligned；
+U5 Go 1.26.10 拒绝列表与 emSign G1 不重开；U6 本机 OrbStack 注入根证书会让 apk 写 `.apk-new`（测试环境观察，门已失败关闭）。
+计划测试 T1–T5。状态 contract-only。
+
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 
 见[`os-apk-zlib-1.4-release-blocker-p1-contract.md`](os-apk-zlib-1.4-release-blocker-p1-contract.md)。基于 main `95f2840`。run `42775373137`

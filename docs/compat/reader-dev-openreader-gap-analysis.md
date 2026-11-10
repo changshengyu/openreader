@@ -1,5 +1,15 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-10 P1 发布门：未列来源复审与运行时证书包 20261020-r0（eMudhra 根证书移除）
+
+OS APK 门对 5 个无 secdb 记录的 origin（alpine-base、alpine-baselayout、alpine-keys、ca-certificates、pax-utils）的复审 2026-11-16T00:00Z 到期，
+之后所有发布失败关闭（U1 must-fix）。按 11-10 现场 secdb（与 run `42780054569` 相同、5 个 origin 仍无记录）、验签后的 v3.23.8-20 签名索引、
+aports 提交与 NVD/OSV 复审：baselayout、keys、pax-utils 版本未变且无公告；alpine-release 3.23.8-r0 只差版本元数据（base 3.23.6 不重开）；
+ca-certificates 有 **security upgrade 20261020-r0**：NSS 3.131.1 移除了 eMudhra 的 3 个 emSign 根证书（8 个中间证书私钥泄露，CVE-2026-22063；
+Red Hat CVE-2026-114406），运行时证书包 20260909-r0 仍信任它们（U2 must-fix）。Go 1.26.10（GO-2026-6809）已拒绝这 8 个中间证书，不重开。
+目标：构建期精确安装签名的 `ca-certificates-bundle=20261020-r0`，基线固定两平台身份与 world，复审说明换成本次证据，期限改为 2026-12-16T00:00Z（U7）。
+合同见 [`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。状态 **contract-only**。
+
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 
 可信 Actions run `42775373137`（`95f2840`）的 OS APK 门报 `zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`（两平台），卷门与发布被跳过，没有发布镜像
