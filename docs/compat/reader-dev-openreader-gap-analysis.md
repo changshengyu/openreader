@@ -10,6 +10,10 @@ Alpine 20261020-r0（NSS 3.131.1）只移除这 3 个根。按 zlib/musl 先例�
 5 个理由按新证据重写、期限改为 2026-12-10（O1 must-fix），门逻辑与 base 不变。合同见
 [`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。
 状态 **contract-only**。
+记录（2026-11-11，取代上段的状态）：合同 `07fb8ae`、测试 `1beb527`（修复前 11/25 个 OS 门测试红）、构建 `5769695`（之后只剩复审用例红）、复审续期 `8d34715`。
+OS 门测试 25/25，公告门自测 139/139，smoke 自测 10/10，`docker compose config` 通过。11-11 复查：main secdb 22:37:59 版只新增 git/krb5/xen，
+新签名索引 `v3.23.8-23-g2f20de35278` 仍含全部 pin。状态 **build-fix-applied / review-renewed / locally-validated / Actions-pending**；分支已推送，
+未合入 main，镜像仍为 `74cf0d0`（仍带 20260909-r0），生产未访问。
 
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 

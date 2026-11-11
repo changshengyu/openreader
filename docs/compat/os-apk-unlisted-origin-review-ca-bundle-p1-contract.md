@@ -118,4 +118,22 @@ arm64 manifest `ae959799…`（层 `ace1621b…`，diff_id `18932007…`），�
 
 ## 7. 状态
 
-**contract-only**。
+**contract-only**（由第 8 节记录取代）。
+
+## 8. 记录（2026-11-10 至 11-11）
+
+提交：合同 `07fb8ae`；测试 `1beb527`（夹具与 25 个 OS 门测试，修复前 11 个红：候选清单都因 `ca-certificates-bundle 20261020-r0` 对基线
+`20260909-r0` 被拒，Dockerfile 缺少 pin）；构建 `5769695`（Dockerfile 一行、基线 world、两平台身份与 `buildTimeFixes.ca-certificates`，之后 24/25，
+只剩复审用例在旧期限 2026-11-16 报 `unlisted origin review expired: alpine-base`）；复审续期 `8d34715`（5 个理由与 `reviewUntil` 2026-12-10，25/25）。
+
+验证：OS 门测试 25/25；Go、前端、OS 公告门自测共 139/139；`docker compose config` 通过；浏览器 smoke 自测 10/10（在沙箱外运行：沙箱内它的
+本地回环服务无法监听端口，第 4 项起挂起）。各阶段的红/绿都与第 5 节的预期一致。
+
+推送前复查（2026-11-11 01:07 UTC）：v3.23 main secdb 已更新为 Tue, 10 Nov 2026 22:37:59 GMT（`e04eccd675a5f5e462b9d417e7a60552d5a24b378560e3caf5ffd60e31e09dd6`，
+283 包），只新增 git、krb5、xen 的修复（都不在运行时镜像中），运行时 origin 的记录与夹具相同；community 未变；5 个 origin 仍没有记录。
+签名索引已更新为 `v3.23.8-23-g2f20de35278`（x86_64 `76240b86…2a17`，22:43:31 GMT；aarch64 `a33bbc89…09fe`，22:46:29 GMT），用 base 自带公钥验签通过，
+其中 zlib 1.4-r0、musl/musl-utils 1.2.5-r24、ca-certificates-bundle 20261020-r0 的 `C:` 与基线 pin 相同，alpine-baselayout、alpine-keys、scanelf 仍是同一构建。
+
+未验证：含 CA bundle 20261020-r0 的候选镜像实际构建（CI 中的 `apk add`）、推导出的安装块与真实安装是否逐字相同、两平台 OS 门实际运行、卷门与可信
+双平台发布，需合入 main 后由 Actions 执行；本地不构建、不推送镜像。在发布之前，已发布的 `74cf0d0`/`latest` 仍带 20260909-r0。状态
+**build-fix-applied / review-renewed / locally-validated / Actions-pending**；分支已推送，未合入 main；镜像仍为 `74cf0d0`；生产未访问，实际运行版本未知。

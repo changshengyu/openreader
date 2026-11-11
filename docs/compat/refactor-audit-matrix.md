@@ -6,6 +6,9 @@
 到期后所有发布失败关闭（O1 must-fix：理由按 11-10 证据重写，期限改为 2026-12-10）。复审发现 base 的 CA bundle 20260909-r0 仍信任 emSign ECC Root CA - G3
 （其 eMudhra 中间 CA 的私钥可以恢复）及 C1/C3（O2 must-fix：构建期精确安装签名的 `ca-certificates-bundle=20261020-r0`）；alpine-release 3.23.8-r0 只是
 版本标记（O3 acceptable-change）；门逻辑、base 3.23.6、索引中 apk-tools/openssl 的新版本不重开。状态 contract-only。
+记录（2026-11-11，取代上段的状态）：合同 `07fb8ae`、测试 `1beb527`（修复前 11/25 红）、构建 `5769695`（24/25，只剩复审用例）、复审续期 `8d34715`（25/25）；
+公告门自测 139/139、smoke 自测 10/10；11-11 复查新 secdb 与签名索引仍与 pin 一致。状态 build-fix-applied / review-renewed / locally-validated /
+Actions-pending；分支已推送，未合入 main，镜像仍为 `74cf0d0`，生产未动。
 
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 
