@@ -229,9 +229,12 @@ func main() {
 	if err := createDuplicateRSSSourceFixtures(database, user, otherUser); err != nil {
 		log.Fatalf("create duplicate RSS source fixtures: %v", err)
 	}
-	// Releases before idx_rss_sources_user_url had no (user_id, url) index.
-	if err := database.Exec("DROP INDEX IF EXISTS idx_rss_sources_user_url").Error; err != nil {
-		log.Fatalf("remove the RSS source URL index from the legacy fixture: %v", err)
+	// Releases up to 752aa4e had neither the (user_id, url) nor the
+	// (user_id, custom_order) index.
+	for _, index := range []string{"idx_rss_sources_user_url", "idx_rss_sources_user_custom_order"} {
+		if err := database.Exec("DROP INDEX IF EXISTS " + index).Error; err != nil {
+			log.Fatalf("remove %s from the legacy fixture: %v", index, err)
+		}
 	}
 
 	for _, field := range []string{"ResourcePath", "ResourceFragment", "ResourceEndFragment", "Variable"} {
