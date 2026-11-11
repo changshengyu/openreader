@@ -2,6 +2,15 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## 2026-11-11 RSS source (user_id, custom_order) index (additive index, contract-only)
+
+`rss_sources` gains a second non-unique index, `idx_rss_sources_user_custom_order (user_id, custom_order)`, declared in
+the `models.RSSSource` tags and created by `AutoMigrate` at startup when missing. It lets SQLite answer the
+`COALESCE(MAX(custom_order), 0)` that numbers new and restored sources with one seek. No query, numbering rule,
+column, table statement, row, backup member, cache or library change; duplicate URLs, duplicate orders and NULL orders
+upgrade unchanged. Building it takes about 41 ms for 200,000 rows; older images ignore it on rollback. See
+[`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md).
+
 ## 2026-11-10 RSS source (user_id, url) index (additive index, implemented on branch, unreleased)
 
 `rss_sources` gains the non-unique index `idx_rss_sources_user_url (user_id, url)`, declared in the `models.RSSSource`

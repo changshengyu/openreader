@@ -1,5 +1,14 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-11 P2 RSS 订阅源按用户与排序值的非唯一索引（恢复逐条取最大排序值）
+
+基于 `claude/rss-user-url-index` 的 `2152114`（URL 索引，尚未合入 main）。备份恢复给每个缺少正数 `customOrder` 的 RSS 条目编号为该用户当前的
+`COALESCE(MAX(custom_order), 0) + 1`，每次都经 `idx_rss_sources_user_id` 遍历该用户全部行：4 万行用户经真实路由恢复 5,000 个这样的条目要 11.54 s，
+期间另一用户的写入 5.2 s 后 `database is locked`（O1 must-fix）。上游恢复直接替换 `rssSources.json`、不重新编号；OpenReader 的编号规则保持不变。
+URL 索引合同第 9 节以为 `COALESCE` 会挡住 min/max 优化，实测不会：加非唯一索引 `idx_rss_sources_user_custom_order (user_id, custom_order)` 后
+每次约 5.8 µs，查询与编号都不用改（O2 acceptable-change：列表与导出改用新索引读取，结果包括排序键完全相同的行实测不变）。合同见
+[`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md)。状态 **contract-only**。
+
 ## 2026-11-10 P2 RSS 订阅源按用户与 URL 查找的非唯一索引
 
 基于 main `752aa4e`。上一切片退役 RSS 按用户写锁后留下的性能问题：新建、更新冲突检查、导入（每个候选一次）与备份恢复（每个条目一次）

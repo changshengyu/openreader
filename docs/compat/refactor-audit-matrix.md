@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-11 当前切片：RSS 订阅源按用户与排序值的非唯一索引（P2，O1–O4）
+
+见[`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md)。基于 `2152114`（URL 索引分支）。O1 恢复对每个缺少
+`customOrder` 的条目遍历该用户全部行取最大排序值（4 万行用户 5,000 条 11.5 s）为 must-fix；O2 经 `AutoMigrate` 新增非唯一索引
+`idx_rss_sources_user_custom_order (user_id, custom_order)` 为 acceptable-change（查询不改，列表/导出计划改变但结果实测不变）；O3 编号规则、O4 其余索引/
+DSN/WAL/busy_timeout 不重开。计划测试：红测 T1（真实路由大用户恢复不让并发写入失败）、T2（三处 `MAX` 查询计划）、T3（全新库与历史库迁移）；
+对照 C1（恢复编号序列）、H1（历史卷夹具去掉两个新索引）。状态 contract-only。
+
 ## 2026-11-10 当前切片：RSS 订阅源按用户与 URL 查找的非唯一索引（P2，U1–U5）
 
 见[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。基于 main `752aa4e`。U1 新建、更新冲突、导入与备份恢复四处

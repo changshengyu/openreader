@@ -158,6 +158,9 @@ OpenReader 把来源存在 SQLite 行中，“第一个相等的条目”对应�
   SQLite 的 min/max 优化不适用，单加 `(user_id, custom_order)` 索引也不够。实测（临时测试，恢复事务内只跑 RSS 步骤，5,000 条、用户已有
   1 万行）：条目带 `customOrder` 时 2.69 s → 加索引后 0.19 s；不带时 5.04 s → 2.64 s。改它要同时改查询与排序值语义的证明，并涉及
   [退役按用户写锁合同](sqlite-source-user-lock-retirement-p2-contract.md)第 11 节不重开的恢复持锁时间，另起切片。
+  （2026-11-11 更正：上面关于 `COALESCE` 的判断是错的。SQLite 只要求查询只有一个聚合函数，`COALESCE(MAX(custom_order), 0)` 加
+  `(user_id, custom_order)` 索引后每次约 5.8 µs，不需要改查询或编号语义；见
+  [`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md)。）
 - 唯一约束与重复行清理；`idx_rss_sources_user_id` 的去留。
 - RSS 文章表的查找与索引（`UpsertArticlePage` 等）。
 - 单条新建的 `nextSourceOrder`（每次一次 `MAX`）。
