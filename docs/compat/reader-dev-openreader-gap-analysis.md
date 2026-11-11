@@ -14,6 +14,12 @@ Alpine 20261020-r0（NSS 3.131.1）只移除这 3 个根。按 zlib/musl 先例�
 OS 门测试 25/25，公告门自测 139/139，smoke 自测 10/10，`docker compose config` 通过。11-11 复查：main secdb 22:37:59 版只新增 git/krb5/xen，
 新签名索引 `v3.23.8-23-g2f20de35278` 仍含全部 pin。状态 **build-fix-applied / review-renewed / locally-validated / Actions-pending**；分支已推送，
 未合入 main，镜像仍为 `74cf0d0`（仍带 20260909-r0），生产未访问。
+更正（2026-11-11）：OpenReader 自 `6ca7fbf`（Go 1.26.10，GO-2026-6809 / CVE-2026-111943）起在 `Certificate.Verify` 中拒绝已知的 8 个泄露中间证书，
+所以上文“Go 不检查吊销……出站 HTTPS 可被中间人伪装”对这些中间证书不成立；仍成立的是 20260909-r0 信任它们的 3 个上级根，CA pin 是纵深防御，
+不是唯一防线（同一事件的发行版 CVE：Red Hat CVE-2026-114406）。两架构在固定 base 上的真实安装与推导块逐字相同，见合同第 9 节。
+发布（2026-11-11）：main 快进到 `2de7308`（ls-remote 核验，未强推），run `42939172405` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`
+（16/16 包、74 组比较无待修复项、复审期限 2026-12-10）；`2de7308`/`latest` = index `49b02ce1…ae75`（amd64 `338746ed…`、arm64 `da528bac…`，
+revision 标签核验）。已发布镜像内 CA bundle 为 20261020-r0、118 个根证书、不含 emSign C1/C3/G3。状态 released / Docker-published；生产未访问。
 
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 

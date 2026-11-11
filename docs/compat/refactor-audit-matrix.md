@@ -9,6 +9,12 @@
 记录（2026-11-11，取代上段的状态）：合同 `07fb8ae`、测试 `1beb527`（修复前 11/25 红）、构建 `5769695`（24/25，只剩复审用例）、复审续期 `8d34715`（25/25）；
 公告门自测 139/139、smoke 自测 10/10；11-11 复查新 secdb 与签名索引仍与 pin 一致。状态 build-fix-applied / review-renewed / locally-validated /
 Actions-pending；分支已推送，未合入 main，镜像仍为 `74cf0d0`，生产未动。
+更正（2026-11-11）：自 `6ca7fbf`（Go 1.26.10，GO-2026-6809）起，已发布二进制已拒绝 8 个泄露的 eMudhra 中间证书，“出站 HTTPS 可被中间人伪装”对这些
+已知中间证书不成立；CA pin 移除它们的 3 个上级根，是纵深防御（合同第 9 节）。两架构在固定 base 上的真实安装与推导块逐字相同。
+发布（2026-11-11）：按用户选择以合并提交 `2de7308`（`7ab3fe3` + `fed1ab6`）快进 main（ls-remote 核验，未强推），run `42939172405` 43/43 步成功，两平台 OS 门
+`pass-with-unknown-origins`（16/16 包、74 组比较无待修复项、`reviewUntil` 2026-12-10）；`2de7308`/`latest` = index `49b02ce1…ae75`（amd64 `338746ed…`、
+arm64 `da528bac…`，revision 标签核验），已发布镜像内 CA bundle 20261020-r0 的 `C:` 与 pin 相同、118 个根证书。状态 released / Docker-published；生产未动。
+等价的并行分支 `claude/os-unknown-origin-review`（`296ac3c`）未合入、保留。
 
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 

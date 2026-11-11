@@ -137,3 +137,45 @@ arm64 manifest `ae959799…`（层 `ace1621b…`，diff_id `18932007…`），�
 未验证：含 CA bundle 20261020-r0 的候选镜像实际构建（CI 中的 `apk add`）、推导出的安装块与真实安装是否逐字相同、两平台 OS 门实际运行、卷门与可信
 双平台发布，需合入 main 后由 Actions 执行；本地不构建、不推送镜像。在发布之前，已发布的 `74cf0d0`/`latest` 仍带 20260909-r0。状态
 **build-fix-applied / review-renewed / locally-validated / Actions-pending**；分支已推送，未合入 main；镜像仍为 `74cf0d0`；生产未访问，实际运行版本未知。
+
+## 9. 更正与补充核验（2026-11-11）
+
+**更正第 1 节的暴露面。** OpenReader 自 `6ca7fbf`（2026-10-22，go.mod 与构建镜像升到 Go 1.26.10，随 `92c98a9` 发布）起用 Go 1.26.10 构建。
+GO-2026-6809（CVE-2026-111943，Go issue 82345，CL 851047）在 `Certificate.Verify` 中按 SPKI sha256 拒绝已知的 8 个泄露中间证书，含它们的链会被过滤，
+所以自 `92c98a9` 起发布的二进制已经拒绝经由它们的伪造链。第 1 节“当前运行时会接受这类可伪造的证书链，网络中间人可以伪装任意书源站点”，
+以及 gap-analysis 与 matrix 中“出站 HTTPS 可被中间人伪装”，对这 8 个已知中间证书不成立。仍然成立的是：运行时 bundle 20260909-r0 仍信任它们的
+3 个上级根。pin 20261020-r0 按 Mozilla 的整根移除，补上 Go 拒绝列表之外的中间证书，是纵深防御而不是唯一防线。同一事件的发行版 CVE 为 Red Hat
+CVE-2026-114406（ca-certificates）。O2 的 must-fix 分类与实施不变；第 1 节、两条总账与构建提交 `5769695` 的说明保留原文，以本节为准。
+
+**真实安装核验（关闭第 2 节与第 8 节中“推导、未实际安装”这一项）。** 在固定 `alpine:3.23.6@sha256:85fe1e81…` 上用一次性容器（`--rm`，linux/amd64
+与 linux/arm64，不构建、不推送镜像）执行第 4 节同一条 `apk add`。执行前先把 `etc/ssl/certs/ca-certificates.crt` 恢复为 base 层原始字节
+（`Q1reWe8OzoZ6gWJYQl50oNHcmLboc=`）：本机 OrbStack 在容器启动时会注入 `orbstack-root.crt` 并改写该文件，apk 遇到被改过的受保护文件就把新包写成
+`.apk-new`、保留旧文件；CI 构建不受影响，门也会在该文件的校验和上失败关闭。结果：
+- 两架构安装库除 `ca-certificates-bundle` 外，与现有候选（已发布 base 加 zlib 1.4-r0、musl r24 的真实安装块）逐字相同，包的顺序不变；
+- 该块与本合同夹具中的推导块、签名索引记录在两架构都逐字相同；
+- 证书文件原地替换为 `Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=`（118 个根证书），没有 `.apk-new`；world 增加 `ca-certificates-bundle=20261020-r0`。
+
+**并行分支。** `claude/os-unknown-origin-review`（`296ac3c`，复审期限 2026-12-16）独立完成了等价修复，Dockerfile 安装行与两平台身份完全相同；
+按用户选择未合入、保留。main 采用本分支，`reviewUntil` 为 2026-12-10。
+
+## 10. 发布（2026-11-11）
+
+推送前（合并树）：OS 门测试 25/25；Go、前端、OS 公告门自测 139/139；浏览器 smoke 自测 10/10；`docker compose config` 通过；现场 Go 扫描 `pass`、0 个发现
+（vulndb 2026-11-05T23:49:57Z），现场前端扫描 `pass`、0 个发现（132 个锁定包）；secdb main 仍为 22:37:59 GMT `e04eccd6…`、community `fee2491c…`，
+5 个 origin 无记录，运行时 origin 与夹具相同；没有进行中的发布 run。按用户在 `claude/os-unknown-origin-review` 会话中的选择（发布本分支），
+以合并提交 `2de73087`（`7ab3fe3` 加本分支 `fed1ab6`，`--no-ff`）快进 main（ls-remote 核验，未强推）。
+
+可信 Actions run `42939172405` 43/43 步成功（01:28:14–01:45:12 UTC）：两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、
+74 组比较无待修复项、secdb main 11-10 22:37:59 与 community 11-07、5 个 unknown origin、`reviewUntil` 2026-12-10），Go/前端公告门、卷门、发布与平台核验通过。
+
+镜像：`ghcr.io/changshengyu/openreader:2de7308` 与 `latest` 指向 OCI index
+`sha256:49b02ce1eed5c57eb211194120329eba10d771160abb5a0ac72c5264aae0ae75`；linux/amd64
+`sha256:338746ed37a48b1132ba16a8a7ecad7979c9133d67ff7ce8e2199d2d7723f985`，linux/arm64
+`sha256:da528bac0ea1ab224fb360f6a321d9952f40d976ee42dc8881181123248eda9a`，另有 attestation。两平台 `org.opencontainers.image.revision`
+均为 `2de73087c3643667cab8ac3c98261e1ea6087831`。
+
+发布后独立核验（按平台 digest 拉取，`docker create` 后 `docker cp`，不启动容器）：两平台 `ca-certificates-bundle` 为 20261020-r0，`C:` 分别为
+`Q1GWiqMbsMKDpDSINOqReDnfKrxJg=` 与 `Q1pIV20Ndb7zRnRnaqozseLjzimd0=`，与基线 pin 相同，aports 提交 `ac857c2`；`etc/ssl/certs/ca-certificates.crt` 为
+`Q1mT0WUgIZu3o4++yVm+9ubDFAdCA=`、118 个根证书，emSign 只剩 `emSign Root CA - G1`；world 与基线相同，16 个包。
+
+状态 **released / Docker-published**；生产未访问，实际运行版本未知。下次复审期限 2026-12-10T00:00:00Z（x/crypto 伪版本 pin 2026-12-16 另行处理）。
