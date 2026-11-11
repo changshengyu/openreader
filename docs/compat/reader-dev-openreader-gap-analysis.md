@@ -1,5 +1,17 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-11 P1 账号 注册邀请码与用户数上限
+
+上游 `reader.app.inviteCode`（默认空，非空时注册必须提交相同的 `code`，否则“请输入邀请码”或“邀请码错误”）和 `userLimit`
+（默认 50、最多 50，注册与管理员新增达到上限时都提示“超过用户数上限”），注册表单在注册模式下显示“邀请码(没有则不填)”。
+OpenReader 注册完全开放，没有人数上限，表单直接显示后端英文错误。总账此前没有合同。
+R1/R2 must-fix：新增 `OPENREADER_INVITE_CODE`（默认空）和 `OPENREADER_USER_LIMIT`（默认 50，夹到 1–50），在事务内计数；
+邀请码检查在用户名占用之前，不持有邀请码时无法借 409 枚举用户名。R3/R4 must-fix：注册模式显示邀请码输入框，注册与登录错误改为上游中文。
+A1–A4 acceptable-change：通用 401、常量时间比较、`OPENREADER_` 前缀、OpenReader 自有错误的中文文案。书籍上限与“记住登录信息”另起。
+用户数上限的规则与文案范围按上游取值（确认问题因应用退出没有得到回答）。合同见
+[`registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md`](registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
 
 OS APK 门对 5 个无 secdb 记录的 origin 的复审期限 2026-11-16 即将到期，到期后每次发布都会失败关闭。重新复审：v3.23 main（11-10）与 community（11-07）、
