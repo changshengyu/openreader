@@ -10,6 +10,12 @@
 历史库上建立；历史重复行可能存在，所以不加唯一约束（U2 acceptable-change），重复行行为不变（U3）。实测加索引后同一导入 0.17–0.22 s、
 与用户行数无关；恢复中缺少 `customOrder` 的条目每条一次 `MAX(custom_order)` 仍需另起切片（U4）。合同见
 [`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-11，取代上段的状态）：合同 `48f2c28`、红测 `cee1589`、实现 `8f6bde5`（只改 `RSSSource` 标签）。红测在 `752aa4e` 上：T1 七条按 URL 的
+查询都走 `idx_rss_sources_user_id`；T2 4 万行用户的 5,000 条导入持写锁 11.4 s，另一用户的写入 5.18 s 后 `database is locked`；T3/T4 缺索引。
+实现后同一断言通过：T2 0.25–0.29 s（`-race` 0.95–0.97 s），同一用户 4 个并发满额导入全部成功（最长 0.87 s）；对照 C1（重复行行为）前后都通过；
+历史卷夹具与 smoke（H1）在本机二进制上验证。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1070.0 s）；前端 877/877 与 build；
+公告门自测 138/138、smoke 自测 10/10、现场 Go 与前端扫描 0 发现。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，
+镜像未发布，生产未访问。
 
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 

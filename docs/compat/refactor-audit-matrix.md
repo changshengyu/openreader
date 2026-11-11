@@ -7,6 +7,10 @@
 `idx_rss_sources_user_url (user_id, url)` 为 acceptable-change（历史重复行原样保留，不加唯一约束）；U3 重复行行为、U4 恢复的逐条 `MAX(custom_order)`、
 U5 唯一约束/重复清理/旧索引/文章表索引/DSN/WAL/连接池/busy_timeout 不重开。计划测试：红测 T1（真实路由查询计划）、T2（4 万行用户的满额导入
 不让并发写入失败）、T3/T4（全新库与含重复行的历史库迁移）；对照 C1（重复行行为）、H1（历史卷夹具与 smoke）。状态 contract-only。
+记录（2026-11-11，取代上段的状态）：合同 `48f2c28`、红测 `cee1589`、实现 `8f6bde5`。红测在 `752aa4e` 上全部失败（T2：导入持写锁 11.4 s，另一用户写入
+5.18 s 后 `database is locked`），实现后通过（T2 0.25–0.29 s，`-race` 0.95–0.97 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、
+race db/services 25 包、race api（40m，1070.0 s）、前端 877/877 与 build、公告门自测 138/138。状态 implementation-complete / regression-validated；
+分支已推送，未合入 main（origin/main 已到 `7ab3fe3`，只差一份无关文档、无冲突），镜像未发布，生产未动。
 
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 

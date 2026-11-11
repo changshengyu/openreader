@@ -2,7 +2,7 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
-## 2026-11-10 RSS source (user_id, url) index (additive index, contract-only)
+## 2026-11-10 RSS source (user_id, url) index (additive index, implemented on branch, unreleased)
 
 `rss_sources` gains the non-unique index `idx_rss_sources_user_url (user_id, url)`, declared in the `models.RSSSource`
 tags and created by the existing `AutoMigrate` at startup when missing (fresh and historical databases). It is not
@@ -11,6 +11,12 @@ keep today's behavior (the lowest id is the one rewritten). No column, table sta
 library change; `idx_rss_sources_user_id` stays. Building it is one atomic statement (about 68 ms for 200,000 rows).
 Older images ignore the extra index on rollback. See
 [`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md).
+
+Update (2026-11-11, branch `claude/rss-user-url-index`, unreleased): implemented in `8f6bde5`. Go tests build the exact
+pre-index `rss_sources` schema with duplicate URLs and require two AutoMigrate runs to add the index while every stored
+value and the table statement stay byte-identical (`integrity_check` ok). The historical volume fixture now drops the
+index and stores duplicate RSS rows, and the historical volume smoke checks both users' rows after the upgrade; a local
+binary on that fixture passed it. The Docker fresh/historical volume gates run in Actions on push to main.
 
 ## 2026-10-22 instance signing secret (new data file, no schema migration)
 

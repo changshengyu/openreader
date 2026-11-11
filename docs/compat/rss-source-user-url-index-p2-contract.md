@@ -165,4 +165,45 @@ OpenReader 把来源存在 SQLite 行中，“第一个相等的条目”对应�
 
 ## 10. 状态
 
-**contract-only**。
+**contract-only**（由第 11 节记录取代）。
+
+## 11. 记录（2026-11-11）
+
+提交：合同 `48f2c28`；红测 `cee1589`（T1–T4、对照 C1、历史卷夹具与 smoke H1）；实现 `8f6bde5`（`fix:`，只改 `backend/models/models.go`
+的 `RSSSource` 标签与注释，+6/−2，查询代码不变）。
+
+红测在 `752aa4e` 的实现上（`cee1589`）：
+
+- T1：五步共捕获 7 条按 URL 的查询（新建 1、替换 1、更新冲突计数 1、导入 2、恢复 2），计划全部为
+  `SEARCH rss_sources USING INDEX idx_rss_sources_user_id (user_id=?)`。
+- T2：`a 5000-source import for a user with 40000 sources held the write lock for 11.413s (busy_timeout 5s); another user's write that
+  waited for it returned after 5.18s with database is locked`（另一次运行同样失败，整个测试 11.64 s）。
+- T3/T4：索引只有 `idx_rss_sources_user_id`；T4 在索引断言之前的行内容、表结构语句与 `integrity_check` 检查都通过。
+- C1 通过（对照）。
+
+`8f6bde5` 后同一断言全部通过：T1 七条计划都是 `idx_rss_sources_user_url (user_id=? AND url=?)`（计数为 COVERING）；T2 0.25–0.29 s
+（`-count=3`），`-race` 下 0.95–0.97 s（`-count=3`，含 4 万行写入）；T3/T4 通过；C1 `-count=3` 通过。
+
+补充实测（临时测试，不提交）：同一用户 4 个并发 5,000 条导入（空用户）全部成功，依次 0.17/0.36/0.62/0.87 s（复跑 0.17/0.36/0.53/0.73 s）；
+退役按用户写锁合同第 10 节在无索引时是 0.67/2.35/5.83 s，第 4 个 5.14 s 后 `database is locked`。
+
+H1 本地验证（不构建镜像）：用 `8f6bde5` 的夹具工具生成历史卷（所有者同一 URL 两行、另一用户一行，只有 `idx_rss_sources_user_id`），本机编译的
+后端二进制直接挂这个卷启动，`/api/health` 正常；从 `scripts/docker-volume-backup-smoke.sh` 原样取出 `assert_historical_rss_rows`（及 `json_field`、
+`historical_login`）用 `sh` 运行，两个用户都通过，故意少写一个标题的反向检查按预期失败；停止后库中两个索引都在（新索引列为 `user_id`、`url`），
+三行不变，`integrity_check` 为 `ok`。镜像内的 fresh/历史卷门由 Actions 在推送 main 时运行。
+
+回归（`8f6bde5`）：
+
+- 后端：`go vet ./...` 通过，gofmt 无输出；`go test ./...` 31 个包通过（api 123.0 s）；`go test -race ./db ./services/...` 25 个包通过、
+  无数据竞争；`go test -race -timeout 40m ./api` 通过、无数据竞争（1070.0 s）。
+- 前端未改：`npm test` 877/877、`npm run build` 通过（`node_modules` 以 APFS 克隆自锁文件相同的工作树，本机 Node v26.4.0；CI 用 Node 22）。
+- 发布门自测：Go、前端、OS 三个公告门 138/138，浏览器 smoke 自测 10/10；现场 Go 公告扫描 `pass`、0 个发现（249 条公告，数据库
+  2026-11-05T23:49:57Z），现场前端扫描 `pass`、0 个发现。
+- 含端口监听的测试（api、前端公告门 worker、smoke）与现场 Go 扫描（沙箱代理下 `govulncheck` 下载 TLS 失败）在沙箱外运行。
+
+未跑：Compose、存储 HTTP 合同、镜像内 fresh/历史卷与可移植备份门（Actions 在推送 main 时运行，历史卷门已含 H1）；浏览器 smoke
+（没有前端或接口形状变化）。
+
+origin/main 在切出后前进到 `7ab3fe3`（只改一份无关合同文档）；本分支与它 `git merge-tree` 无冲突，合入时需要一个合并提交。
+
+状态 **implementation-complete / regression-validated**。分支 `claude/rss-user-url-index` 已推送，未合入 main，镜像未发布，生产未访问。
