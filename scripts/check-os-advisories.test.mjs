@@ -231,7 +231,7 @@ test('a CA bundle kept beside .apk-new fails closed on the APK-owned bundle file
       image.files.set('etc/ssl/certs/ca-certificates.crt', {type:'file', checksum:caIndex.bundle.before.checksum})
       image.files.set('etc/ssl/certs/ca-certificates.crt.apk-new', {type:'file', checksum:caIndex.bundle.after.checksum})
     }
-  }), /APK file changed after install: etc\/ssl\/certs\/ca-certificates\.crt$/)
+  }), /APK file changed after install: etc\/ssl\/certs\/ca-certificates\.crt(?!\.)/)
 })
 test('pinned base without the build-time fix fails on the exact pending zlib secfix, not a lexical compare', () => {
   assert.throws(() => check(() => {}, {database:arch => published[arch], world:baseOnly.world, policy:baseOnly}),
