@@ -1,5 +1,20 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
+
+OS APK 门对 5 个无 secdb 记录的 origin 的复审期限 2026-11-16 即将到期，到期后每次发布都会失败关闭。重新复审：v3.23 main（11-10）与 community（11-07）、
+v3.22 与 edge 的 secdb 都没有这 5 个 origin；固定 `alpine:3.23.6` 两平台层与基线身份逐一相同；签名索引中 alpine-baselayout、alpine-keys、scanelf
+仍是同一构建，alpine-release 3.23.8-r0 只是版本标记。但 base 的 `ca-certificates-bundle 20260909-r0` 仍信任 emSign ECC Root CA - G3 与 C1/C3：
+Mozilla bug 2083449 中 eMudhra 中间 CA 的 P-384 私钥可以恢复，Mozilla 于 10-20 紧急移除 G3（bug 2084101）；Go 不检查吊销，出站 HTTPS 可被中间人伪装。
+Alpine 20261020-r0（NSS 3.131.1）只移除这 3 个根。按 zlib/musl 先例在构建期精确安装签名的 `ca-certificates-bundle=20261020-r0`（O2 must-fix），
+5 个理由按新证据重写、期限改为 2026-12-10（O1 must-fix），门逻辑与 base 不变。合同见
+[`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。
+状态 **contract-only**。
+记录（2026-11-11，取代上段的状态）：合同 `07fb8ae`、测试 `1beb527`（修复前 11/25 个 OS 门测试红）、构建 `5769695`（之后只剩复审用例红）、复审续期 `8d34715`。
+OS 门测试 25/25，公告门自测 139/139，smoke 自测 10/10，`docker compose config` 通过。11-11 复查：main secdb 22:37:59 版只新增 git/krb5/xen，
+新签名索引 `v3.23.8-23-g2f20de35278` 仍含全部 pin。状态 **build-fix-applied / review-renewed / locally-validated / Actions-pending**；分支已推送，
+未合入 main，镜像仍为 `74cf0d0`（仍带 20260909-r0），生产未访问。
+
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 
 可信 Actions run `42775373137`（`95f2840`）的 OS APK 门报 `zlib 1.3.2-r1 < 1.4-r0 CVE-2026-4738`（两平台），卷门与发布被跳过，没有发布镜像

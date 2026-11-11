@@ -26,12 +26,13 @@ COPY backend/ ./
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} go build -mod=vendor -trimpath -ldflags="-s -w -X openreader/backend/api.Version=${VERSION} -X openreader/backend/api.Commit=${VCS_REF} -X openreader/backend/api.BuildDate=${BUILD_DATE}" -o /out/openreader .
 
 FROM alpine:3.23.6@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
-# The pinned official 3.23.6 base still ships zlib 1.3.2-r0 and musl 1.2.5-r23. Install
+# The pinned official 3.23.6 base still ships zlib 1.3.2-r0, musl 1.2.5-r23 and the
+# 20260909 CA bundle, which still trusts the emSign roots NSS 3.131.1 removed. Install
 # only the exact v3.23 main maintenance fixes at build time: apk verifies the signed
 # repository index, the release OS gate pins the package identities, and nothing
 # upgrades at container start. Kept before the ARGs so the validated layer is reused
 # by the published build.
-RUN apk add --no-cache 'zlib=1.4-r0' 'musl=1.2.5-r24' 'musl-utils=1.2.5-r24'
+RUN apk add --no-cache 'zlib=1.4-r0' 'musl=1.2.5-r24' 'musl-utils=1.2.5-r24' 'ca-certificates-bundle=20261020-r0'
 ARG BUILD_DATE=unknown
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="OpenReader" \
@@ -48,10 +49,10 @@ ENV OPENREADER_ADDR=:8080 \
     OPENREADER_DB=/app/data/openreader.db \
     OPENREADER_PUBLIC_DIR=/app/public \
     GIN_MODE=release
-# The runtime base's own ca-certificates-bundle provides the CA bundle (copying
+# The signed ca-certificates-bundle installed above provides the CA bundle (copying
 # the builder's would overwrite an APK-owned file whenever the builder's Alpine
-# point release differs); time/tzdata is embedded in the binary, so the zlib
-# fix above is the runtime stage's only package install.
+# point release differs); time/tzdata is embedded in the binary, so the fixes
+# above are the runtime stage's only package install.
 COPY --from=backend-builder /out/openreader /app/openreader
 COPY --from=frontend-builder /src/frontend/dist /app/public
 RUN mkdir -p /app/data /app/cache /app/library
