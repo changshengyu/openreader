@@ -281,6 +281,19 @@ func (s *Server) createUser(c *gin.Context) {
 	}
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		// reader-dev UserController.kt#addUser: 用户已存在, then 超过用户数上限.
+		var existing int64
+		if err := tx.Model(&models.User{}).Where("username = ?", user.Username).Count(&existing).Error; err != nil {
+			return err
+		}
+		if existing > 0 {
+			return errUsernameExists
+		}
+		if reached, err := s.userLimitReached(tx); err != nil {
+			return err
+		} else if reached {
+			return errUserLimitReached
+		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
@@ -299,6 +312,10 @@ func (s *Server) createUser(c *gin.Context) {
 		}
 		return tx.Model(&user).Updates(updates).Error
 	}); err != nil {
+		if errors.Is(err, errUserLimitReached) {
+			c.JSON(http.StatusForbidden, errResp("USER_LIMIT_REACHED", "user limit reached"))
+			return
+		}
 		c.JSON(http.StatusConflict, errResp("CONFLICT", "username already exists"))
 		return
 	}

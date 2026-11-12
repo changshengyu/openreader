@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"regexp"
@@ -20,6 +22,8 @@ import (
 type authRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// Code is the registration invite code (reader-dev loginForm.code); login ignores it.
+	Code string `json:"code"`
 }
 
 const (
@@ -32,7 +36,41 @@ var (
 	errAuthRequestTooLarge = errors.New("auth request body too large")
 )
 
-var errUsernameExists = errors.New("username already exists")
+var (
+	errUsernameExists   = errors.New("username already exists")
+	errUserLimitReached = errors.New("user limit reached")
+)
+
+// inviteCodeError checks a registration's invite code against the configured
+// one (reader-dev UserController.kt#login: 请输入邀请码 / 邀请码错误). Both sides
+// are trimmed and compared as SHA-256 digests in constant time, so neither the
+// value nor its length leaks; the configured code never appears in a response.
+func (s *Server) inviteCodeError(submitted string) (int, string) {
+	required := strings.TrimSpace(s.cfg.InviteCode)
+	if required == "" {
+		return 0, ""
+	}
+	code := strings.TrimSpace(submitted)
+	if code == "" {
+		return http.StatusBadRequest, "invite code required"
+	}
+	want, got := sha256.Sum256([]byte(required)), sha256.Sum256([]byte(code))
+	if subtle.ConstantTimeCompare(want[:], got[:]) != 1 {
+		return http.StatusForbidden, "invalid invite code"
+	}
+	return 0, ""
+}
+
+// userLimitReached reports whether creating one more account inside tx would
+// pass the configured cap (reader-dev 超过用户数上限). Callers run it in the
+// same write transaction as the insert, so concurrent creations cannot both pass.
+func (s *Server) userLimitReached(tx *gorm.DB) (bool, error) {
+	var userCount int64
+	if err := tx.Model(&models.User{}).Count(&userCount).Error; err != nil {
+		return false, err
+	}
+	return userCount >= int64(s.cfg.EffectiveUserLimit()), nil
+}
 
 var readerDevUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9]+$`)
 
@@ -111,6 +149,12 @@ func (s *Server) register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": validationError})
 		return
 	}
+	// The invite code comes before the username lookup: without it nobody can
+	// learn through the 409 which usernames exist.
+	if status, inviteError := s.inviteCodeError(request.Code); inviteError != "" {
+		c.JSON(status, gin.H{"error": inviteError})
+		return
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -129,6 +173,11 @@ func (s *Server) register(c *gin.Context) {
 		}
 		if existing > 0 {
 			return errUsernameExists
+		}
+		if reached, err := s.userLimitReached(tx); err != nil {
+			return err
+		} else if reached {
+			return errUserLimitReached
 		}
 
 		var userCount int64
@@ -153,6 +202,10 @@ func (s *Server) register(c *gin.Context) {
 	})
 	if errors.Is(err, errUsernameExists) {
 		c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
+		return
+	}
+	if errors.Is(err, errUserLimitReached) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "user limit reached"})
 		return
 	}
 	if err != nil {
