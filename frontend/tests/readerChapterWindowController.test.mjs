@@ -339,3 +339,48 @@ test('drops delayed append and retry results after the book scope changes', asyn
   assert.equal(fixture.chapterBlocks.value[0].error, '旧错误')
   assert.equal(fixture.chapterBlocks.value[0].content, '旧错误')
 })
+
+// Error surface contract R6 (sections 7 and 13 item 7): a failed main load in a continuous window keeps its target
+// chapter as an inline error block, the following chapter still loads, and a retry replaces that block in place.
+test('keeps a failed target chapter as its own inline error block and loads the next chapter', async () => {
+  const fixture = createController()
+  assert.equal(typeof fixture.controller.showFailedChapter, 'function', 'the chapter window must expose showFailedChapter')
+  await fixture.controller.showFailedChapter(2, new Error('network error'))
+  const blocks = fixture.chapterBlocks.value
+  assert.deepEqual(blocks.map(block => block.index), [2, 3])
+  assert.equal(blocks[0].error, '加载失败：network error')
+  assert.equal(blocks[0].title, '第 3 章', 'the error block carries the catalog title')
+  assert.equal(blocks[0].content, '获取章节内容失败！\n加载失败：network error')
+  assert.equal(blocks[1].error, undefined)
+  assert.equal(blocks[1].content, '正文 3')
+  assert.deepEqual(fixture.calls.filter(call => call[0] === 'load'), [['load', 3]], 'only the next chapter is requested')
+})
+
+test('retrying the failed current chapter replaces it in place and commits it as the current chapter', async () => {
+  let attempts = 0
+  const fixture = createController({
+    loadContent: async (index, options = {}) => {
+      fixture.calls.push(['load', index, Boolean(options.refresh)])
+      if (index === 2 && attempts++ === 0) throw new Error('still failing')
+      return { chapter: { ...fixture.chapters.value[index], title: `正文章 ${index}` }, content: `正文 ${index}` }
+    },
+  })
+  assert.equal(typeof fixture.controller.showFailedChapter, 'function', 'the chapter window must expose showFailedChapter')
+  await fixture.controller.showFailedChapter(2, new Error('network error'))
+  fixture.content.value = '旧正文'
+
+  assert.equal(await fixture.controller.retry(2), false, 'a failed retry reports false')
+  assert.equal(fixture.chapterBlocks.value[0].error, '加载失败：still failing')
+  assert.equal(fixture.content.value, '旧正文')
+
+  assert.equal(await fixture.controller.retry(2), true, 'a recovered retry reports true')
+  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [2, 3])
+  assert.equal(fixture.chapterBlocks.value[0].error, undefined)
+  assert.equal(fixture.chapterBlocks.value[0].content, '正文 2')
+  assert.equal(fixture.content.value, '正文 2', 'the recovered current chapter is committed')
+  assert.equal(fixture.chapter.value.title, '正文章 2')
+  assert.deepEqual(
+    fixture.calls.filter(call => call[0] === 'load' && call[1] === 2),
+    [['load', 2, true], ['load', 2, true]],
+  )
+})
