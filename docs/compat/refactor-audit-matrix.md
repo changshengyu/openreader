@@ -1,5 +1,10 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：朗读条“音调”改回上游“语调”（P0，文案）
+
+见[`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md)第 8 节。朗读条音高一行的标签与步进器无障碍名称从“音调”改为上游的“语调”；
+新增源码合同 `readerTTSBarLabels`，`reader-tts-contract` 检查四行标签（三视口），设置面板防重复检查加 `朗读语调`。状态 contract-only。
+
 ## 2026-11-12 当前切片：桌面面板打开时进度块的上一章/下一章（P0）
 
 见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)第 13 节。

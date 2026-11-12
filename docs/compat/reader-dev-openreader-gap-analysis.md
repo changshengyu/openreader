@@ -1,5 +1,12 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P0 Reader 朗读条“音调”改回上游“语调”
+
+上游 `web/src/views/Reader.vue` 朗读条展开后的行标签依次是 `语音库`、`语速`、`语调`、`定时`（L179–L208，`speechPitch` 标为 `语调`），
+[音频与 TTS 合同](reader-audio-tts-fixed-baseline-p0-contract.md)第 2 节“栏位结构”写的也是“语速、语调、定时”。OpenReader 的 `ReaderTTSBar.vue`
+把这一行标成 `音调`，步进器的无障碍名称也写成“音调”。合同第 8 节判 must-fix（文案），把标签改为 `语调`，三个无障碍名称同步改，
+数值范围、存储与朗读参数都不变。状态 **contract-only**。
+
 ## 2026-11-12 P0 Reader 桌面面板打开时进度块的上一章/下一章
 
 上游四个桌面面板是没有遮罩的 click popover，右侧进度块的上一章、下一章按下照常执行，面板随之关闭。[桌面面板正文控件合同](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)

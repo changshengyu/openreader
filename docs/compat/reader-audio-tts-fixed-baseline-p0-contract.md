@@ -99,3 +99,18 @@ OpenReader 当前映射：
 - 共享分栏定位改为使用 rendered column geometry；这是上游 `showParagraph()` 的 Vue 等价实现，同时修复 TTS、书签和正文搜索跳到分栏段落时 `offsetLeft` 不可靠的问题。
 - 源码 commit `5260efd083dea8002bed491eed7c2cc039d6cf0f` 已在本机构建 `linux/amd64` 与 `linux/arm64`，发布为 `ghcr.io/changshengyu/openreader:5260efd` 和 `latest`。两 tag 的 OCI index digest 均为 `sha256:5c8c7d9ab186ec80b26ed709123c1c88fe37261f18cf937988c4ffbfdc9a4df4`；amd64 manifest 为 `sha256:dd30334f4e301d283980d0f9cb1877e984218f47602dec1987755a54ebd755bf`，arm64 manifest 为 `sha256:30376bc19ca4941bc0a2cf56ce0430363ad69bee7d6132c5e13f23f46163a9f6`。
 - 当前镜像的历史 volume/portable backup 脚本因 Codex 自动授权额度拒绝 OrbStack socket 而未能重复执行。此项不记为“当次通过”；兼容判断继承 `370d0f7` 已通过的旧 TXT、EPUB、UMD、CBZ、相对 cache、owner isolation 和 portable restore 证据，并额外确认 `370d0f7..5260efd` 的 backend、Dockerfile、volume/backup 脚本均为零差异。
+
+## 8. 2026-11-12 补充：朗读条“音调”改回上游“语调”（P0，文案）
+
+- 上游：`web/src/views/Reader.vue`（fa22f271）朗读条展开后，L179 起依次是 `语音库`，`语音设置` 下的 `语速`（L193）、`语调`（L201，
+  `speechPitch`）、`定时`（L207）。第 2 节“栏位结构”一行写的也是“语速、语调、定时”。
+- 现状：`frontend/src/components/reader/ReaderTTSBar.vue` 第 56 行把 `speechPitch` 一行标成 `音调`，步进器的三个无障碍名称是
+  `降低朗读音调`、`提高朗读音调`、`自定义朗读音调`。其余三行（`语音库`、`语速`、`定时`）与上游一致。
+- 判定：**`must-fix`**，属于可见文案与上游不一致。步进器替代滑块仍是用户要求的改进，不重开；`语音设置` 分组标题与“重置”按钮按第 2 节
+  已签收的结构保持现状。
+- 目标：这一行的标签改为 `语调`，步进器的无障碍名称改为 `降低朗读语调`、`提高朗读语调`、`自定义朗读语调`。数值范围（0–2，步长 0.1）、
+  存储 key 和朗读参数都不变。
+- 测试：新增源码合同 `frontend/tests/readerTTSBarLabels.test.mjs`，检查行标签依次为 `语速`、`语调`、`定时`，步进器三个名称都带 `语调`，
+  模板里不再出现 `音调`。`scripts/smoke/reader-tts-contract.mjs` 展开后检查行标签依次为 `语音库`、`语速`、`语调`、`定时`，按
+  1440×900、390×844、360×800 各跑一次。`readerSettingsPanelContract.test.mjs` 原来的“设置面板不重复朗读控件”检查包含 `朗读音调`，
+  这里再加上 `朗读语调`，原有字符串保留。
