@@ -1,4 +1,5 @@
 import api from './client.js'
+import { discardAuthToken, readAuthToken } from '../utils/authToken.js'
 
 export function listBooks(params = {}) {
   return api.get('/books', { params })
@@ -110,9 +111,7 @@ export function cacheBookContent(id, payload) {
 }
 
 export async function cacheBookContentStream(id, payload, options = {}) {
-  const token = typeof localStorage === 'undefined'
-    ? ''
-    : localStorage.getItem('openreader_token')
+  const token = readAuthToken()
   const response = await fetch(`/api/books/${id}/cache/stream`, {
     method: 'POST',
     headers: {
@@ -130,8 +129,8 @@ export async function cacheBookContentStream(id, payload, options = {}) {
       // Keep proxy-generated non-JSON errors client-safe.
     }
     if (response.status === 401 && token && typeof window !== 'undefined') {
-      if (localStorage.getItem('openreader_token') === token) {
-        localStorage.removeItem('openreader_token')
+      if (readAuthToken() === token) {
+        discardAuthToken(token)
         window.__openreaderAuthRequired = { reason: 'session', rejectedToken: token }
         window.dispatchEvent(new CustomEvent('openreader:auth-required', {
           detail: window.__openreaderAuthRequired,

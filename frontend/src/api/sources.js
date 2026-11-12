@@ -1,4 +1,5 @@
 import api from './client'
+import { discardAuthToken, readAuthToken } from '../utils/authToken.js'
 
 export function listSources() {
   return api.get('/sources')
@@ -83,7 +84,7 @@ export function testSourceContent(id, chapterUrl) {
 }
 
 export async function debugSourceStream(id, keyword, options = {}) {
-  const token = localStorage.getItem('openreader_token') || ''
+  const token = readAuthToken()
   const response = await fetch(`/api/sources/${id}/debug/stream`, {
     method: 'POST',
     headers: {
@@ -95,8 +96,8 @@ export async function debugSourceStream(id, keyword, options = {}) {
   })
   if (!response.ok) {
     const payload = await safeJSON(response)
-    if (response.status === 401 && token && localStorage.getItem('openreader_token') === token) {
-      localStorage.removeItem('openreader_token')
+    if (response.status === 401 && token && readAuthToken() === token) {
+      discardAuthToken(token)
       window.dispatchEvent(new CustomEvent('openreader:auth-required', {
         detail: { reason: 'session', rejectedToken: token },
       }))

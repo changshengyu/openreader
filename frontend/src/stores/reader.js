@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
+import { readAuthToken } from '../utils/authToken'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import {
   newestProgress as pickNewestProgress,
@@ -538,7 +539,7 @@ export const useReaderStore = defineStore('reader', {
     },
     scheduleSettingsSync() {
       this.ensureReaderSettingsScope()
-      if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return
+      if (!readAuthToken()) return
       clearTimeout(readerSettingsSyncTimer)
       readerSettingsSyncTimer = setTimeout(() => {
         this.saveReaderSettings().catch(() => {})
@@ -560,7 +561,7 @@ export const useReaderStore = defineStore('reader', {
     },
     async loadReaderSettings(options = {}) {
       this.ensureReaderSettingsScope()
-      if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
+      if (!readAuthToken()) return null
       const operation = readerSettingsOperations.begin('reader')
       this.settingsSyncing = false
       try {
@@ -605,7 +606,7 @@ export const useReaderStore = defineStore('reader', {
     },
     async saveReaderSettings(options = {}) {
       this.ensureReaderSettingsScope()
-      if (typeof localStorage === 'undefined' || !localStorage.getItem('openreader_token')) return null
+      if (!readAuthToken()) return null
       clearTimeout(readerSettingsSyncTimer)
       const operation = readerSettingsOperations.begin('reader')
       this.settingsSyncing = true

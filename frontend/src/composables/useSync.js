@@ -4,6 +4,7 @@ import { useBookshelfStore } from '../stores/bookshelf'
 import { usePreferencesStore } from '../stores/preferences'
 import { useUserStore } from '../stores/user'
 import { currentUserScope } from '../utils/authScope'
+import { readAuthToken } from '../utils/authToken'
 import { refreshShelfAfterSyncConnect } from '../utils/shelfSyncFreshness'
 
 const connected = ref(false)
@@ -30,7 +31,7 @@ export function useSync() {
   const userStore = useUserStore()
 
   function connect() {
-    const token = localStorage.getItem('openreader_token')
+    const token = readAuthToken()
     if (!token) return
     const scope = currentUserScope()
     if (socket && socketToken === token && socketScope === scope) return
@@ -204,14 +205,14 @@ export function useSync() {
       && socketGeneration === generation
       && socketToken === token
       && socketScope === scope
-      && localStorage.getItem('openreader_token') === token
+      && readAuthToken() === token
       && currentUserScope() === scope
   }
 
   function isExpectedSocketSession(expected) {
     return Boolean(expected?.token)
       && socketGeneration === expected.generation
-      && localStorage.getItem('openreader_token') === expected.token
+      && readAuthToken() === expected.token
       && currentUserScope() === expected.scope
   }
 
