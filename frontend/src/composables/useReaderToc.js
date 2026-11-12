@@ -72,6 +72,12 @@ export function useReaderToc(options) {
         options.onUnavailable?.()
         return
       }
+      // After a failed book load, refreshing the catalog reloads the whole book so the target chapter
+      // loads once the catalog arrives (reader-dev refreshCatalog -> loadCatalog -> getContent).
+      if (options.isBookLoadFailed?.()) {
+        await options.reloadBook()
+        return
+      }
       if (unref(options.isRemoteBook)) {
         await options.refreshRemoteCatalog()
       } else {

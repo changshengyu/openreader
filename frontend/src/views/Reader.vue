@@ -704,6 +704,8 @@ const {
   goChapter: (...args) => goChapter(...args),
   refreshRemoteCatalog: (...args) => refreshReaderBookCatalog(...args),
   refreshLocalCatalog: (...args) => loadChapters(...args),
+  isBookLoadFailed: () => readerCatalogLoadFailed.value,
+  reloadBook: () => retryReaderBookLoad(),
 })
 const {
   cachedChapters: browserCachedChapters,
@@ -779,6 +781,8 @@ const {
   resetBrowserState: resetBrowserCachedChapters,
   clearBrowserCache: clearBookBrowserChapterCache,
   loadChapter: (...args) => loadChapter(...args),
+  isBookLoadFailed: () => readerCatalogLoadFailed.value,
+  reloadBook: () => retryReaderBookLoad(),
   getCurrentOffset: () => currentOffset(),
   clearServerCache: ids => bookshelf.batchClearCache(ids),
   clearCurrentBrowserCache: clearCurrentBookBrowserCache,
@@ -2257,6 +2261,22 @@ function handleEpubPreview(payload) {
     Math.min(Number(payload.imageIndex) || 0, images.length - 1),
   )
   epubPreviewVisible.value = true
+}
+
+// Error page R5: the retries of a failed book load run the whole book load again (catalog first, then the
+// route or saved target chapter) instead of loading a chapter clamped into an empty catalog. Resolves true when
+// the target chapter loaded.
+async function retryReaderBookLoad() {
+  readerCatalogLoadFailed.value = false
+  chapterLoadError.value = ''
+  chapterLoading.value = true
+  try {
+    await loadReaderBook()
+  } catch (error) {
+    handleReaderBookLoadError(error)
+    return false
+  }
+  return !readerCatalogLoadFailed.value && !chapterLoadError.value
 }
 
 // A failed book load (catalog, book info or remote session) is reader-dev's catalog failure page.
