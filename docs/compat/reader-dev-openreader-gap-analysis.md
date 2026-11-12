@@ -1,5 +1,18 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P2 账号 每用户书籍上限
+
+上游 `reader.app.userBookLimit`（默认 200，`READER_APP_USERBOOKLIMIT`）只在 `BookController.kt#saveBook` 检查：书名加作者不在书架上、
+并且书架已有 ≥ 上限本时返回“超过用户书籍数上限”，检查在移动本地文件和远程抓取之前；已在书架上的书照常更新；恢复备份（`syncFromWebdav`）
+直接覆盖书架，不检查。OpenReader 的 `users.book_limit` 只能由管理员 API 设置，没有任何代码读取；五条加书路径（`POST /api/books`、
+`/books/remote`、`/imports/books`、`/local-store/import`、`/webdav/import`）都不检查数量。
+B1–B3 must-fix：新增 `OPENREADER_USER_BOOK_LIMIT`（默认 200，未设置、非整数或 ≤ 0 时按 200），用户 `BookLimit > 0` 时覆盖实例值；只在将要新建一行时计数，
+计数与插入在同一个事务里；远程加入在抓取前、本地导入在写归档前先查一次；达到上限返回 `403 {"error":"book limit reached"}`，批量导入逐项报告；
+前端显示“超过用户书籍数上限”。已在书架上的书、恢复占位行的挂接和备份恢复不受限，已超过上限的书架不改动。默认 200 会让升级前已有 200 本以上的用户
+不能再新增，理由与调整方式写在合同第 5 节。合同见
+[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。

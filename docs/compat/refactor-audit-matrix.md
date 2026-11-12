@@ -1,5 +1,13 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：每用户书籍上限（P2，B1–B3、A1–A5）
+
+见[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。基于 main `f82e0f5a`，分支
+`claude/account-book-limit-remember-login-a2fb9c`。上游 `userBookLimit` 默认 200，只阻止新增（`BookController.kt#saveBook`），恢复不受限。
+B1 五条加书路径计数（事务内，远程在抓取前、本地在写归档前先查）、B2 `OPENREADER_USER_BOOK_LIMIT`（默认 200）、B3 前端“超过用户书籍数上限”为 must-fix；
+A1 用户 `BookLimit > 0` 覆盖实例值、A2 HTTP 403、A3 沿用现有去重规则、A4 非法值按 200、A5 批量逐项报告为 acceptable-change。
+计划测试 L1–L10、F1–F4，加三视口浏览器合同。状态 contract-only。
+
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
 见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门
