@@ -1,5 +1,14 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：PWA Service Worker 与离线外壳盘点（P2，W1–W21）
+
+见[`pwa-service-worker-fixed-baseline-second-audit-p2-contract.md`](pwa-service-worker-fixed-baseline-second-audit-p2-contract.md)。基于 main `f82e0f5a`，只写文档。
+上游注册 Workbox 4.3.1 SW（从 CDN 加载），预缓存构建资源，首页 network-first，封面 cache-first（键为原始 URL），第三方图片
+无上限永久缓存，点击版本号强制更新；OpenReader 没有 SW，服务器不可达时打不开。W1–W4、W21 为 must-fix（待 Q1）；W5、W9 为
+intentional-redesign；W6、W10、W12–W15、W17 为 acceptable-change；W7、W8、W19 为 unknown；W11（接口不缓存）为不变量。
+待用户决定：Q1 是否加 SW 及缓存范围，Q2 版本号点击，Q3 新 SW 的接管时机。manifest 归显示名切片，本切片不改。
+状态 contract-only / awaiting-user-decision；未改应用代码，镜像未构建，生产未动。
+
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
 见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门

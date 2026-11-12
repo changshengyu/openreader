@@ -1,5 +1,32 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
+
+上游 fa22f27 在生产构建中注册 Workbox 4.3.1 生成的 `service-worker.js`（`vue.config.js#pwa`、`public/sw.js`、
+`registerServiceWorker.js`）。它预缓存 51 个构建文件（不含 `index.html`）；首页走 network-first（缓存名 `home`）；
+`/reader3/cover` 走 cache-first（`bookCover`，键为原始 URL，30 天 / 1000 条）；`/reader3/` 只走网络；其余请求（主要是
+第三方图片）无上限永久缓存，并剥离 Referer。`Index.vue#updateForce` 点击版本号会检查更新、清首页缓存并刷新。
+在 HTTPS 或 localhost 下，上游 Web App 断网时能打开外壳，再读 localforage 中的书架与已缓存章节。OpenReader 没有 SW，
+服务器不可达时页面打不开；总账此前没有分类。
+
+在隔离容器中复现上游构建（Vue CLI 4.5.19、Workbox 4.3.1）后确认四点：Workbox 从 Google CDN 加载；`SKIP_WAITING`
+发给已激活的 worker，从未生效；运行时缓存发布后不清理；`public/manifest.json`（pr-701 竖屏锁定）被 Vue CLI 忽略，
+实际发布的是 `display: fullscreen`、没有 orientation 的生成 manifest。
+
+分类：
+
+- must-fix（待用户决定是否实现）：W1–W4（注册、预缓存、导航离线回退、离线读取已有缓存）、W21（发布后旧分块 404）；
+- intentional-redesign：W5（CDN 加载 Workbox）、W9（第三方 opaque 缓存）；
+- acceptable-change：W6、W10、W12–W15、W17，含静态文件缓存头加固；
+- unknown：W7（版本号点击）、W8（封面缓存）、W19（manifest，归显示名切片）；
+- 必须保持的不变量：W11（接口只走网络）。
+
+更正：`index-settings-action-surface-second-audit-p1-contract.md` §2.2 签收的是后端状态点击，不是版本号点击。
+安全约束：不缓存任何接口 JSON；封面缓存键用 capability URL，不用原始 URL；退出登录与切换账号时清空账号相关缓存；
+SW 缓存不计入已签收的本地缓存范围。合同见
+[`pwa-service-worker-fixed-baseline-second-audit-p2-contract.md`](pwa-service-worker-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only / awaiting-user-decision**。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。
