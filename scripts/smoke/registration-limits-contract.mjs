@@ -59,7 +59,18 @@ async function switchToRegister(page, name) {
   const passwordBox = await page.getByPlaceholder('请输入密码').boundingBox()
   const viewport = page.viewportSize()
   assert(field && passwordBox && field.y > passwordBox.y, `${name}: the invite field must sit below the password field`)
-  assert(field.x >= 0 && field.x + field.width <= viewport.width + 1, `${name}: the invite field overflows the ${viewport.width}px viewport`)
+  // R6: the login card and every form item (username, password, invite code, button) stay inside the viewport.
+  const boxes = await page.evaluate(() => [document.querySelector('.auth-card'), ...document.querySelectorAll('.auth-card .el-form-item')]
+    .filter(Boolean).map(element => {
+      const box = element.getBoundingClientRect()
+      const label = element.classList.contains('auth-card') ? 'login card' : (element.querySelector('label')?.textContent?.trim() || 'submit button')
+      return { label, left: box.left, right: box.right }
+    }))
+  assert(boxes.length >= 5, `${name}: expected the login card and four form items, saw ${boxes.length}`)
+  for (const box of boxes) {
+    assert(box.left >= 0 && box.right <= viewport.width + 1,
+      `${name}: ${box.label} spans ${Math.round(box.left)}-${Math.round(box.right)} outside the ${viewport.width}px viewport`)
+  }
 }
 
 async function registerFlow(browser, name, viewport, username) {
