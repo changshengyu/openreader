@@ -61,9 +61,10 @@ Open `http://<server-ip>:8080` in a browser (or <http://localhost:8080> on the s
 
 - **The first account becomes the administrator.** Accounts registered later are regular users.
 - Usernames need at least 5 characters and may contain only letters and digits. Passwords need at least 8 characters.
+- If you set `OPENREADER_INVITE_CODE`, registration also asks for **邀请码** (invite code). At most `OPENREADER_USER_LIMIT` accounts can exist (default and maximum 50).
 
 > [!WARNING]
-> Anyone who can open the page can create an account. Register your own administrator account right after the first start, and read [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) before making it reachable from outside your home network.
+> Unless you set an invite code, anyone who can open the page can create an account. Register your own administrator account right after the first start, and read [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) before making it reachable from outside your home network.
 
 ### 3. Add books
 
@@ -244,7 +245,7 @@ The defaults are fine inside your home network. Before making OpenReader reachab
 
 1. **Keep the `data` folder private.** On first start OpenReader creates its own random signing key, `data/instance-secret`, and signs login sessions and resource links with it. Anyone who can read that file could forge them, so don't share it, and keep it together with the rest of `data/` when you back up or move the server. You don't need to set `OPENREADER_JWT_SECRET`. If you set it anyway, use a long random value (for example the output of `openssl rand -hex 32`, never an example from a guide): it replaces the generated key, and every device has to sign in again once.
 2. **Put it behind an HTTPS reverse proxy** such as Caddy or Nginx, instead of exposing port 8080 directly.
-3. **Mind open registration.** Anyone who can open the page can currently create an account. To keep strangers out, put OpenReader behind a VPN (such as Tailscale or WireGuard) or allow only trusted IP addresses. Administrators can also delete unknown accounts in user management.
+3. **Require an invite code.** Set `OPENREADER_INVITE_CODE` to a long value that you share only with the people you invite. Registration then asks for it as **邀请码**, and administrators can still add accounts in user management without it. `OPENREADER_USER_LIMIT` caps the number of accounts (default and maximum 50). To keep strangers from reaching the page at all, put OpenReader behind a VPN (such as Tailscale or WireGuard) or allow only trusted IP addresses. Administrators can also delete unknown accounts in user management.
 
 Caddy obtains HTTPS certificates automatically, and the minimal configuration is three lines:
 
@@ -312,6 +313,8 @@ Most installations never need these. Change them only for a specific need.
 | Variable | Default | Description |
 |---|---|---|
 | `OPENREADER_JWT_SECRET` | Not set: a random key is generated in `data/instance-secret` | Signs login sessions and resource links. Optional; see [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) |
+| `OPENREADER_INVITE_CODE` | empty | Invite code (邀请码) that registration requires. Empty keeps registration open; administrators add users without it. Same as reader's `READER_APP_INVITECODE` |
+| `OPENREADER_USER_LIMIT` | `50` | Maximum number of accounts, from 1 to 50, for registration and for administrators adding users. Existing accounts keep signing in. Same as reader's `READER_APP_USERLIMIT` |
 | `OPENREADER_TRUSTED_PROXIES` | empty | Your reverse proxy's own IP addresses or network ranges, comma-separated. Leave empty for direct access |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Local-network hostnames, IP addresses, or ranges that book sources may reach, comma-separated |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | How often the bookshelf is checked for updates |
@@ -378,7 +381,7 @@ The page can't reach the server. Check that the container is running (`docker co
 Ask an administrator to click **重置密码** (Reset password) in user management. Administrators should keep their own password somewhere safe.
 
 **Can other people register on my OpenReader?**
-Yes. To keep strangers out, see [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet).
+Yes, unless you set `OPENREADER_INVITE_CODE`: then only people who know the invite code can register. `OPENREADER_USER_LIMIT` caps the number of accounts (default 50). See [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet).
 
 **Can I read offline?**
 The page needs a connection to your OpenReader server. Chapters you cache ahead of time stay readable even when the source website is down.
