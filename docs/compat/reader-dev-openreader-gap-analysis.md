@@ -11,6 +11,10 @@ A1–A4 acceptable-change：通用 401、常量时间比较、`OPENREADER_` 前�
 用户数上限的规则与文案范围按上游取值（确认问题因应用退出没有得到回答）。合同见
 [`registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md`](registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `2870009`、红测 `2c6a8e0`、实现 `e6bb21b`（后端）、`309b256`（前端）、`034a483`（README 与 compose）。
+浏览器合同另外发现 `/login` 卡片在 390/360 下超出视口（原有缺陷，R6）：`665b9de` 补充合同、`e5f21eb` 红测、`74b6642` 修复。后端全量 31 包、vet、
+race api/config 通过（api 1127.0 s）；前端 882/882、build；公告门自测 139/139、compose、存储合同；三视口注册限制合同与 openreader-smoke、四视口重新认证合同通过。
+状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
 

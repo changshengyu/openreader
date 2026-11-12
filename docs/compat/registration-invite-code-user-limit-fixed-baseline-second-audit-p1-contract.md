@@ -133,7 +133,7 @@
 
 ## 9. 状态
 
-**contract-only**。
+**contract-only**（由第 11 节记录取代）。
 
 ## 10. 补充：`/login` 卡片的窄屏溢出（R6，2026-11-12）
 
@@ -147,3 +147,25 @@
 
 - 目标：`.auth-page` 的 grid 列为 `minmax(0, 1fr)`，卡片宽度不超过页面内容区，桌面仍是 400px；对话框 `AuthDialog` 已有 `max-width: calc(100vw - 28px)`，不改。
 - 测试：浏览器合同在三个视口都检查卡片和每个表单项（用户名、密码、邀请码、按钮）落在视口内（右缘不超过视口宽度加 1px），并在当前构建上先红。
+
+## 11. 记录（2026-11-11 至 11-12）
+
+提交：
+- 合同 `2870009`；R6 补充 `665b9de`。
+- 红测 `2c6a8e0`：
+  - 后端 6 个用例都在断言处失败（注册返回 200，管理员新增返回 201，并发 8 个全部成功，用户名占用先于邀请码返回 409），2 个对照通过；
+  - 前端 5 个用例因为辅助函数与输入框不存在而失败；
+  - 浏览器合同停在缺少邀请码输入框的地方。
+- R6 红测 `e5f21eb`：390×844 下登录卡片为 20–420，超出视口；1440×900 通过。
+- 实现：后端 `e6bb21b`（config、注册、管理员新增），前端 `309b256`（`authErrors.js`、`authRequest.js`、表单、store、用户管理），
+  文档与 compose `034a483`，R6 布局 `74b6642`。同一组断言全部转绿。
+
+验证：
+- 后端：`go test ./...` 31 个包通过，`go vet ./...` 通过；`go test -race -timeout 40m ./api ./config` 通过（api 1127.0 秒，config 1.7 秒），没有数据竞争。
+- 前端：882/882（原 877 加新增 5 个），build 通过。
+- 发布工具：Go、前端、OS 公告门自测 139/139；`docker compose config` 通过，两个新变量默认为空；存储 HTTP 合同通过。
+- 浏览器（真实 Go 服务、全新数据目录、`OPENREADER_INVITE_CODE=smoke-invite`、`OPENREADER_USER_LIMIT=3`）：
+  - `registration-limits-contract.mjs` 三个视口都通过，最终数据库正好 3 个用户；
+  - `openreader-smoke.mjs` 三个视口、`reader-reauthentication-contract.mjs` 四个视口也都通过。
+
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
