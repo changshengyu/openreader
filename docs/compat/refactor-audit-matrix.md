@@ -1,5 +1,11 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：桌面面板打开时进度块的上一章/下一章（P0）
+
+见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)第 13 节。
+P7：桌面任一工作区面板打开时，进度块的上一章/下一章执行原动作（含首末章提示）并关闭面板；P8 其余不变。`da438bc7` 已经实现了 P7（`useReaderTools.run` 先关面板），
+本切片只补单元（工具派发、源码接线）与浏览器 C5（3 视口 × 4 面板），红灯取 `5c087084`，产品代码不改。状态 contract-only。
+
 ## 2026-11-12 当前切片：Reader 运行标题加载中与失败时的章节名（P0）
 
 见[`reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md`](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7、11 节。

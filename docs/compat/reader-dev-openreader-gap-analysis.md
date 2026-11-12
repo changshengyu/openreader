@@ -1,5 +1,12 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P0 Reader 桌面面板打开时进度块的上一章/下一章
+
+上游四个桌面面板是没有遮罩的 click popover，右侧进度块的上一章、下一章按下照常执行，面板随之关闭。[桌面面板正文控件合同](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)
+第 5 节第 8 行在 `0962dca` 上实测为“执行，面板不关”并判 must-fix，第 10 节第 1 条留待并入。新增第 13 节写成实施合同 P7、P8。核对发现
+`da438bc7`（2026-11-03）已把进度块改为经 `handleDesktopToolAction`，共享工具派发对非面板工具先 `closePrimaryPanels()`，所以 main 已满足 P7，
+但没有合同条目，也没有测试锁住。本切片补合同、单元与浏览器 C5，红灯取在 `da438bc7` 之前的 `5c087084`，产品代码不改。状态 **contract-only**（实施补充）。
+
 ## 2026-11-12 P0 Reader 运行标题加载中与失败时的章节名（实施）
 
 固定上游 `Reader.vue#getContent` 在请求正文前就把 `this.title` 写成目标章目录标题，失败不回退，迟到响应被丢弃；Reader 内换书时页头

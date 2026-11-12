@@ -450,3 +450,40 @@ Compose、存储 HTTP 合同、浏览器启动门、两平台 OS APK 门、新�
 里的 Reader 与本切片验证过的相同。
 
 状态：P3、P4 **released / awaiting-device-verification**；第 10 节第 1 条（桌面进度块）仍开放。生产未访问，实际运行版本未知。
+
+## 13. 第 10 节第 1 条：桌面进度块的上一章/下一章（实施合同，2026-11-12）
+
+协调方 2026-11-12 把第 10 节第 1 条并入本轮（简报：“桌面工作区面板打开时，进度块的上一章/下一章应执行动作并关闭面板”）。判定沿用第 5 节
+第 8 行：**`must-fix`**。上游四个桌面面板是没有遮罩的 click popover，右侧 `.read-bar` 的阅读进度、上一章、下一章（`Reader.vue` L140–156）
+按下照常执行，事件冒泡到 `document` 后面板关闭（第 2.3 节表格，第 2.4 节“右栏下一章”复现）。
+
+**现状核对**（main `f82e0f5a`）：
+
+- 第 4.3 节“执行，面板不关”是在 `0962dca` 上测的。当时 `Reader.vue` 把进度块直接绑定成 `@previous="goChapter(currentIndex - 1)"`、
+  `@next="goChapter(currentIndex + 1)"`，`f82e0f5a` 之前的 `5c087084` 仍是这样。
+- `da438bc7`（2026-11-03，“align the Reader menu bars, panels and their logic with reader-dev”）把两个绑定改成
+  `handleDesktopToolAction('previous'/'next')`。`useReaderTools.run` 对每个非面板工具都先调用 `closePrimaryPanels()`，`Reader.vue` 传入的
+  `closeReaderPrimaryPanels` 会关掉书架、书源、目录、设置四个状态，桌面工作区面板就是由这四个状态派生的。所以现行代码按下进度块的
+  上一章/下一章已经是“执行并关闭”，首章/末章的边界提示（`本章是第一章`/`本章是最后一章`）同样先关面板。这个提交的说明只提到移动端
+  浮动按钮和底栏，没有给桌面进度块写合同条目，也没有测试锁住这一点。
+
+**目标合同**：
+
+P7. 桌面场景（`isMobileReader` 为假）任一工作区面板打开时，按进度块的“上一章”或“下一章”，一次按下既执行原动作（有相邻章时进入
+  该章；首章、末章时提示 `本章是第一章`、`本章是最后一章`），也关闭当前面板，结果与“先关面板、再按”相同；进入新章后只写一次指向
+  该章的进度。
+
+P8. 不变：关闭层、面板、进度块的层级与 DOM 顺序；P2–P6；移动端主面板。进度块的“阅读进度”（缓存区开关）和右栏书签、搜索、信息、
+  笔记、缓存入口仍按第 10 节第 1 条后半另行裁决。现行代码里“阅读进度”同样经 `handleDesktopToolAction('cache')` 先关面板，本节不为它
+  加断言，也不改它。
+
+**测试计划**：
+
+- 单元：`readerTools.test.mjs` 新增“desktop chapter steps close every primary panel before they step”，覆盖下一章、首章边界和末章边界。
+  `readerDesktopPanelContentControls.test.mjs` 新增 P7 源码合同，检查三点：进度块的两个事件绑定到共享工具派发；派发带
+  `closePrimaryPanels: closeReaderPrimaryPanels`；后者覆盖四个面板状态。
+- 浏览器：`reader-desktop-panel-controls-contract.mjs` 新增 C5，3 个视口 × 4 个面板，page 模式。从第 0 章打开面板，先按“下一章”，
+  再打开面板按“上一章”。每次都要求面板与关闭层卸载，路由和正文到达目标章，并且只写一次该章进度。
+- 红灯：现行代码已经满足 P7，红灯只能取在 `da438bc7` 之前的 `5c087084`。`git diff 5c087084 HEAD -- frontend/package-lock.json frontend/package.json frontend/vite.config.js`
+  为空，可以用同一份 `node_modules` 构建。预期：两条单元在 `5c087084` 上失败，C5 的 12 例都在“面板关闭”上失败；HEAD 上全部通过。
+- 实现：没有产品代码改动（P7 已由 `da438bc7` 实现），本节只补合同、单元与浏览器断言和记录。
