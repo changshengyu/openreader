@@ -8,6 +8,11 @@ OpenReader（`f82e0f5a`）的错误块只有原因和“重新加载”（R7 已
 连续模式目标章失败占满正文，目录失败后“重新加载”按第 0 行显示另一章。按[错误面合同](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)
 第 7 节 R1–R6、R8 与 D1 (b) 映射表实施；第 13 节补充失败类型、目录行、提示范围、目录失败的三个重试入口与 R6 的状态规则，并记录两处与
 合同冲突的既有断言的改写。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：补充 `c752efae`、导入后缀 `ed876aa7`、红测 `be9e9653`、实现 `246a829b`（R1–R4、R8、D1）/`1aa2fa12`（R5）/
+`eac2fe5e`（R6）、测试改写 `ad7df218`（面板 C3 scroll 跟随 R6）/`3384ead6`（连续合同按 D1 不再要求后端原文）。前端红测基线 918 条中 35 条红，修复后
+918/918 与 build；`reader-error-surface-contract` 红测基线 36/48 FAIL、修复后 48/48；连续、标签页标题、文字模式、重新认证、移动端（含 iPad）、音频、
+openreader-smoke、EPUB（真实服务）与桌面面板 108 例通过；七个临时变异都被对应断言抓到。状态 **implementation-complete / regression-validated**；
+分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
