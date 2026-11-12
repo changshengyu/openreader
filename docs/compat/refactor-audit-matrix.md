@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：Reader 正文加载失败错误页 R1–R6、R8（P0）
+
+见[`reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)第 7、13 节。基于 main `f82e0f5a`。
+R1 错误页 `<h3>` 取 `currentIndex` 的目录行，R2 `获取章节内容失败！`/`获取章节目录失败！` 两行文字，R3 按 D1 (b) 把后端 code/状态映射成中文短句，R4 每次当前章失败
+提示一次，R5 目录失败时三个重试入口都重新加载整本书，R6 连续模式目标章失败留在窗口、后一章照常加载，R8 失败后按错误页重算页码；R7 已发布不重开。
+计划：`readerChapterErrorText`（新）、错误面源码合同、加载器/维护/目录/窗口单元，`reader-error-surface-contract` 补 E1、E4–E7 与连续模式目标章。状态 contract-only。
+
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
 见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门

@@ -1,5 +1,14 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P0 Reader 正文加载失败错误页 R1–R6、R8（实施）
+
+固定上游 `Reader.vue#getContent`/`loadCatalog` 与 `Content.vue#render`：当前章失败后正文区是“目标章 `<h3>` + `获取章节内容失败！` + 原因”的
+错误章节页，每次失败弹一次提示，页码按错误页重算，连续模式失败章留在列表里、后一章照常加载；目录失败显示 `获取章节目录失败！`。
+OpenReader（`f82e0f5a`）的错误块只有原因和“重新加载”（R7 已发布），没有标题、标签和提示，原因是后端英文消息，失败后沿用上一章页数，
+连续模式目标章失败占满正文，目录失败后“重新加载”按第 0 行显示另一章。按[错误面合同](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)
+第 7 节 R1–R6、R8 与 D1 (b) 映射表实施；第 13 节补充失败类型、目录行、提示范围、目录失败的三个重试入口与 R6 的状态规则，并记录两处与
+合同冲突的既有断言的改写。状态 **contract-only**（实施补充）。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。
