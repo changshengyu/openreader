@@ -18,6 +18,8 @@
 // - C4 controls (page): a press on the page below the panel only closes it (route, scroll and progress unchanged,
 //   the tap zones and the reader page see nothing); the right rail 重新载入章节 closes the panel and reloads the
 //   chapter; another panel's rail entry switches panels.
+// - C5 the progress block's 下一章 and 上一章 (page; section 13): each press runs the step, routes to its chapter, shows
+//   it, writes one progress row for it, and closes the open panel, as upstream's click popovers do.
 // Viewports: 1440x900 mouse; iPad 1366x1024 and 1024x1366 touch (hasTouch, iPad UA, as reader-mobile-contract).
 // Each case uses a fresh browser context, runs to the end and reports all of its failed checks;
 // SMOKE_CASES=<regex> limits the cases.
@@ -61,10 +63,13 @@ const MAIN_BUTTON = '.chapter-load-error button'
 const TARGET_INLINE_BUTTON = `.chapter-content[data-index="${MAIN_FAIL_INDEX}"] .chapter-inline-error button`
 const RAIL_RELOAD = '.reader-right-rail .round-tool[aria-label="重新载入章节"]'
 const PANEL_CLOSE = '.reader-desktop-workspace-close'
+const PROGRESS_NEXT = '.reader-page-control button[aria-label="下一章"], .reader-page-control button[title="下一章"]'
+const PROGRESS_PREVIOUS = '.reader-page-control button[aria-label="上一章"], .reader-page-control button[title="上一章"]'
 const BAND = 0.88
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-const railEntry = label => `.reader-left-rail .rail-item[aria-label="${label}"]`
+// Before da438bc7 the rail and progress buttons were named by title instead of aria-label (C5 red baseline).
+const railEntry = label => `.reader-left-rail .rail-item[aria-label="${label}"], .reader-left-rail .rail-item[title="${label}"]`
 
 function json(data, status = 200) {
   return { status, contentType: 'application/json', body: JSON.stringify(data) }
@@ -595,6 +600,50 @@ async function runRailReloadCase(page, viewport, panel, behavior, failures, note
   check(failures, after.query === before.query, `C4-reload route: ${before.query} -> ${after.query}`)
 }
 
+// C5: the progress block's chapter steps run and close the open panel (contract section 13, P7).
+async function runProgressChapterCase(page, viewport, panel, behavior, failures, notes) {
+  await page.waitForTimeout(1200)
+  for (const step of [
+    { label: '下一章', selector: PROGRESS_NEXT, target: NEXT_INDEX },
+    { label: '上一章', selector: PROGRESS_PREVIOUS, target: 0 },
+  ]) {
+    if ((await readState(page)).panels.length) {
+      const close = await hitTest(page, PANEL_CLOSE)
+      if (close?.hitIsTarget) await press(page, viewport, close)
+      await page.waitForFunction(() => !document.querySelector('.reader-desktop-workspace'), null, { timeout: 5000 }).catch(() => {})
+    }
+    await openPanel(page, viewport, panel)
+    await waitForQuiet(behavior)
+    const hit = await hitTest(page, step.selector)
+    const before = await readState(page)
+    check(failures, hit?.hitIsTarget, `C5 ${step.label} hit: (${hit?.x},${hit?.y}) hits ${hit?.hit}`)
+    const mark = Date.now()
+    if (hit) await press(page, viewport, hit)
+    await page.waitForFunction(index => (
+      location.search === `?chapter=${index}`
+      && document.querySelector(`.chapter-content[data-index="${index}"] [data-reader-block]`)
+    ), step.target, { timeout: 5000 }).catch(() => {})
+    // The progress write is throttled (minimum interval 1200ms), as in C1.
+    await waitUntil(() => since(behavior.progressWrites, mark).length > 0, 3000)
+    await waitForQuiet(behavior)
+    const after = await readState(page)
+    const writes = since(behavior.progressWrites, mark)
+    notes.push(`${step.label} (${hit?.x},${hit?.y}): panel ${JSON.stringify(before.panels)}->${JSON.stringify(after.panels)} route ${before.query}->${after.query} PUT ${describeWrites(writes)}`)
+    panelClosedCheck(failures, `C5 ${step.label}`, after)
+    check(failures, after.query === `?chapter=${step.target}`, `C5 ${step.label} route: ${before.query} -> ${after.query}`)
+    check(
+      failures,
+      String(after.paragraphs[String(step.target)] || '').startsWith(TITLES[step.target]),
+      `C5 ${step.label} shows ${JSON.stringify(after.paragraphs)}`,
+    )
+    check(
+      failures,
+      writes.length === 1 && writes[0].chapterIndex === step.target && writes[0].chapterTitle === TITLES[step.target],
+      `C5 ${step.label} progress: expected one PUT for ${step.target}:${TITLES[step.target]}, got ${describeWrites(writes)}`,
+    )
+  }
+}
+
 async function runPanelSwitchCase(page, viewport, panel, behavior, failures, notes) {
   await page.waitForTimeout(1200)
   await openPanel(page, viewport, panel)
@@ -625,6 +674,7 @@ const SCENARIOS = [
   { id: 'C4-blank', modes: ['page'], run: runBlankCase },
   { id: 'C4-reload', modes: ['page'], run: runRailReloadCase },
   { id: 'C4-switch', modes: ['page'], run: runPanelSwitchCase },
+  { id: 'C5', modes: ['page'], run: runProgressChapterCase },
 ]
 
 async function runCase(browser, scenario, viewport, panel, mode) {

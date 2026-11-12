@@ -199,3 +199,25 @@ test('加载下一章 keeps stopping click and touch from reaching the reader pa
     assert(!binding.modifiers.includes('prevent'), `.reader-chapter-end @${event} must not cancel the tap's click`)
   }
 })
+
+// P7 (section 13): the desktop progress block's chapter steps reach the shared tool dispatch, which closes the four
+// desktop workspace panels (useReaderPrimaryPanels) before it steps.
+test('P7 the desktop progress block chapter steps close the desktop workspace through the tool dispatch', async () => {
+  const { template, script } = await readReader()
+  const element = template.match(/<ReaderDesktopProgress\b((?:[^>"']|"[^"]*"|'[^']*')*)\/>/)
+  assert(element, '<ReaderDesktopProgress> is missing from Reader.vue')
+  for (const action of ['previous', 'next']) {
+    const binding = eventBinding(element[1], action)
+    assert.equal(binding?.handler, `handleDesktopToolAction('${action}')`, `@${action} must run the shared ${action} tool action`)
+  }
+  assert.match(
+    script,
+    /\}\s*=\s*useReaderTools\(\{[\s\S]*?\bclosePrimaryPanels:\s*closeReaderPrimaryPanels\b/,
+    'the tool dispatch must close the primary panels before a non-panel action',
+  )
+  assert.match(
+    script,
+    /close:\s*closeReaderPrimaryPanels,[\s\S]*?\}\s*=\s*useReaderPrimaryPanels\(\{\s*panels:\s*\{\s*shelf:\s*showShelfDrawer,\s*source:\s*showSourceDrawer,\s*toc:\s*showTocDrawer,\s*settings:\s*showSettingsDrawer,\s*\},?\s*\}\)/,
+    'closing the primary panels must cover the four desktop workspace panels',
+  )
+})
