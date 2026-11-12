@@ -2,7 +2,7 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
-## 2026-11-11 RSS source (user_id, custom_order) index (additive index, contract-only)
+## 2026-11-11 RSS source (user_id, custom_order) index (additive index, implemented on branch, unreleased)
 
 `rss_sources` gains a second non-unique index, `idx_rss_sources_user_custom_order (user_id, custom_order)`, declared in
 the `models.RSSSource` tags and created by `AutoMigrate` at startup when missing. It lets SQLite answer the
@@ -10,6 +10,12 @@ the `models.RSSSource` tags and created by `AutoMigrate` at startup when missing
 column, table statement, row, backup member, cache or library change; duplicate URLs, duplicate orders and NULL orders
 upgrade unchanged. Building it takes about 41 ms for 200,000 rows; older images ignore it on rollback. See
 [`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md).
+
+Update (2026-11-12, branch `claude/rss-restore-custom-order`, stacked on `claude/rss-user-url-index`, unreleased):
+implemented in `7e1a267`. Go tests migrate fresh databases and the exact 752aa4e schema holding duplicate URLs,
+duplicate orders and a NULL order twice, with every stored value and the table statement unchanged and
+`integrity_check` ok. The historical volume fixture drops both new indexes, and a local binary on it rebuilt them
+at startup and passed the historical RSS smoke check.
 
 ## 2026-11-10 RSS source (user_id, url) index (additive index, implemented on branch, unreleased)
 

@@ -8,6 +8,11 @@
 URL 索引合同第 9 节以为 `COALESCE` 会挡住 min/max 优化，实测不会：加非唯一索引 `idx_rss_sources_user_custom_order (user_id, custom_order)` 后
 每次约 5.8 µs，查询与编号都不用改（O2 acceptable-change：列表与导出改用新索引读取，结果包括排序键完全相同的行实测不变）。合同见
 [`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `10c9e69`、红测 `4931b8d`、实现 `7e1a267`（只改 `RSSSource` 标签）。红测在 `2152114` 上：T1 恢复 11.54 s、另一用户
+写入 5.2 s 后 `database is locked`；T2 四条 `MAX` 查询走 `idx_rss_sources_user_id`；T3 缺索引。实现后同一断言通过（T1 整个测试 0.38–0.39 s），C1 编号不变，
+H1 在本机二进制与历史卷夹具上验证。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1122.8 s）；前端 877/877 与 build；公告门自测 138/138、
+smoke 自测 10/10、现场前端扫描 0 发现。**现场 Go 扫描因 `GO-2026-6859`（`net/http`，Go 1.26.11 修复）失败**，与本切片无关但挡住所有发布，已另提切片。
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-10 P2 RSS 订阅源按用户与 URL 查找的非唯一索引
 

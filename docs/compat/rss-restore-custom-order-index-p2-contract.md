@@ -109,4 +109,46 @@ OpenReader 把恢复的条目合并进 SQLite 行，并给缺少正数 `customOr
 
 ## 10. 状态
 
-**contract-only**。
+**contract-only**（由第 11 节记录取代）。
+
+## 11. 记录（2026-11-12）
+
+提交：合同 `10c9e69`（含 URL 索引合同第 9 节的更正）；红测 `4931b8d`（T1–T3、对照 C1、夹具同时去掉两个新索引）；实现 `7e1a267`（`fix:`，只改
+`backend/models/models.go` 的 `RSSSource` 标签与注释，+5/−3，查询代码不变）。
+
+红测在 `2152114` 的实现上（`4931b8d`）：
+
+- T1：`restoring 5000 RSS entries without customOrder for a user with 40000 sources took 11.54s (busy_timeout 5s); another user's write that
+  waited for it returned after 5.198s with database is locked`（另一次运行同样失败，整个测试 12.79 s）。
+- T2：四条 `MAX(custom_order)` 查询（新建 1、导入 1、恢复 2）计划都是 `SEARCH rss_sources USING INDEX idx_rss_sources_user_id (user_id=?)`。
+  第一版测试只注册了 gorm 的 Query 回调，没有捕获到 `Select(...).Scan(...)` 走的 Row 回调（“no MAX(custom_order) query was captured”），
+  提交前改为两种回调都注册。
+- T3：fresh 与 historical 都缺 `idx_rss_sources_user_custom_order`；historical 在索引断言之前的行内容、表结构语句与 `integrity_check` 检查都通过。
+- C1 与既有的 RSS、备份、恢复接口测试都通过。
+
+`7e1a267` 后同一断言全部通过：T1 整个测试 0.38–0.39 s（含写入 4 万行，`-count=3`）；T2 四条计划都是
+`SEARCH rss_sources USING COVERING INDEX idx_rss_sources_user_custom_order (user_id=?)`；T3 通过；C1 编号与实现前相同；URL 索引切片的 T1–T4 仍通过。
+
+H1 本地验证（不构建镜像）：用 `7e1a267` 的夹具工具生成历史卷（两个新索引都已去掉、只有 `idx_rss_sources_user_id`），本机编译的后端二进制挂该卷启动，
+`/api/health` 正常，smoke 的 `assert_historical_rss_rows` 两个用户都通过，反向检查按预期失败；停止后三个索引都在
+（`idx_rss_sources_user_custom_order` 列为 `user_id`、`custom_order`），三行与排序值不变，`integrity_check` 为 `ok`。
+
+回归（`7e1a267`）：
+
+- 后端：`go vet ./...` 通过，gofmt 无输出；`go test ./...` 31 个包通过（api 121.2 s）；`go test -race ./db ./services/...` 25 个包通过、
+  无数据竞争；`go test -race -timeout 40m ./api` 通过、无数据竞争（1122.8 s）。
+- 前端未改：`npm test` 877/877、`npm run build` 通过。
+- 发布门自测：三个公告门 138/138，浏览器 smoke 自测 10/10；现场前端扫描 `pass`、0 个发现。
+- **现场 Go 公告扫描失败：`GO-2026-6859`**（CVE-2026-97054，2026-11-11T02:51Z 发布）：`net/http` 的 `MaxBytesReader` 超限时无同步地设置
+  `Connection: close`，可能与处理器设置响应头竞争导致 HTTP/1 服务器崩溃；标准库在 Go 1.26.11 修复，本仓库为 1.26.10（47 个发现，45 个到函数级）。
+  与本切片无关，main `e8f3214` 与 `2152114` 同样受影响：在升级到 Go 1.26.11 之前，任何推送 main 都会在 Actions 的 Go 公告门失败。已另提切片
+  （同 `6ca7fbf5` 升级 1.26.10 的做法：`go` 指令与按 OCI index 摘要固定的 builder 镜像）。
+
+未跑：Compose、存储 HTTP 合同、镜像内 fresh/历史卷与可移植备份门（Actions 在推送 main 时运行，历史卷门已含两个新索引）；浏览器 smoke（没有前端或
+接口形状变化）。
+
+合入：本分支叠在 `claude/rss-user-url-index`（`2152114`）之上，可一起合入。origin/main 已到 `e8f3214`；与它合并时只有
+`reader-dev-openreader-gap-analysis.md` 与 `refactor-audit-matrix.md` 顶部冲突（两边都在顶部追加，保留两边、新的在前）。
+
+状态 **implementation-complete / regression-validated**（发布被 Go 公告门挡住，见上）。分支 `claude/rss-restore-custom-order` 已推送，未合入 main，
+镜像未发布，生产未访问。

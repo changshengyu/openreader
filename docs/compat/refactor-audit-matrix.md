@@ -7,6 +7,10 @@
 `idx_rss_sources_user_custom_order (user_id, custom_order)` 为 acceptable-change（查询不改，列表/导出计划改变但结果实测不变）；O3 编号规则、O4 其余索引/
 DSN/WAL/busy_timeout 不重开。计划测试：红测 T1（真实路由大用户恢复不让并发写入失败）、T2（三处 `MAX` 查询计划）、T3（全新库与历史库迁移）；
 对照 C1（恢复编号序列）、H1（历史卷夹具去掉两个新索引）。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `10c9e69`、红测 `4931b8d`、实现 `7e1a267`。红测在 `2152114` 上全部失败（T1：恢复 11.54 s，另一用户写入 5.2 s 后
+`database is locked`），实现后通过（T1 整个测试 0.38–0.39 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、race db/services 25 包、
+race api（40m，1122.8 s）、前端 877/877 与 build、公告门自测 138/138。现场 Go 扫描被 `GO-2026-6859`（Go 1.26.11 修复，与本切片无关）挡住，已另提切片。
+状态 implementation-complete / regression-validated；分支已推送（叠在 URL 索引分支上），未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-10 当前切片：RSS 订阅源按用户与 URL 查找的非唯一索引（P2，U1–U5）
 
