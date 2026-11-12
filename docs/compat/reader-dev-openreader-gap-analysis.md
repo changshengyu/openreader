@@ -12,6 +12,10 @@ B1–B3 must-fix：新增 `OPENREADER_USER_BOOK_LIMIT`（默认 200，未设置�
 不能再新增，理由与调整方式写在合同第 5 节。合同见
 [`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
 状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `523f104`、红测 `e34ad5b`、实现 `1e18d6a`（后端）/`dac67c3`（前端）/`87e239a`（文档）。红测在合同提交上：后端 9 个失败（403 处为 201，
+并发 8 个全部建成，解析 7 种情况不限），占位挂接等对照通过；前端 7 个失败；浏览器停在 desktop（第三本导入 201、无提示）。实现后同一组断言转绿。后端全量 31 个包与 vet、
+race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
+重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 

@@ -7,6 +7,10 @@
 B1 五条加书路径计数（事务内，远程在抓取前、本地在写归档前先查）、B2 `OPENREADER_USER_BOOK_LIMIT`（默认 200）、B3 前端“超过用户书籍数上限”为 must-fix；
 A1 用户 `BookLimit > 0` 覆盖实例值、A2 HTTP 403、A3 沿用现有去重规则、A4 非法值按 200、A5 批量逐项报告为 acceptable-change。
 计划测试 L1–L10、F1–F4，加三视口浏览器合同。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `523f104`、红测 `e34ad5b`、实现 `1e18d6a`（后端）/`dac67c3`（前端）/`87e239a`（文档）。红测在合同提交上：后端 9 个失败（403 处为 201，
+并发 8 个全部建成，解析 7 种情况不限），占位挂接等对照通过；前端 7 个失败；浏览器停在 desktop（第三本导入 201、无提示）。实现后同一组断言转绿。后端全量 31 个包与 vet、
+race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
+重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 

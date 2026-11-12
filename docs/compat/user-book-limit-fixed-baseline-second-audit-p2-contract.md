@@ -142,4 +142,32 @@
 
 ## 9. 状态
 
-**contract-only**。
+**contract-only**（由第 10 节记录取代）。
+
+## 10. 记录（2026-11-12）
+
+提交：
+- 合同 `523f104`；
+- 红测 `e34ad5b`；
+- 实现：后端 `1e18d6a`（config、`services/booklimit`、五条加书路径），前端 `dac67c3`（`utils/bookLimit.js`、两个加入书架组合函数、导入流程、搜索页本地导入），
+  文档 `87e239a`（README、`docker-compose.yml`、`api-contract.md`）。
+
+红测在 `523f104` 上的结果：
+- 后端 9 个用例都在断言处失败：应为 403 的地方返回 201，并发 8 个全部建成，配置解析 7 种情况都不限；
+  L4（占位行挂接）以及 L2、L8、L10 中的对照部分通过。
+- 前端 7 个用例失败（`bookLimit.js` 不存在，各处显示原文 `book limit reached`，搜索页没有接线），`authErrors.js` 未改动的检查通过。
+- 浏览器合同停在 desktop：第三本导入返回 201，没有任何错误提示。
+
+实现后，同一组断言全部转绿。
+
+验证：
+- 后端：`go test ./...` 31 个包通过，`go vet ./...` 通过；`go test -race -timeout 40m ./api ./config ./services/booklimit ./services/localbook` 通过（api 1102.0 秒，config 1.3 秒，localbook 8.7 秒；`booklimit` 没有单独的测试文件，由 api 合同覆盖），没有数据竞争。
+- 前端：890/890（原 882 加新增 8 个），build 通过。
+- 浏览器：真实 Go 服务，全新数据目录，Chromium：
+  - `OPENREADER_USER_BOOK_LIMIT=2` 时，`user-book-limit-contract.mjs` 在三个视口都通过：API 403，导入对话框保持打开并显示“超过用户书籍数上限”，书架不变；
+  - 同一服务上 `reader-reauthentication-contract.mjs` 四个视口、`openreader-smoke.mjs` 三个视口通过；
+  - 另一全新服务（`OPENREADER_INVITE_CODE=smoke-invite`、`OPENREADER_USER_LIMIT=3`）上，`registration-limits-contract.mjs` 三个视口通过；
+  - 两个服务日志都没有 5xx。
+- 没有跑公告门与存储合同：本切片不改依赖、构建或发布工具，也不改存储格式。
+
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
