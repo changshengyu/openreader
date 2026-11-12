@@ -402,7 +402,7 @@ OpenReader rebuilds the web reading experience of [reader-dev](https://github.co
 
 ## Development
 
-OpenReader is built with Go (Gin, GORM, SQLite) and Vue 3 (Vite, Pinia, Element Plus), and both parts ship in the same Docker image. To run it from source you need Go 1.26.10 or newer (with CGO enabled for SQLite) and Node.js 22.
+OpenReader is built with Go (Gin, GORM, SQLite) and Vue 3 (Vite, Pinia, Element Plus), and both parts ship in the same Docker image. To run it from source you need Go 1.26.11 or newer (with CGO enabled for SQLite) and Node.js 22.
 
 ```bash
 git clone https://github.com/changshengyu/openreader.git

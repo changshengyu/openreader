@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
+
+2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。
+GO-2026-6859 / CVE-2026-97054（11-11 公开）：HTTP/1 服务端 `MaxBytesReader` 超限时，读取一方不加同步地设置 `Connection: close`，与 handler
+写响应头竞争可致进程崩溃；修复在 Go 1.26.11。CI 在构建前跑同一门，main 上任何提交都发不出镜像（两个 RSS 分支也在等）。按 GO-2026-6809 先例
+只改 `go` 指令与构建镜像 digest pin（官方 `golang:1.26.11-alpine3.23` index `sha256:db99415e…19e4`，amd64/arm64 已核验），模块与 `go.sum` 不变，
+README 的最低版本同步（G1 must-fix，G2/G3 acceptable-change）。代码检查表明 10 处 `MaxBytesReader(c.Writer, …)` 不满足崩溃前提（gin 的 writer
+不提升 `requestTooLarge`，且先读完请求体再写头），但门没有例外，不以此放行。合同见
+[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-11 P1 账号 注册邀请码与用户数上限
 
 上游 `reader.app.inviteCode`（默认空，非空时注册必须提交相同的 `code`，否则“请输入邀请码”或“邀请码错误”）和 `userLimit`
@@ -46,6 +57,7 @@ smoke 自测 10/10、现场前端扫描 0 发现。**现场 Go 扫描因 `GO-202
 历史卷夹具与 smoke（H1）在本机二进制上验证。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1070.0 s）；前端 877/877 与 build；
 公告门自测 138/138、smoke 自测 10/10、现场 Go 与前端扫描 0 发现。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，
 镜像未发布，生产未访问。
+
 
 ## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
 

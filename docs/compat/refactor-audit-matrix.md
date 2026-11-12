@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
+
+见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门
+在 Go 1.26.10 上失败（`GO-2026-6859`，47 个发现、45 个符号级，`net/http` MaxBytesReader 响应头竞争），main 的任何推送都会在 Go 门失败。G1 must-fix：
+`go 1.26.11` 与官方 `golang:1.26.11-alpine3.23` index pin（`sha256:db99415e…19e4`）；G2 构建阶段 base Alpine 3.23.7 → 3.23.8、G3 README 最低版本同步为
+acceptable-change；模块与 `go.sum`、运行时镜像与构建期 pin、门脚本与例外（无）不重开。状态 contract-only。
+
 ## 2026-11-11 当前切片：注册邀请码与用户数上限（P1，R1–R5、A1–A4）
 
 见[`registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md`](registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md)。基于 main `e8f3214`。
@@ -35,6 +42,7 @@ U5 唯一约束/重复清理/旧索引/文章表索引/DSN/WAL/连接池/busy_ti
 5.18 s 后 `database is locked`），实现后通过（T2 0.25–0.29 s，`-race` 0.95–0.97 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、
 race db/services 25 包、race api（40m，1070.0 s）、前端 877/877 与 build、公告门自测 138/138。状态 implementation-complete / regression-validated；
 分支已推送，未合入 main（origin/main 已到 `7ab3fe3`，只差一份无关文档、无冲突），镜像未发布，生产未动。
+
 
 ## 2026-11-10 当前切片：OS 门 unknown origin 复审续期与运行时 CA bundle 20261020-r0（P1）
 

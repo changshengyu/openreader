@@ -397,7 +397,7 @@ OpenReader 用 Go 和 Vue 3 重新实现了 [reader-dev](https://github.com/chan
 
 ## 参与开发
 
-技术栈：Go（Gin、GORM、SQLite）+ Vue 3（Vite、Pinia、Element Plus），前后端打包在同一个 Docker 镜像里。本地运行需要 Go 1.26.10 或更新版本（需启用 CGO，用于 SQLite）和 Node.js 22。
+技术栈：Go（Gin、GORM、SQLite）+ Vue 3（Vite、Pinia、Element Plus），前后端打包在同一个 Docker 镜像里。本地运行需要 Go 1.26.11 或更新版本（需启用 CGO，用于 SQLite）和 Node.js 22。
 
 ```bash
 git clone https://github.com/changshengyu/openreader.git
