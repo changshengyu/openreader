@@ -145,6 +145,7 @@ import { useOverlayUserManagement } from '../../composables/useOverlayUserManage
 import { useAuthenticatedOperationGuard } from '../../composables/useAuthenticatedOperationGuard'
 import { useOverlayStore } from '../../stores/overlay'
 import { useUserStore } from '../../stores/user'
+import { adminUserErrorMessage } from '../../utils/authErrors'
 
 defineProps({
   isMobile: {
@@ -193,7 +194,7 @@ const {
   confirm: (...args) => ElMessageBox.confirm(...args),
   onSuccess: message => ElMessage.success(message),
   onWarning: message => ElMessage.warning(message),
-  onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
+  onError: (error, fallback) => ElMessage.error(adminUserErrorMessage(error, fallback)),
 })
 
 onMounted(() => {
@@ -204,12 +205,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('openreader:users-updated', handleUsersUpdated)
   clearUsersRefreshTimer()
 })
-
-function readError(error, fallback) {
-  return error?.response?.data?.error?.message ||
-    error?.response?.data?.error ||
-    fallback
-}
 
 function closeUserManager() {
   overlay.userManageVisible = false

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { getMe, loginUser, logoutUser } from '../api/user'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
+import { authRequestPayload } from '../utils/authRequest'
 import { currentUserScope } from '../utils/authScope'
 import { useBookshelfStore } from './bookshelf'
 import { useOverlayStore } from './overlay'
@@ -22,8 +23,8 @@ export const useUserStore = defineStore('user', {
     invalidatedScope: '',
   }),
   actions: {
-    async login(username, password, mode = 'login') {
-      const { data } = await loginUser(mode, { username, password })
+    async login(username, password, mode = 'login', code = '') {
+      const { data } = await loginUser(mode, authRequestPayload(mode, { username, password, code }))
       const previousScope = this.invalidatedScope
       profileOperations.reset()
       this.token = data.token
