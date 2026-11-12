@@ -231,9 +231,10 @@ async function runContinuousViewport(browser, viewport, mode) {
       element.scrollTop = 0
       ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
-    await page.waitForFunction(() => (
-      document.querySelector('.reader-running-chapter-title')?.textContent?.startsWith('第 1 章')
-    ))
+    // Running title contract 8.2 item 3: exact labels, so `新序号 + 旧章节名` cannot pass a prefix check.
+    await page.waitForFunction(expected => (
+      document.querySelector('.reader-running-chapter-title')?.textContent?.trim() === expected
+    ), `第 1 章 ${chapterTitle(0)}`)
     const topBoundary = await page.evaluate(() => {
       const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
       const content = usesDocumentScroll
@@ -258,7 +259,7 @@ async function runContinuousViewport(browser, viewport, mode) {
     })
     await page.waitForTimeout(120)
     const beforeBoundaryLabel = await page.locator('.reader-running-chapter-title').innerText()
-    assert(beforeBoundaryLabel.startsWith('第 1 章'), `${viewport.width}/${mode}: chapter switched before top boundary (${beforeBoundaryLabel}, ${JSON.stringify(topBoundary)})`)
+    assert(beforeBoundaryLabel.trim() === `第 1 章 ${chapterTitle(0)}`, `${viewport.width}/${mode}: chapter switched before top boundary (${beforeBoundaryLabel}, ${JSON.stringify(topBoundary)})`)
     await page.evaluate(() => {
       const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
       const element = usesDocumentScroll
@@ -267,9 +268,9 @@ async function runContinuousViewport(browser, viewport, mode) {
       element.scrollTop += 2
       ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
-    await page.waitForFunction(() => (
-      document.querySelector('.reader-running-chapter-title')?.textContent?.startsWith('第 2 章')
-    ))
+    await page.waitForFunction(expected => (
+      document.querySelector('.reader-running-chapter-title')?.textContent?.trim() === expected
+    ), `第 2 章 ${chapterTitle(1)}`)
     await waitForDocumentTitle(page, '连续跨章契约测试 - 第 2 章', `${viewport.width}/${mode}: tab title after crossing into chapter 2`)
 
     await page.evaluate(() => {
@@ -303,7 +304,7 @@ async function runContinuousViewport(browser, viewport, mode) {
       chapterLabel: document.querySelector('.reader-running-chapter-title')?.textContent || '',
     }))
     assert(beforeExtension.indexes.join(',') === '0,1', `${viewport.width}/${mode}: pre-extension blocks ${beforeExtension.indexes}`)
-    assert(beforeExtension.chapterLabel.startsWith('第 2 章'), `${viewport.width}/${mode}: visible chapter did not advance before extension (${beforeExtension.chapterLabel})`)
+    assert(beforeExtension.chapterLabel.trim() === `第 2 章 ${chapterTitle(1)}`, `${viewport.width}/${mode}: visible chapter did not advance before extension (${beforeExtension.chapterLabel})`)
 
     const anchor = await page.evaluate(() => {
       const usesDocumentScroll = document.querySelector('.reader-shell.document-scroll') !== null
@@ -417,9 +418,9 @@ async function runProgressTransaction(browser) {
       )
       ;(usesDocumentScroll ? window : element).dispatchEvent(new Event('scroll'))
     })
-    await page.waitForFunction(() => (
-      document.querySelector('.reader-running-chapter-title')?.textContent?.startsWith('第 3 章')
-    ))
+    await page.waitForFunction(expected => (
+      document.querySelector('.reader-running-chapter-title')?.textContent?.trim() === expected
+    ), `第 3 章 ${chapterTitle(2)}`)
     await waitForDocumentTitle(page, '连续跨章契约测试 - 第 3 章', 'progress transaction: tab title after crossing into chapter 3')
     await page.waitForTimeout(180)
     assert((requestCounts.get(3) || 0) === 1, `delayed extension request count ${requestCounts.get(3) || 0}`)
