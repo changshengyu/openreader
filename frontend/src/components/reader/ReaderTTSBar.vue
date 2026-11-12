@@ -53,15 +53,15 @@
       </div>
 
       <div class="tts-row">
-        <span class="tts-label">音调</span>
+        <span class="tts-label">语调</span>
         <ReaderSettingStepper
           :model-value="pitch"
           :min="0"
           :max="2"
           :step="0.1"
-          decrease-label="降低朗读音调"
-          increase-label="提高朗读音调"
-          edit-label="自定义朗读音调"
+          decrease-label="降低朗读语调"
+          increase-label="提高朗读语调"
+          edit-label="自定义朗读语调"
           @update:model-value="$emit('pitch-change', $event)"
         />
       </div>
