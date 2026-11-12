@@ -2,6 +2,8 @@
   <p v-if="loading" class="empty-hint">正在加载章节...</p>
 
   <div v-else-if="error" class="chapter-load-error">
+    <h3 v-if="errorTitle" data-pos="0">{{ errorTitle }}</h3>
+    <p>{{ errorLabel }}</p>
     <p>{{ error }}</p>
     <button type="button" @click.stop="emit('reload')" @touchstart.stop @touchend.stop>重新加载</button>
   </div>
@@ -56,6 +58,7 @@
       </div>
       <div v-else-if="block.error" class="chapter-inline-error">
         <h3 data-pos="0">{{ block.title || '正文' }}</h3>
+        <p data-pos="0" data-reader-block>获取章节内容失败！</p>
         <p data-pos="0" data-reader-block>{{ block.error }}</p>
         <button type="button" @click.stop="emit('retry-block', block.index)" @touchstart.stop @touchend.stop>重新加载</button>
       </div>
@@ -105,6 +108,16 @@ defineProps({
   error: {
     type: String,
     default: '',
+  },
+  // reader-dev renders a failed chapter as an ordinary page: the target chapter <h3>, the label line, the reason.
+  // The title is the target chapter's catalog title, empty when the catalog row is unknown (the catalog failed).
+  errorTitle: {
+    type: String,
+    default: '',
+  },
+  errorLabel: {
+    type: String,
+    default: '获取章节内容失败！',
   },
   loaded: {
     type: Boolean,
@@ -312,10 +325,14 @@ p {
   text-align: center;
 }
 
+.chapter-load-error h3,
 .chapter-load-error p {
   margin: 0;
-  color: inherit;
   text-indent: 0;
+}
+
+.chapter-load-error p {
+  color: inherit;
 }
 
 .chapter-inline-error {

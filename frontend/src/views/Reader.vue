@@ -141,6 +141,8 @@
           <ReaderChapterContent
             :blocks="displayedChapterBlocks"
             :error="chapterLoadError"
+            :error-title="chapterErrorTitle"
+            :error-label="chapterErrorLabel"
             :loaded="chapterLoaded"
             :loading="chapterLoading"
             :mode="effectiveReaderMode"
@@ -427,6 +429,15 @@ import {
   readerBookmarkText,
   selectedTextBookmarkContext,
 } from '../utils/readerBookmarkContext'
+import { readerCatalogRow } from '../utils/readerCatalogRow'
+import {
+  READER_CHAPTER_ERROR_CATALOG,
+  READER_CHAPTER_ERROR_CONTENT,
+  READER_EPUB_RESOURCE_ERROR_REASON,
+  readerChapterErrorLabel,
+  readerChapterErrorReason,
+  readerChapterErrorToast,
+} from '../utils/readerChapterError'
 import { readerTextProgress, selectVisibleReaderBlock } from '../utils/readerVisibility'
 import { readerTTSBarVisible } from '../utils/readerTTS'
 import { createReaderScrollAnimator } from '../utils/readerAnimation'
@@ -549,6 +560,8 @@ const chapterBlocks = ref([])
 const chapterWindowBusy = ref(false)
 const chapterLoading = ref(true)
 const chapterLoadError = ref('')
+// The failure came from the book load (catalog, book info or remote session): reader-dev's catalog failure page.
+const readerCatalogLoadFailed = ref(false)
 const chapterLoaded = ref(false)
 const contentEl = ref(null)
 const contentBody = ref(null)
@@ -844,6 +857,27 @@ const {
   chapters,
 })
 
+// Error page R1-R2: the target chapter's catalog title (same row as the tab title, same text rule as the chapter
+// <h3>) and the upstream label line; a failed catalog has no row to name.
+const chapterErrorTitle = computed(() => {
+  if (readerCatalogLoadFailed.value) return ''
+  const row = readerCatalogRow(book.value, chapters.value, currentIndex.value)
+  return row ? displayChapterTitle(row.title || `第 ${currentIndex.value + 1} 章`) : ''
+})
+const chapterErrorLabel = computed(() => readerChapterErrorLabel(
+  readerCatalogLoadFailed.value ? READER_CHAPTER_ERROR_CATALOG : READER_CHAPTER_ERROR_CONTENT,
+))
+
+function notifyReaderLoadFailure(kind, error) {
+  ElMessage.error(readerChapterErrorToast(kind, readerChapterErrorReason(error, kind)))
+}
+
+// Error page R8: a failure is laid out as a page of its own instead of keeping the previous chapter's pages.
+function measureReaderErrorPage() {
+  page.value = 0
+  return nextTick(() => updateFlipLayout())
+}
+
 const chapterParagraphs = computed(() => {
   return makeParagraphs(content.value, chapter.value?.title)
 })
@@ -1026,7 +1060,7 @@ const {
     applyLocalProgressSnapshot()
     scheduleProgressSave(120)
   },
-  formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
+  formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
 })
 onBeforeUnmount(invalidateShowChapters)
 const {
@@ -1812,11 +1846,13 @@ const {
   captureScrollAnchor: () => captureReaderScrollAnchor(),
   onStart: transaction => {
     pendingReaderChapterLoad = transaction
+    readerCatalogLoadFailed.value = false
   },
   onSettled: transaction => {
     if (pendingReaderChapterLoad === transaction) pendingReaderChapterLoad = null
   },
-  formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
+  formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
+  notifyError: error => notifyReaderLoadFailure(READER_CHAPTER_ERROR_CONTENT, error),
   nextFrame,
   onEpubPrepared: pending => {
     epubPendingRestore.value = pending
@@ -2029,11 +2065,9 @@ const readerRouteSync = useReaderRouteSync({
     readerBookDeleted.value = false
     resumeProgressSaving()
     chapterLoadError.value = ''
+    readerCatalogLoadFailed.value = false
   },
-  onBookLoadError: error => {
-    chapterLoadError.value = readError(error, '章节加载失败')
-    chapterLoading.value = false
-  },
+  onBookLoadError: handleReaderBookLoadError,
 })
 suppressNextReaderPositionReload = readerRouteSync.suppressNextPositionReload
 
@@ -2097,10 +2131,7 @@ useReaderPageLifecycle({
   sliderLineHeight,
   syncFonts: syncReaderFontFaces,
   loadBook: loadReaderBook,
-  onBookLoadError: error => {
-    chapterLoadError.value = readError(error, '章节加载失败')
-    chapterLoading.value = false
-  },
+  onBookLoadError: handleReaderBookLoadError,
   cancelProgressSave,
   clearChapterLoadingTimer,
   stopAutoReading,
@@ -2228,9 +2259,20 @@ function handleEpubPreview(payload) {
   epubPreviewVisible.value = true
 }
 
-function handleEpubError(error) {
-  chapterLoadError.value = error?.message || 'EPUB 正文加载失败，请重试'
+// A failed book load (catalog, book info or remote session) is reader-dev's catalog failure page.
+function handleReaderBookLoadError(error) {
+  readerCatalogLoadFailed.value = true
+  chapterLoadError.value = readerChapterErrorReason(error, READER_CHAPTER_ERROR_CATALOG)
+  chapterLoading.value = false
+  notifyReaderLoadFailure(READER_CHAPTER_ERROR_CATALOG, error)
+  measureReaderErrorPage()
+}
+
+function handleEpubError() {
+  chapterLoadError.value = READER_EPUB_RESOURCE_ERROR_REASON
   chapterLoaded.value = false
+  ElMessage.error(readerChapterErrorToast(READER_CHAPTER_ERROR_CONTENT, READER_EPUB_RESOURCE_ERROR_REASON))
+  measureReaderErrorPage()
 }
 
 function handleReaderImageLoad() {
