@@ -1,5 +1,5 @@
 import { nextTick, onBeforeUnmount, ref, unref } from 'vue'
-import { readerTocTargetIndex, toggleReaderTocReverse } from '../utils/readerToc'
+import { readerTocTargetIndex, toggleReaderTocReverse } from '../utils/readerToc.js'
 
 export function useReaderToc(options) {
   const visible = ref(false)
