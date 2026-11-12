@@ -3,7 +3,8 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本切片不涉及上游可见行为）。
 
 审查日期：2026-11-12。实施基线：`origin/main` = `e8f3214`；分支 `claude/go-toolchain-1.26.11` 用 `git switch --no-track -c` 从 `origin/main` 切出。
-状态：**behavioral-reds-pending**（合同 `a2b4ff6`；红证据见第 8 节，红即现场门本身）。
+状态：**implementation-complete / regression-validated**（合同 `a2b4ff6`、红证据 `56c07dd`、构建 `fcf62a3`、README `461a309`；证据见第 8、9 节）。
+未合入 main，镜像未发布，生产未访问。
 
 前置合同：[`go-advisory-release-gate-contract.md`](go-advisory-release-gate-contract.md)（门的判定边界）、
 [`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)
@@ -179,3 +180,57 @@ SBOM 与实际 Go 均为 go1.26.10（darwin/arm64，CGO 1，33 个模块）、x/
 413 行为与连接处理不变。实验不替代门，也不作为例外理由。
 
 状态（2026-11-12，本节）：**behavioral-reds-pending**——红就是现场门在 Go 1.26.10 上的失败（门脚本未改），等待第 4 节的实现。
+
+## 9. 实施与验证证据（2026-11-12）
+
+### 9.1 提交
+
+| 提交 | 内容 |
+| --- | --- |
+| `a2b4ff6` | 本合同第 1–7 节；gap-analysis、matrix 条目与运行时依赖合同的指针 |
+| `56c07dd` | 第 8 节：1.26.10 上现场门的红、1.26.10 → 1.26.11 标准库差异与草稿实验 |
+| `fcf62a3` | `go 1.26.11`；后端构建镜像改为官方 `golang:1.26.11-alpine3.23` index pin（`go.mod`、`Dockerfile` 各 1 行） |
+| `461a309` | README / README_CN 的源码构建最低版本同步为 1.26.11（第 4.3 节） |
+
+`go mod verify` 通过（all modules verified），离线（`GOPROXY=off`）`go mod tidy` 不改 `go.mod`/`go.sum`。
+
+### 9.2 发布门（失败 → 通过）
+
+| 门 | 升级前（`e8f3214`，go1.26.10） | 升级后（`461a309`，go1.26.11） |
+| --- | --- | --- |
+| Go advisory 现场扫描（沙箱外） | exit 1：`GO-2026-6859`，47 个发现（第 8 节） | exit 0：`pass`，go1.26.11 / darwin-arm64 / CGO 1，DB `2026-11-11T02:51:11Z`，250 条公告，**0 个发现**；x/crypto 仍为固定伪版本，`pinReviewUntil` `2026-12-16T00:00:00.000Z`；三张依赖图 360/359/358 与红运行逐字节相同，无 openpgp 族。证据目录 `/var/folders/5z/h__cbxf93c5gc1p4myzqpd480000gn/T/openreader-go-advisories-4wYeSE`（2026-11-12T08:57:58Z–08:58:09Z） |
+| 前端全锁 advisory 现场扫描（沙箱外） | 本切片未改前端 | exit 0：`pass`，132 个锁包，0 个发现，lockHash `608a6a9ea769adebf6a3b9c99edf610810fa63c9fbc406294eba1d58bc6f24a8` |
+| 门自测 `node --test scripts/check-*-advisories.test.mjs`（沙箱外） | — | 139/139（Go 65、前端 49、OS 25），0 失败 0 跳过；门脚本与测试未改 |
+
+### 9.3 后端
+
+- `backend/` 内 `go version` 为 go1.26.11（`GOTOOLCHAIN=auto` 经 proxy / sum.golang.org 下载的 `golang.org/toolchain@v0.0.1-go1.26.11.darwin-arm64`）。
+- `go -C backend vet ./...` exit 0，无输出。
+- `go -C backend test -count=1 ./...`（沙箱外）：31 个包通过、7 个无测试文件、0 失败，api 127.9 s。
+- `go -C backend test -race -count=1 ./db ./services/...`（沙箱外）：25 个包通过、4 个无测试文件，无 DATA RACE。
+- `go -C backend test -race -timeout 40m -count=1 ./api`（沙箱外，08:53:33Z–09:13:32Z）：通过，api 1173.5 s（与其它门同时运行，比通常的约
+  1050 s 稍长），无 DATA RACE。
+- `go build -trimpath` 的产物记录 go1.26.11、`CGO_ENABLED=1`，依赖版本与 h1 不变（例如 x/crypto 固定伪版本 `h1:zGDaB+/Mus2mScKvZ23k+W9NAUbP56sNM9SptgvWI5A=`）。
+- 第 6 节第 5 项：go1.26.11 下 `GOOS=linux GOARCH=amd64|arm64 CGO_ENABLED=1 go -C backend build -n -trimpath` 都 exit 0、0 条 `invalid flag`；
+  cgo 包为 `runtime/cgo`、`net`、`github.com/mattn/go-sqlite3`（LDFLAGS 只有 `-ldl`）。cmd/go 在 `runCgo` 里先用 `b.CFlags` 检查 `#cgo` 指令、
+  再调用 C 编译器，干跑也执行这一步；对照包 `#cgo LDFLAGS: -l../x` 在 1.26.10 下通过、在 1.26.11 下两个目标都报
+  `invalid flag in #cgo LDFLAGS: -l../x`，说明干跑确实执行了新规则。真正的 musl 构建在可信 Actions 的双平台镜像构建里完成。
+- `node scripts/smoke/store-read-list-lifecycle-contract.mjs`（沙箱外；脚本在 `backend/` 内 `go build`，即 go1.26.11，再启动真实 HTTP/1 服务）：
+  10 项 PASS，包括 LocalStore 上传与 WebDAV 的 HTTP 路径；`docker compose config --quiet` 通过。
+
+### 9.4 前端
+
+本 worktree 原有的 `frontend/node_modules`（10-22）与 11-10 的锁文件不一致，先按锁文件 `npm ci`：已安装的 102 个包版本与锁文件逐一相同，
+未安装的 30 个都是其它平台的可选包。Node 26.4.0 / npm 11.17.0：`npm test` 877/877（0 失败 0 跳过）、`npm run build` 通过。前端源码与锁文件未改。
+
+### 9.5 未跑及原因
+
+- 三视口浏览器 smoke：前端源码、锁文件与构建配置都未改，产物与 main 相同；本切片只改 Go 工具链。
+- 镜像构建、OS APK 门、fresh / historical 卷与 portable 备份门、双平台候选：只在可信 Actions 上运行（本地不构建镜像）。合入 main 后由
+  Actions 用 `GOTOOLCHAIN=local` 的 go1.26.11 构建镜像以 `-mod=vendor` 编译两平台，并复核 OS 门（运行时镜像不变）。
+- 沙箱内会失败的项（绑定端口的测试、govulncheck 与 toolchain 下载、npm 注册表）都在沙箱外跑过，不是跳过。
+
+### 9.6 状态
+
+**implementation-complete / regression-validated**。Git：分支 `claude/go-toolchain-1.26.11` 已推送（`git ls-remote` 核验），未合入 main。
+镜像：未发布，GHCR `latest` 仍是 `2de7308`（index `sha256:49b02ce1…ae75`）。生产：未访问。合入 main 与发布由用户决定，本会话不推送 main。

@@ -10,6 +10,11 @@ README 的最低版本同步（G1 must-fix，G2/G3 acceptable-change）。代码
 不提升 `requestTooLarge`，且先读完请求体再写头），但门没有例外，不以此放行。合同见
 [`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。
 状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `a2b4ff6`、红证据 `56c07dd`、构建 `fcf62a3`（只改 `go` 指令与构建镜像 pin）、README `461a309`。现场 Go 门在 `e8f3214`
+上 exit 1（47 个发现），在 `461a309` 上 `pass`、go1.26.11、**0 个发现**（DB 2026-11-11T02:51:11Z，250 条公告）；前端全锁门 0 个发现；门自测 139/139。
+backend 全量 31 个包、vet、race db/services 25 个包、race api（40m，1173.5 s）通过，无 DATA RACE；frontend 877/877 与 build；存储 HTTP 合同 10/10；
+两个 Linux 目标通过 1.26.11 收紧的 `#cgo` 参数检查。草稿实验确认 1.26.10 的无同步写只发生在原生 writer 上，gin 调用点在两版行为相同。
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像仍为 `2de7308`，生产未访问。
 
 ## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
 

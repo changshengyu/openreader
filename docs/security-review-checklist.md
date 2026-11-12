@@ -1,5 +1,16 @@
 # OpenReader Security Review Checklist
 
+2026-11-12 release-blocker dependency maintenance:
+[`compat/dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](compat/dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md).
+GO-2026-6859 (CVE-2026-97054, net/http: when an HTTP/1 server's MaxBytesReader limit is exceeded, the reading side
+sets "Connection: close" without synchronization, so a handler that writes headers concurrently can crash the
+process) is fixed by Go 1.26.11 and the official golang:1.26.11-alpine3.23 index pin (amd64 + arm64 manifests,
+configs and Go layers checked). Modules and go.sum are unchanged. Checked: OpenReader serves plain HTTP/1.1 (no TLS or
+HTTP/2 server); its ten MaxBytesReader(c.Writer, ...) call sites pass gin's writer, which never receives net/http's
+unexported requestTooLarge hook, and read bodies before writing headers (scratch experiment on 1.26.10 and 1.26.11
+over net.Pipe); both Linux targets pass 1.26.11's stricter #cgo flag checks. No new gate exceptions. Live Go (0
+findings) and full-lock npm scans pass; not yet merged or published.
+
 2026-11-03 release-blocker dependency maintenance:
 [`compat/dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](compat/dependency-advisory-x-crypto-openpgp-fix-p1-contract.md).
 GO-2026-5932 (unmaintained x/crypto/openpgp, never imported) gained a fixed version on 2026-11-02, which voided
