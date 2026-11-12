@@ -12,7 +12,9 @@
 //   hit target at 88%; a press closes the panel, requests chapter 1 once and replaces its block in place, keeps
 //   the scroll position and writes no progress;
 // - C3 main error block 重新加载 (page, scroll): with the panel open the button center hits the panel; after the
-//   panel's close button is pressed the button is the hit target again;
+//   panel's close button is pressed the button is the hit target again. In scroll the failed chapter stays in the
+//   continuous window as its own inline error block (error surface contract R6); its 重新加载 is either covered by the
+//   panel (P5) or exposed below it and then the hit target itself (P4, whose press C2 checks);
 // - C4 controls (page): a press on the page below the panel only closes it (route, scroll and progress unchanged,
 //   the tap zones and the reader page see nothing); the right rail 重新载入章节 closes the panel and reloads the
 //   chapter; another panel's rail entry switches panels.
@@ -56,6 +58,7 @@ const BACKEND_CONTENT_FAILURE = { error: 'failed to load chapter content', code:
 const CHAPTER_END = '.reader-chapter-end'
 const INLINE_BUTTON = `.chapter-content[data-index="${INLINE_FAIL_INDEX}"] .chapter-inline-error button`
 const MAIN_BUTTON = '.chapter-load-error button'
+const TARGET_INLINE_BUTTON = `.chapter-content[data-index="${MAIN_FAIL_INDEX}"] .chapter-inline-error button`
 const RAIL_RELOAD = '.reader-right-rail .round-tool[aria-label="重新载入章节"]'
 const PANEL_CLOSE = '.reader-desktop-workspace-close'
 const BAND = 0.88
@@ -493,17 +496,28 @@ async function runInlineRetryCase(page, viewport, panel, behavior, failures, not
   isolationCheck(failures, 'C2', log)
 }
 
-async function runMainErrorCase(page, viewport, panel, behavior, failures, notes) {
+async function runMainErrorCase(page, viewport, panel, behavior, failures, notes, mode) {
+  // Error surface contract R6: in a continuous mode the failed target stays in the window as an inline error block.
+  const continuous = mode === 'scroll' || mode === 'scroll2'
+  const button = continuous ? TARGET_INLINE_BUTTON : MAIN_BUTTON
   behavior.fail.set(MAIN_FAIL_INDEX, { status: 502, body: BACKEND_CONTENT_FAILURE })
   await routeToChapter(page, MAIN_FAIL_INDEX)
-  await page.waitForSelector(MAIN_BUTTON, { timeout: 10_000 })
+  await page.waitForSelector(button, { timeout: 10_000 })
   await page.waitForTimeout(1200)
   await openPanel(page, viewport, panel)
 
-  const covered = await hitTest(page, MAIN_BUTTON)
+  const covered = await hitTest(page, button)
   const open = await readState(page)
   notes.push(`panel ${open.panels} bottom ${open.panelBottom}; button (${covered.x},${covered.y}) hits ${covered.hit}`)
-  check(failures, covered.inPanel && !covered.hitIsTarget, `C3 covered: with the panel open 重新加载 center (${covered.x},${covered.y}) hits ${covered.hit}`)
+  if (continuous) {
+    check(
+      failures,
+      (covered.inPanel && !covered.hitIsTarget) || (!covered.inPanel && covered.hitIsTarget),
+      `C3 covered or exposed: with the panel open 重新加载 center (${covered.x},${covered.y}) hits ${covered.hit}`,
+    )
+  } else {
+    check(failures, covered.inPanel && !covered.hitIsTarget, `C3 covered: with the panel open 重新加载 center (${covered.x},${covered.y}) hits ${covered.hit}`)
+  }
 
   const close = await hitTest(page, PANEL_CLOSE)
   if (!close?.hitIsTarget) throw new Error(`panel close button at (${close?.x},${close?.y}) hits ${close?.hit}`)
@@ -511,11 +525,16 @@ async function runMainErrorCase(page, viewport, panel, behavior, failures, notes
   await page.waitForFunction(() => !document.querySelector('.reader-desktop-workspace'), null, { timeout: 5000 }).catch(() => {})
   await page.waitForTimeout(400)
   const closed = await readState(page)
-  const reachable = await hitTest(page, MAIN_BUTTON)
+  const reachable = await hitTest(page, button)
   notes.push(`after close panel ${JSON.stringify(closed.panels)}; button (${reachable?.x},${reachable?.y}) hits ${reachable?.hit}`)
   check(failures, closed.panels.length === 0, `C3 close: panel ${JSON.stringify(closed.panels)} still open after its close button`)
   check(failures, Boolean(reachable?.hitIsTarget), `C3 reachable: after closing 重新加载 center (${reachable?.x},${reachable?.y}) hits ${reachable?.hit}`)
-  check(failures, closed.query === `?chapter=${MAIN_FAIL_INDEX}` && closed.mainError, `C3 state: route ${closed.query}, error block ${closed.mainError}`)
+  const failureShown = continuous ? closed.inlineErrors.includes(MAIN_FAIL_INDEX) && !closed.mainError : closed.mainError
+  check(
+    failures,
+    closed.query === `?chapter=${MAIN_FAIL_INDEX}` && failureShown,
+    `C3 state: route ${closed.query}, error block ${closed.mainError}, inline errors ${JSON.stringify(closed.inlineErrors)}`,
+  )
 }
 
 async function runBlankCase(page, viewport, panel, behavior, failures, notes) {
@@ -617,7 +636,7 @@ async function runCase(browser, scenario, viewport, panel, mode) {
   const context = await browser.newContext(contextOptions(viewport))
   try {
     const page = await openReader(context, mode, behavior, pageErrors)
-    await scenario.run(page, viewport, panel, behavior, failures, notes)
+    await scenario.run(page, viewport, panel, behavior, failures, notes, mode)
   } catch (error) {
     failures.push(`harness: ${String(error?.message || error).split('\n')[0]}`)
   } finally {
