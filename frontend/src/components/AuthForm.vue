@@ -22,6 +22,9 @@
           show-password
         />
       </el-form-item>
+      <el-form-item v-if="mode === 'register'" label="邀请码(没有则不填)">
+        <el-input v-model="inviteCode" autocomplete="off" />
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="loading" native-type="submit" class="auth-btn">
           {{ mode === 'login' ? '登录' : '注册' }}
@@ -41,6 +44,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/user'
+import { authErrorMessage, authInputError } from '../utils/authErrors'
 
 defineProps({
   reason: {
@@ -53,6 +57,7 @@ const emit = defineEmits(['success'])
 const user = useUserStore()
 const username = ref('')
 const password = ref('')
+const inviteCode = ref('')
 const mode = ref('login')
 const loading = ref(false)
 
@@ -61,12 +66,17 @@ function toggleMode() {
 }
 
 async function submit() {
+  const inputError = authInputError({ username: username.value, password: password.value })
+  if (inputError) {
+    ElMessage.error(inputError)
+    return
+  }
   loading.value = true
   try {
-    const result = await user.login(username.value, password.value, mode.value)
+    const result = await user.login(username.value, password.value, mode.value, inviteCode.value)
     emit('success', result)
   } catch (err) {
-    ElMessage.error(err?.response?.data?.error?.message || err?.response?.data?.error || '请求失败')
+    ElMessage.error(authErrorMessage(err))
   } finally {
     loading.value = false
   }

@@ -4,6 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+)
+
+// reader-dev caps accounts with reader.app.userLimit, default 50 and at most 50
+// (UserController.kt#getUserLimit: min(max(userLimit, 1), 50)).
+const (
+	DefaultUserLimit = 50
+	MaxUserLimit     = 50
 )
 
 type Config struct {
@@ -49,6 +57,12 @@ type Config struct {
 	MaxCoverCacheBytes          int64
 	CoverImageTimeoutSeconds    int
 	MaxCoverImageRedirects      int
+	// InviteCode, when set, is required by self-registration (reader-dev
+	// reader.app.inviteCode); administrators add users without it.
+	InviteCode string
+	// UserLimit caps accounts for registration and the admin add-user action.
+	// Read it through EffectiveUserLimit: a zero value means "not configured".
+	UserLimit int
 	// JWTPreviousSecrets are published values that signed sessions before an
 	// instance secret replaced JWTSecret (services/instancesecret). They only
 	// verify jti-backed session tokens and never sign anything.
@@ -108,7 +122,42 @@ func Load() Config {
 		MaxCoverCacheBytes:          envInt64("OPENREADER_MAX_COVER_CACHE_BYTES", 256*1024*1024),
 		CoverImageTimeoutSeconds:    envPositiveInt("OPENREADER_COVER_IMAGE_TIMEOUT_SECONDS", 3),
 		MaxCoverImageRedirects:      envPositiveInt("OPENREADER_MAX_COVER_IMAGE_REDIRECTS", 3),
+		InviteCode:                  strings.TrimSpace(os.Getenv("OPENREADER_INVITE_CODE")),
+		UserLimit:                   userLimitFromEnv(),
 	}
+}
+
+// userLimitFromEnv follows reader-dev: unset or non-numeric values use the
+// default, explicit values are clamped to 1..MaxUserLimit.
+func userLimitFromEnv() int {
+	value := strings.TrimSpace(os.Getenv("OPENREADER_USER_LIMIT"))
+	if value == "" {
+		return DefaultUserLimit
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return DefaultUserLimit
+	}
+	return clampUserLimit(parsed)
+}
+
+func clampUserLimit(value int) int {
+	if value < 1 {
+		return 1
+	}
+	if value > MaxUserLimit {
+		return MaxUserLimit
+	}
+	return value
+}
+
+// EffectiveUserLimit is the account cap the server enforces. A Config built
+// without Load (UserLimit 0) gets the default.
+func (cfg Config) EffectiveUserLimit() int {
+	if cfg.UserLimit == 0 {
+		return DefaultUserLimit
+	}
+	return clampUserLimit(cfg.UserLimit)
 }
 
 func env(key, fallback string) string {

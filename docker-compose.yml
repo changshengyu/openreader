@@ -16,5 +16,9 @@ services:
     environment:
       # Leave empty for direct access. Behind a reverse proxy, set only the proxy IP/CIDR.
       OPENREADER_TRUSTED_PROXIES: ${OPENREADER_TRUSTED_PROXIES:-}
+      # Optional: require this invite code (邀请码) for registration. Empty keeps it open.
+      OPENREADER_INVITE_CODE: ${OPENREADER_INVITE_CODE:-}
+      # Optional: maximum number of accounts, 1-50. Empty uses the default 50.
+      OPENREADER_USER_LIMIT: ${OPENREADER_USER_LIMIT:-}
     # Restart after host/container-engine restarts unless explicitly stopped.
     restart: unless-stopped

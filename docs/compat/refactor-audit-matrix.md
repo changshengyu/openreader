@@ -1,5 +1,17 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-11 当前切片：注册邀请码与用户数上限（P1，R1–R5、A1–A4）
+
+见[`registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md`](registration-invite-code-user-limit-fixed-baseline-second-audit-p1-contract.md)。基于 main `e8f3214`。
+上游 `UserController.kt#login/addUser` 与 `App.vue` 登录对话框：邀请码（默认空即开放注册）、用户数上限（默认且最多 50）、注册模式的“邀请码(没有则不填)”、上游中文错误。
+R1 邀请码与 R2 用户数上限为 must-fix（新增 `OPENREADER_INVITE_CODE`、`OPENREADER_USER_LIMIT`，事务内计数，邀请码先于用户名占用检查）；
+R3 表单输入框与 R4 中文错误提示为 must-fix；A1 通用 401、A2 常量时间比较、A3 环境变量前缀、A4 OpenReader 自有错误文案为 acceptable-change；
+书籍上限与“记住登录信息”另起。计划测试 G1–G8、F1–F4，加三视口浏览器合同。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `2870009`、红测 `2c6a8e0`（后端 6 红 2 对照、前端 5 红、浏览器停在缺少邀请码框）、实现 `e6bb21b`/`309b256`/`034a483`。
+浏览器合同在 360×800 发现 `/login` 卡片原有的窄屏溢出（R6，合同第 10 节）：补充合同 `665b9de`、红测 `e5f21eb`（390 下卡片 20–420）、修复 `74b6642`。
+后端全量 31 包与 vet、race api/config 通过（api 1127.0 s）；前端 882/882 与 build；公告门自测 139/139、compose、存储合同；注册限制合同、openreader-smoke
+三视口与重新认证四视口通过。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-10 当前切片：OS 门 unknown origin 复审续期与运行时 CA bundle 20261020-r0（P1）
 
 见[`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。基于 main `752aa4e`。复审期限 2026-11-16

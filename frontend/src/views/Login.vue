@@ -31,7 +31,8 @@ async function handleSuccess(result = {}) {
 </script>
 
 <style scoped>
-.auth-page { min-height: 100vh; display: grid; place-items: center; background: #faf8f2; padding: 20px; }
+/* minmax(0, 1fr): the track follows the page width, so the card's max-width: 100% fits narrow screens. */
+.auth-page { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; background: #faf8f2; padding: 20px; }
 .auth-card { background: #fff; border-radius: 12px; padding: 40px 36px; width: 400px; max-width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
 .auth-title { font-size: 28px; font-weight: 700; color: #1e293b; margin: 0 0 4px; text-align: center; }
 .auth-sub { font-size: 14px; color: #94a3b8; text-align: center; margin: 0 0 28px; }
