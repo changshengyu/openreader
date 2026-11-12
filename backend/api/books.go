@@ -24,6 +24,7 @@ import (
 	"openreader/backend/middleware"
 	"openreader/backend/models"
 	"openreader/backend/services/audioreader"
+	"openreader/backend/services/booklimit"
 	"openreader/backend/services/booksources"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/chaptercache"
@@ -411,6 +412,9 @@ func (s *Server) createBook(c *gin.Context) {
 	}
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := booklimit.Check(tx, userID, s.cfg); err != nil {
+			return err
+		}
 		if err := tx.Create(&book).Error; err != nil {
 			return err
 		}
@@ -425,10 +429,19 @@ func (s *Server) createBook(c *gin.Context) {
 		}
 		return s.setBookCategories(tx, userID, book.ID, categoryIDs)
 	}); err != nil {
+		if errors.Is(err, booklimit.ErrReached) {
+			writeBookLimitReached(c)
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create book"})
 		return
 	}
 	c.JSON(http.StatusCreated, s.broadcastBookShelfUpdate(userID, book))
+}
+
+// writeBookLimitReached answers reader-dev's 超过用户书籍数上限 refusal.
+func writeBookLimitReached(c *gin.Context) {
+	c.JSON(http.StatusForbidden, gin.H{"error": booklimit.ErrReached.Error()})
 }
 
 func (s *Server) getBook(c *gin.Context) {
@@ -2275,6 +2288,19 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		return
 	}
 
+	// reader-dev refuses a new book at the limit before fetching its info.
+	if err := booklimit.Check(s.db.WithContext(ctx), userID, s.cfg); err != nil {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, booklimit.ErrReached) {
+			writeBookLimitReached(c)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create book"})
+		return
+	}
+
 	remoteInfo, chapters, variable, err := engine.FetchBookInfoAndTOCWithVariablesContext(ctx, req.BookURL, source, variable, req.Title, nil)
 	if err != nil {
 		if isRequestContextError(err) || ctx.Err() != nil {
@@ -2316,6 +2342,9 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if err := booklimit.Check(tx, userID, s.cfg); err != nil {
+			return err
+		}
 		if err := tx.Create(&book).Error; err != nil {
 			return err
 		}
@@ -2346,6 +2375,10 @@ func (s *Server) createRemoteBook(c *gin.Context) {
 	})
 	if err != nil {
 		if isRequestContextError(err) {
+			return
+		}
+		if errors.Is(err, booklimit.ErrReached) {
+			writeBookLimitReached(c)
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create book"})
