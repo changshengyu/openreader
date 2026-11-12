@@ -6,6 +6,9 @@
 在 Go 1.26.10 上失败（`GO-2026-6859`，47 个发现、45 个符号级，`net/http` MaxBytesReader 响应头竞争），main 的任何推送都会在 Go 门失败。G1 must-fix：
 `go 1.26.11` 与官方 `golang:1.26.11-alpine3.23` index pin（`sha256:db99415e…19e4`）；G2 构建阶段 base Alpine 3.23.7 → 3.23.8、G3 README 最低版本同步为
 acceptable-change；模块与 `go.sum`、运行时镜像与构建期 pin、门脚本与例外（无）不重开。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `a2b4ff6`、红证据 `56c07dd`、构建 `fcf62a3`、README `461a309`；现场 Go 门 exit 1（47 个发现）→ `pass`（go1.26.11，0 个发现），
+前端门 0 个发现，门自测 139/139；backend 全量 31 包、vet、race db/services 25 包、race api（40m，1173.5 s）、frontend 877/877 与 build、存储 HTTP 合同 10/10 通过；
+两个 Linux 目标通过 1.26.11 的 `#cgo` 参数检查。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像仍为 `2de7308`，生产未动。
 
 ## 2026-11-11 当前切片：注册邀请码与用户数上限（P1，R1–R5、A1–A4）
 
