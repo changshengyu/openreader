@@ -1,7 +1,7 @@
 # Reader 运行标题加载中与失败时的章节名盘点（P0）
 
 状态：**contract-only**。本切片只写文档；Reader 产品代码、单元合同和浏览器合同都没有改。第 4 节的真实浏览器复现用的是会话
-scratchpad 里的临时探针，没有入库。红测与实现按第 9 节在后续阶段进行。
+scratchpad 里的临时探针，没有入库。红测与实现按第 9 节在后续阶段进行。2026-11-12 起按第 11 节的实施补充推进。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
 `/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不可写，上游克隆到会话 scratchpad 后 checkout 同一提交。  
@@ -391,3 +391,35 @@ R7. 不变：连续滚动跨章和已加载窗口内跳转的切换时机，加�
    `Reader.vue:1722`），可能写出“新序号 + 旧章 id/标题”。上游 `saveBookProgress` 只传序号，标题由服务端按目录行取
    （`BookController.kt` L390–429，L424–426）。本次探针没有观察到失败状态下的进度写入，也没有核对后端是否校验 id 与序号的
    对应关系，这是读代码推断，需要另行盘点进度持久化。
+
+## 11. 实施补充（2026-11-12，实施前）
+
+基线：分支 `claude/reader-error-title-progress-59bcb6` 上错误面切片 R1–R6、R8 完成之后的提交（见[错误面合同](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)
+第 14 节）。标签页标题（`useReaderDocumentTitle`）早已按 `currentIndex` 的目录行派生并要求目录行属于当前书；错误面切片新增了
+`frontend/src/utils/readerCatalogRow.js#readerCatalogRow`，错误页 `<h3>` 用的就是这一行。第 3 节的现状在这个基线上仍然成立：
+`Reader.vue` 的 `runningChapterLabel` 仍是 `formatRunningChapterLabel(currentIndex.value, chapter.value?.title)`。本节只确定实施细节，
+不改第 7 节的目标。
+
+1. **同一行**。新增 `frontend/src/utils/readerRunningTitle.js#runningChapterLabelFor({ book, chapters, index })`，目录行取
+   `readerCatalogRow`：只有属于当前书的 `chapters[currentIndex]` 才算数（书架目录行带 `bookId`，远程临时阅读两边都是 0）。标签页
+   标题改用同一个函数取行，运行标题、标签页标题和错误页标题从此读同一行（第 5 节第 14 行）。
+2. **R5 的机制**。两层：
+   - 目录行属于当前书。书在书架上时，`useReaderBookLoad` 先同步换上新书对象，旧目录的行不再属于它，标签为空。
+   - 路由同步。同一次路由变化同时改了书号时，`useReaderRouteSync` 的位置监听不再用旧目录调用 `loadChapter`：新书的加载会按路由或已存进度定位。
+     书不在书架上时，新书对象要等书籍请求返回，旧书对象和旧目录都还在。原来的位置监听会把 `currentIndex` 改成新书的目标序号，标签变成
+     “旧书另一章”的完整标签，还会提前请求新书正文。这一层把这两件事都去掉。
+3. **测试粒度**。单元事务测试用两个记录器：`flush: 'sync'` 记录每个值，要求任何值的序号和章节名都来自同一本书的同一行；`flush: 'pre'`
+   记录每次 DOM 更新显示的值，要求换书时只出现旧书完整标签、空串或新书目标章。`useReaderBookLoad` 在同一个同步块里先写目录、后写
+   `currentIndex`，两次写入之间会有一个“新目录第 i 行”的值，同一行、同一本书，不进入任何 DOM 更新，所以不算违例。浏览器合同用
+   MutationObserver，粒度和 DOM 更新相同。
+4. **测试改写（不是弱化）**：
+   - `readerTextModeFrameContract.test.mjs` 固定了 `formatRunningChapterLabel(currentIndex.value, chapter.value?.title)` 这个派生方式，
+     按第 8.1 节第 1 项改写为由目录行派生，并禁止从 `chapter` 派生。同一测试的其余断言不动。
+   - `reader-continuous-contract.mjs` 的五处 `startsWith('第 N 章')` 改为精确相等（第 8.2 节第 3 项）。
+5. **S4 的按钮**。第 8.2 节要求 S4 先用 `dispatchEvent`，等点击层问题修好再改回真实点击。R7 已发布，新脚本直接用真实指针（桌面鼠标、
+   手机触摸）。连续模式下失败章按错误面 R6 显示为内联错误块，S4 按它的“重新加载”。
+6. **EPUB**。`reader-epub-contract.mjs` 在点 `#next-chapter` 前延迟第 2 行正文请求约 1.5s，点击 400ms 后断言运行标题已是 `第 3 章 第二章`。
+   同时用 MutationObserver 记下所有值，要求没有别的值。第 2 行可能已经因为预载进了内存缓存，这时请求不会走网络，但中间值仍会出现在
+   一次 DOM 更新里，观察器能记到。
+7. **新浏览器合同**：`scripts/smoke/reader-running-title-load-contract.mjs`。S1–S4 跑 3 个视口 × 4 种模式；T1–T2、B1–B2、F1 跑 3 个视口
+   的 page 模式。B 用两本不在书架上的书（书一第 2 行 `甲三 当前`，书二第 3 行 `乙四 目标`），书二的目录和目标章正文各延迟 1.5s。

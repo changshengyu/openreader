@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：Reader 运行标题加载中与失败时的章节名（P0）
+
+见[`reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md`](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7、11 节。
+基于本分支错误面切片之后的 `b33eb7a5`。R1 运行标题由 `currentIndex` 的目录行派生（与标签页标题、错误页同一行），R2 目录行未知时为空，R3 导航开始即整体切换、
+失败与重新加载不回退，R4 迟到与中止不回写（回归），R5 不跨书拼接，R6 换源/目录刷新后立即用新目录。计划：`readerRunningTitle`、`readerRunningTitleTransaction`（新）、
+路由同步换书用例、帧合同改写，新 `reader-running-title-load-contract`（S1–S4、T1–T2、B1–B2、F1），EPUB 内链与连续合同加固。状态 contract-only。
+
 ## 2026-11-12 当前切片：Reader 正文加载失败错误页 R1–R6、R8（P0）
 
 见[`reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)第 7、13 节。基于 main `f82e0f5a`。

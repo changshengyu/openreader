@@ -1,5 +1,14 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P0 Reader 运行标题加载中与失败时的章节名（实施）
+
+固定上游 `Reader.vue#getContent` 在请求正文前就把 `this.title` 写成目标章目录标题，失败不回退，迟到响应被丢弃；Reader 内换书时页头
+只会是旧书的完整标签或新书目标章。OpenReader（错误面切片之后）的运行标题仍由 `currentIndex` 与已提交的 `chapter.title` 拼成，
+切章加载中、失败后、重新加载中都显示“新序号 + 旧章节名”，首次进入时显示猜测的 `第 1 章`，Reader 内换书时位置监听会用旧目录加载
+新书的目标章。按[运行标题合同](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7 节 R1–R7 实施；第 11 节补充：
+与标签页标题、错误页共用 `readerCatalogRow`，R5 由“目录行属于当前书”和“换书的那次路由变化不按旧目录加载章节”两层保证，单元与浏览器
+的记录粒度，以及两处既有断言的改写。状态 **contract-only**（实施补充）。
+
 ## 2026-11-12 P0 Reader 正文加载失败错误页 R1–R6、R8（实施）
 
 固定上游 `Reader.vue#getContent`/`loadCatalog` 与 `Content.vue#render`：当前章失败后正文区是“目标章 `<h3>` + `获取章节内容失败！` + 原因”的
