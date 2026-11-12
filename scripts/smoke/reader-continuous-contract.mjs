@@ -504,7 +504,15 @@ async function runFailureRetry(browser, variant = FAILURE_RETRY_VARIANTS[0]) {
   try {
     await page.waitForSelector('.chapter-inline-error', { timeout: 10_000 })
     assert(await page.locator('.chapter-content[data-index="0"] [data-reader-block]').count() > 0, 'current chapter disappeared after adjacent failure')
-    assert(await page.locator('.chapter-inline-error').innerText().then(text => text.includes('fixture adjacent chapter failure')), 'adjacent error is not visible')
+    // Error surface contract R2/R3 (D1 b): the block shows the upstream label and the Chinese reason for a 5xx
+    // without a source code, never the backend's own message.
+    const inlineErrorText = await page.locator('.chapter-inline-error').innerText()
+    assert(
+      inlineErrorText.includes('获取章节内容失败！')
+        && inlineErrorText.includes('服务器处理失败，请稍后重试')
+        && !inlineErrorText.includes('fixture adjacent chapter failure'),
+      `adjacent error is not visible as the upstream error chapter: ${JSON.stringify(inlineErrorText)}`,
+    )
     if (variant.band === undefined) {
       await page.locator('.chapter-inline-error button').click()
     } else {
