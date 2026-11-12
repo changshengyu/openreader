@@ -169,3 +169,15 @@
   - `openreader-smoke.mjs` 三个视口、`reader-reauthentication-contract.mjs` 四个视口也都通过。
 
 状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
+
+## 12. 发布（2026-11-12）
+
+按用户选择，与 Go 1.26.11（GO-2026-6859）、注册邀请码与用户数上限、RSS 两项索引一起发布：合并提交 `516a4f0`（注册）、`08b3e09`（RSS）、`6c4f004` 与 `28813c2`（Go），main 由 `e8f3214` 快进到 `28813c2`（ls-remote 核验，未强推）。
+
+推送前在合并树上（go1.26.11）：后端 `go test ./...` 31 个包与 vet，race api/db/config/services 27 个包（api 1150.3 秒），无数据竞争；前端 882/882 与 build；公告门自测 139/139；现场 Go 与前端扫描 0 个发现；compose、存储 HTTP 合同；注册限制合同与 openreader-smoke 三视口、重新认证合同四视口通过；secdb main 11-11 22:16:35 下运行时 origin 与夹具相同，5 个未列 origin 仍无记录。
+
+可信 Actions run `43191938289` 43/43 步成功（09:29–09:46 UTC）：两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现，卷门与平台核验通过。
+
+镜像：`ghcr.io/changshengyu/openreader:28813c2` 与 `latest` 指向 OCI index `sha256:83d9918ca08e764a574d1d9b64707ded70d7b1949decf4ae4457b8d05f9cddb0`；linux/amd64 `sha256:a6995415214474f72b976bae134fd6043e97d054c664c816e49811c8942edf44`，linux/arm64 `sha256:20bcf60fbff86eeca2b062f2975e03965453011506d44e6773654d6e6d2494bd`，另有 attestation。两平台 revision 标签均为 `28813c259f93955e67ad53a9b97fb326a3bc982e`，两平台镜像内 `/app/openreader` 均为 go1.26.11 构建。
+
+状态 **released / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知。

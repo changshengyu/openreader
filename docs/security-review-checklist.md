@@ -9,7 +9,7 @@ configs and Go layers checked). Modules and go.sum are unchanged. Checked: OpenR
 HTTP/2 server); its ten MaxBytesReader(c.Writer, ...) call sites pass gin's writer, which never receives net/http's
 unexported requestTooLarge hook, and read bodies before writing headers (scratch experiment on 1.26.10 and 1.26.11
 over net.Pipe); both Linux targets pass 1.26.11's stricter #cgo flag checks. No new gate exceptions. Live Go (0
-findings) and full-lock npm scans pass; not yet merged or published.
+findings) and full-lock npm scans pass. Released 2026-11-12 with main 28813c2: trusted run 43191938289 (43/43 steps), index sha256:83d9918ca08e764a574d1d9b64707ded70d7b1949decf4ae4457b8d05f9cddb0, both platform binaries built with go1.26.11.
 
 2026-11-03 release-blocker dependency maintenance:
 [`compat/dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](compat/dependency-advisory-x-crypto-openpgp-fix-p1-contract.md).

@@ -9,6 +9,7 @@ acceptable-change；模块与 `go.sum`、运行时镜像与构建期 pin、门�
 记录（2026-11-12，取代上段的状态）：合同 `a2b4ff6`、红证据 `56c07dd`、构建 `fcf62a3`、README `461a309`；现场 Go 门 exit 1（47 个发现）→ `pass`（go1.26.11，0 个发现），
 前端门 0 个发现，门自测 139/139；backend 全量 31 包、vet、race db/services 25 包、race api（40m，1173.5 s）、frontend 877/877 与 build、存储 HTTP 合同 10/10 通过；
 两个 Linux 目标通过 1.26.11 的 `#cgo` 参数检查。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像仍为 `2de7308`，生产未动。
+发布（2026-11-12）：与 Go 1.26.11、注册限制、RSS 两项索引一起合入，main 快进到 `28813c2`（ls-remote 核验，未强推）；run `43191938289` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、74 组比较无待修复项），Go 公告门 go1.26.11 0 个发现；`28813c2`/`latest` = index `83d9918c…cddb0`（amd64 `a6995415…`、arm64 `20bcf60f…`，revision 标签核验，镜像内二进制 go1.26.11）。状态 released / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-11 当前切片：注册邀请码与用户数上限（P1，R1–R5、A1–A4）
 
@@ -21,6 +22,7 @@ R3 表单输入框与 R4 中文错误提示为 must-fix；A1 通用 401、A2 常
 浏览器合同在 360×800 发现 `/login` 卡片原有的窄屏溢出（R6，合同第 10 节）：补充合同 `665b9de`、红测 `e5f21eb`（390 下卡片 20–420）、修复 `74b6642`。
 后端全量 31 包与 vet、race api/config 通过（api 1127.0 s）；前端 882/882 与 build；公告门自测 139/139、compose、存储合同；注册限制合同、openreader-smoke
 三视口与重新认证四视口通过。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
+发布（2026-11-12）：与 Go 1.26.11、注册限制、RSS 两项索引一起合入，main 快进到 `28813c2`（ls-remote 核验，未强推）；run `43191938289` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、74 组比较无待修复项），Go 公告门 go1.26.11 0 个发现；`28813c2`/`latest` = index `83d9918c…cddb0`（amd64 `a6995415…`、arm64 `20bcf60f…`，revision 标签核验，镜像内二进制 go1.26.11）。状态 released / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-11 当前切片：RSS 订阅源按用户与排序值的非唯一索引（P2，O1–O4）
 
@@ -33,6 +35,7 @@ DSN/WAL/busy_timeout 不重开。计划测试：红测 T1（真实路由大用�
 `database is locked`），实现后通过（T1 整个测试 0.38–0.39 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、race db/services 25 包、
 race api（40m，1122.8 s）、前端 877/877 与 build、公告门自测 138/138。现场 Go 扫描被 `GO-2026-6859`（Go 1.26.11 修复，与本切片无关）挡住，已另提切片。
 状态 implementation-complete / regression-validated；分支已推送（叠在 URL 索引分支上），未合入 main，镜像未发布，生产未动。
+发布（2026-11-12）：与 Go 1.26.11、注册限制、RSS 两项索引一起合入，main 快进到 `28813c2`（ls-remote 核验，未强推）；run `43191938289` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、74 组比较无待修复项），Go 公告门 go1.26.11 0 个发现；`28813c2`/`latest` = index `83d9918c…cddb0`（amd64 `a6995415…`、arm64 `20bcf60f…`，revision 标签核验，镜像内二进制 go1.26.11）。状态 released / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-10 当前切片：RSS 订阅源按用户与 URL 查找的非唯一索引（P2，U1–U5）
 
@@ -45,7 +48,7 @@ U5 唯一约束/重复清理/旧索引/文章表索引/DSN/WAL/连接池/busy_ti
 5.18 s 后 `database is locked`），实现后通过（T2 0.25–0.29 s，`-race` 0.95–0.97 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、
 race db/services 25 包、race api（40m，1070.0 s）、前端 877/877 与 build、公告门自测 138/138。状态 implementation-complete / regression-validated；
 分支已推送，未合入 main（origin/main 已到 `7ab3fe3`，只差一份无关文档、无冲突），镜像未发布，生产未动。
-
+发布（2026-11-12）：与 Go 1.26.11、注册限制、RSS 两项索引一起合入，main 快进到 `28813c2`（ls-remote 核验，未强推）；run `43191938289` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、74 组比较无待修复项），Go 公告门 go1.26.11 0 个发现；`28813c2`/`latest` = index `83d9918c…cddb0`（amd64 `a6995415…`、arm64 `20bcf60f…`，revision 标签核验，镜像内二进制 go1.26.11）。状态 released / Docker-published / awaiting-device-verification；生产未动。
 
 ## 2026-11-10 当前切片：OS 门 unknown origin 复审续期与运行时 CA bundle 20261020-r0（P1）
 
