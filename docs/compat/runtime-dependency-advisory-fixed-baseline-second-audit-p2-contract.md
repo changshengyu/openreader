@@ -14,6 +14,9 @@ OS/C仍由[`sqlite-wal-os-c-advisory-fixed-baseline-second-audit-p2-contract.md`
 2026-10-22：Go 门因标准库 GO-2026-6809（修复于 Go 1.26.10）失败，工具链升级见
 [`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)；第10–12节结论不重开。
 
+2026-11-12：Go 门因标准库 GO-2026-6859（`net/http`，修复于 Go 1.26.11）失败，工具链升级见
+[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)；第10–12节结论不重开。
+
 初始提交仅合同；第7–9节记录独立红测/早期checkpoint，第10–12节为基础链实施/验证/发布证据。不是生产受攻击结论；
 已恢复的原书故障不重开，生产另一台Mac不升级、不写入。旧“npm8high/advisory待审计”记录由本项
 开始逐证据收敛，不以扫描数量或版本陈旧直接宣称可利用。

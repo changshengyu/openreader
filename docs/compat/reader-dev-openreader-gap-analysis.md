@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
+
+2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。
+GO-2026-6859 / CVE-2026-97054（11-11 公开）：HTTP/1 服务端 `MaxBytesReader` 超限时，读取一方不加同步地设置 `Connection: close`，与 handler
+写响应头竞争可致进程崩溃；修复在 Go 1.26.11。CI 在构建前跑同一门，main 上任何提交都发不出镜像（两个 RSS 分支也在等）。按 GO-2026-6809 先例
+只改 `go` 指令与构建镜像 digest pin（官方 `golang:1.26.11-alpine3.23` index `sha256:db99415e…19e4`，amd64/arm64 已核验），模块与 `go.sum` 不变，
+README 的最低版本同步（G1 must-fix，G2/G3 acceptable-change）。代码检查表明 10 处 `MaxBytesReader(c.Writer, …)` 不满足崩溃前提（gin 的 writer
+不提升 `requestTooLarge`，且先读完请求体再写头），但门没有例外，不以此放行。合同见
+[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
 
 OS APK 门对 5 个无 secdb 记录的 origin 的复审期限 2026-11-16 即将到期，到期后每次发布都会失败关闭。重新复审：v3.23 main（11-10）与 community（11-07）、
