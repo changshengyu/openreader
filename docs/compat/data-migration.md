@@ -2,6 +2,37 @@
 
 Status: working compatibility ledger; implemented migrations and remaining action-level audits are recorded below.
 
+## 2026-11-11 RSS source (user_id, custom_order) index (additive index, implemented on branch, unreleased)
+
+`rss_sources` gains a second non-unique index, `idx_rss_sources_user_custom_order (user_id, custom_order)`, declared in
+the `models.RSSSource` tags and created by `AutoMigrate` at startup when missing. It lets SQLite answer the
+`COALESCE(MAX(custom_order), 0)` that numbers new and restored sources with one seek. No query, numbering rule,
+column, table statement, row, backup member, cache or library change; duplicate URLs, duplicate orders and NULL orders
+upgrade unchanged. Building it takes about 41 ms for 200,000 rows; older images ignore it on rollback. See
+[`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md).
+
+Update (2026-11-12, branch `claude/rss-restore-custom-order`, stacked on `claude/rss-user-url-index`, unreleased):
+implemented in `7e1a267`. Go tests migrate fresh databases and the exact 752aa4e schema holding duplicate URLs,
+duplicate orders and a NULL order twice, with every stored value and the table statement unchanged and
+`integrity_check` ok. The historical volume fixture drops both new indexes, and a local binary on it rebuilt them
+at startup and passed the historical RSS smoke check.
+
+## 2026-11-10 RSS source (user_id, url) index (additive index, implemented on branch, unreleased)
+
+`rss_sources` gains the non-unique index `idx_rss_sources_user_url (user_id, url)`, declared in the `models.RSSSource`
+tags and created by the existing `AutoMigrate` at startup when missing (fresh and historical databases). It is not
+UNIQUE because historical databases may hold several rows of one user for one URL; those rows stay as they are and
+keep today's behavior (the lowest id is the one rewritten). No column, table statement, row, backup member, cache or
+library change; `idx_rss_sources_user_id` stays. Building it is one atomic statement (about 68 ms for 200,000 rows).
+Older images ignore the extra index on rollback. See
+[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md).
+
+Update (2026-11-11, branch `claude/rss-user-url-index`, unreleased): implemented in `8f6bde5`. Go tests build the exact
+pre-index `rss_sources` schema with duplicate URLs and require two AutoMigrate runs to add the index while every stored
+value and the table statement stay byte-identical (`integrity_check` ok). The historical volume fixture now drops the
+index and stores duplicate RSS rows, and the historical volume smoke checks both users' rows after the upgrade; a local
+binary on that fixture passed it. The Docker fresh/historical volume gates run in Actions on push to main.
+
 ## 2026-10-22 instance signing secret (new data file, no schema migration)
 
 When `OPENREADER_JWT_SECRET` is unset, blank or a published default, the first start creates

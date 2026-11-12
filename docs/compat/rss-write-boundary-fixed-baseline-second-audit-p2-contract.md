@@ -107,6 +107,8 @@ SQLite source/article cache、事务、post-commit event 和 bounded fetch 是�
 本合同不新增 `(user_id,url)` 唯一索引：历史数据库可能已有重复行，直接加索引会使升级失败。窄的每用户
 运行时串行化关闭新 HTTP 竞争，同时保留历史行可列出、导出、更新和删除；重复历史数据的显式清理不是
 本切片的一部分。
+（2026-11-11：后续切片新增**非唯一**索引 `idx_rss_sources_user_url (user_id, url)`，只让同一按 URL 的查找不再遍历该用户的全部行；
+不加约束、不清理重复行，重复行的行为不变，见 [`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。）
 
 ## 5. article 状态、刷新与正文列所有权
 
@@ -138,7 +140,7 @@ JSON，不回显规则、header/cookie、带 query URL、article content、JWT�
 ## 6. 数据、备份与允许差异
 
 - 不新增/删除/修改 SQLite 表、列、索引或 migration；不改 `data/cache/library`、浏览器 storage key、
-  Router path 或 frontend request/response shape。
+  Router path 或 frontend request/response shape。（这是本切片的约束；2026-11-11 的后续切片新增了第 4 节末尾所述的非唯一索引。）
 - RSS source 继续由 `rssSources.json` 导出并通过 reader-dev/portable/WebDAV restore 恢复；restore 有自己的
   archive/entry 预算，不经过本轮 HTTP body gate。RSS article 继续是可重建 cache，不加入 logical backup。
 - 历史 oversized source 行继续可列出、导出、恢复、更新或删除；新 HTTP 上限不触发 startup scan、

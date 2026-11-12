@@ -327,6 +327,22 @@ historical_login() {
     -d "{\"username\":\"$1\",\"password\":\"$2\"}" | json_field token
 }
 
+HISTORICAL_RSS_URL='https://legacy-rss.example/feed.xml'
+
+# Releases before idx_rss_sources_user_url could store several RSS rows of one
+# user for one URL; the upgrade indexes them and keeps every row.
+assert_historical_rss_rows() {
+  rss_token="$1"
+  shift
+  curl -fsS "${BASE_URL}/api/rss/sources" -H "Authorization: Bearer ${rss_token}" | python3 -c '
+import json, sys
+url, expected = sys.argv[1], sorted(sys.argv[2:])
+titles = sorted(item.get("title") for item in json.load(sys.stdin) if item.get("url") == url)
+if titles != expected:
+    raise SystemExit("historical RSS rows for %s: got %r, want %r" % (url, titles, expected))
+' "$HISTORICAL_RSS_URL" "$@"
+}
+
 assert_historical_list_scope() {
   token="$1"
   own_title="$2"
@@ -412,6 +428,8 @@ if [ "$HISTORICAL_VOLUME" = "1" ]; then
   OTHER_USERNAME="legacy_other"
   OTHER_PASSWORD="legacy-other-volume-secret"
   OTHER_TOKEN="$(historical_login "$OTHER_USERNAME" "$OTHER_PASSWORD")"
+  assert_historical_rss_rows "$OWNER_TOKEN" '旧卷 RSS 最早' '旧卷 RSS 重复'
+  assert_historical_rss_rows "$OTHER_TOKEN" '旧卷 RSS 用户B'
 
   BOOKS_RESPONSE="$(curl -fsS "${BASE_URL}/api/books" -H "Authorization: Bearer ${TOKEN}")"
   TXT_BOOK_ID="$(printf '%s' "$BOOKS_RESPONSE" | json_book_id '旧卷 TXT 验证书')"

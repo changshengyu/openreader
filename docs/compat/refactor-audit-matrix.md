@@ -12,6 +12,30 @@ R3 表单输入框与 R4 中文错误提示为 must-fix；A1 通用 401、A2 常
 后端全量 31 包与 vet、race api/config 通过（api 1127.0 s）；前端 882/882 与 build；公告门自测 139/139、compose、存储合同；注册限制合同、openreader-smoke
 三视口与重新认证四视口通过。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
 
+## 2026-11-11 当前切片：RSS 订阅源按用户与排序值的非唯一索引（P2，O1–O4）
+
+见[`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md)。基于 `2152114`（URL 索引分支）。O1 恢复对每个缺少
+`customOrder` 的条目遍历该用户全部行取最大排序值（4 万行用户 5,000 条 11.5 s）为 must-fix；O2 经 `AutoMigrate` 新增非唯一索引
+`idx_rss_sources_user_custom_order (user_id, custom_order)` 为 acceptable-change（查询不改，列表/导出计划改变但结果实测不变）；O3 编号规则、O4 其余索引/
+DSN/WAL/busy_timeout 不重开。计划测试：红测 T1（真实路由大用户恢复不让并发写入失败）、T2（三处 `MAX` 查询计划）、T3（全新库与历史库迁移）；
+对照 C1（恢复编号序列）、H1（历史卷夹具去掉两个新索引）。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `10c9e69`、红测 `4931b8d`、实现 `7e1a267`。红测在 `2152114` 上全部失败（T1：恢复 11.54 s，另一用户写入 5.2 s 后
+`database is locked`），实现后通过（T1 整个测试 0.38–0.39 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、race db/services 25 包、
+race api（40m，1122.8 s）、前端 877/877 与 build、公告门自测 138/138。现场 Go 扫描被 `GO-2026-6859`（Go 1.26.11 修复，与本切片无关）挡住，已另提切片。
+状态 implementation-complete / regression-validated；分支已推送（叠在 URL 索引分支上），未合入 main，镜像未发布，生产未动。
+
+## 2026-11-10 当前切片：RSS 订阅源按用户与 URL 查找的非唯一索引（P2，U1–U5）
+
+见[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。基于 main `752aa4e`。U1 新建、更新冲突、导入与备份恢复四处
+按 URL 查找遍历该用户全部行（5,000 条导入在 1 万/2 万/4 万行时持写锁 2.7/6.1/11.3 s）为 must-fix；U2 经 `AutoMigrate` 新增非唯一索引
+`idx_rss_sources_user_url (user_id, url)` 为 acceptable-change（历史重复行原样保留，不加唯一约束）；U3 重复行行为、U4 恢复的逐条 `MAX(custom_order)`、
+U5 唯一约束/重复清理/旧索引/文章表索引/DSN/WAL/连接池/busy_timeout 不重开。计划测试：红测 T1（真实路由查询计划）、T2（4 万行用户的满额导入
+不让并发写入失败）、T3/T4（全新库与含重复行的历史库迁移）；对照 C1（重复行行为）、H1（历史卷夹具与 smoke）。状态 contract-only。
+记录（2026-11-11，取代上段的状态）：合同 `48f2c28`、红测 `cee1589`、实现 `8f6bde5`。红测在 `752aa4e` 上全部失败（T2：导入持写锁 11.4 s，另一用户写入
+5.18 s 后 `database is locked`），实现后通过（T2 0.25–0.29 s，`-race` 0.95–0.97 s）；C1 前后都通过；H1 在本机二进制与历史卷夹具上验证。后端全量/vet、
+race db/services 25 包、race api（40m，1070.0 s）、前端 877/877 与 build、公告门自测 138/138。状态 implementation-complete / regression-validated；
+分支已推送，未合入 main（origin/main 已到 `7ab3fe3`，只差一份无关文档、无冲突），镜像未发布，生产未动。
+
 ## 2026-11-10 当前切片：OS 门 unknown origin 复审续期与运行时 CA bundle 20261020-r0（P1）
 
 见[`os-apk-unlisted-origin-review-ca-bundle-p1-contract.md`](os-apk-unlisted-origin-review-ca-bundle-p1-contract.md)。基于 main `752aa4e`。复审期限 2026-11-16
@@ -27,6 +51,7 @@ Actions-pending；分支已推送，未合入 main，镜像仍为 `74cf0d0`，�
 `pass-with-unknown-origins`（16/16 包、74 组比较无待修复项、`reviewUntil` 2026-12-10）；`2de7308`/`latest` = index `49b02ce1…ae75`（amd64 `338746ed…`、
 arm64 `da528bac…`，revision 标签核验），已发布镜像内 CA bundle 20261020-r0 的 `C:` 与 pin 相同、118 个根证书。状态 released / Docker-published；生产未动。
 等价的并行分支 `claude/os-unknown-origin-review`（`296ac3c`）未合入、保留。
+
 
 ## 2026-11-10 当前切片：发布门 zlib 1.4-r0（CVE-2026-4738，P1，发布阻塞）
 

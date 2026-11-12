@@ -16,6 +16,37 @@ A1–A4 acceptable-change：通用 401、常量时间比较、`OPENREADER_` 前�
 race api/config 通过（api 1127.0 s）；前端 882/882、build；公告门自测 139/139、compose、存储合同；三视口注册限制合同与 openreader-smoke、四视口重新认证合同通过。
 状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
+## 2026-11-11 P2 RSS 订阅源按用户与排序值的非唯一索引（恢复逐条取最大排序值）
+
+基于 `claude/rss-user-url-index` 的 `2152114`（URL 索引，尚未合入 main）。备份恢复给每个缺少正数 `customOrder` 的 RSS 条目编号为该用户当前的
+`COALESCE(MAX(custom_order), 0) + 1`，每次都经 `idx_rss_sources_user_id` 遍历该用户全部行：4 万行用户经真实路由恢复 5,000 个这样的条目要 11.54 s，
+期间另一用户的写入 5.2 s 后 `database is locked`（O1 must-fix）。上游恢复直接替换 `rssSources.json`、不重新编号；OpenReader 的编号规则保持不变。
+URL 索引合同第 9 节以为 `COALESCE` 会挡住 min/max 优化，实测不会：加非唯一索引 `idx_rss_sources_user_custom_order (user_id, custom_order)` 后
+每次约 5.8 µs，查询与编号都不用改（O2 acceptable-change：列表与导出改用新索引读取，结果包括排序键完全相同的行实测不变）。合同见
+[`rss-restore-custom-order-index-p2-contract.md`](rss-restore-custom-order-index-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `10c9e69`、红测 `4931b8d`、实现 `7e1a267`（只改 `RSSSource` 标签）。红测在 `2152114` 上：T1 恢复 11.54 s、另一用户
+写入 5.2 s 后 `database is locked`；T2 四条 `MAX` 查询走 `idx_rss_sources_user_id`；T3 缺索引。实现后同一断言通过（T1 整个测试 0.38–0.39 s），C1 编号不变，
+H1 在本机二进制与历史卷夹具上验证。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1122.8 s）；前端 877/877 与 build；公告门自测 138/138、
+smoke 自测 10/10、现场前端扫描 0 发现。**现场 Go 扫描因 `GO-2026-6859`（`net/http`，Go 1.26.11 修复）失败**，与本切片无关但挡住所有发布，已另提切片。
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。
+
+## 2026-11-10 P2 RSS 订阅源按用户与 URL 查找的非唯一索引
+
+基于 main `752aa4e`。上一切片退役 RSS 按用户写锁后留下的性能问题：新建、更新冲突检查、导入（每个候选一次）与备份恢复（每个条目一次）
+按 `user_id = ? AND url = ?` 查找，而 `rss_sources` 只有 `user_id` 索引，计划为 `SEARCH … USING INDEX idx_rss_sources_user_id (user_id=?)`，
+每次遍历该用户的全部行。一次 5,000 条导入是一个 `BEGIN IMMEDIATE` 事务，持写锁时间随用户行数线性增长：1 万行 2.7 s、2 万行 6.1 s、
+4 万行 11.3 s，超过 busy_timeout 后其他写入 `database is locked`（U1 must-fix）。上游 `RssSourceController.kt#saveRssSources` 在内存列表中按第一个
+相等的 `sourceUrl` 查找，没有这项代价。方案：模型标签声明非唯一索引 `idx_rss_sources_user_url (user_id, url)`，由 `AutoMigrate` 在全新库与
+历史库上建立；历史重复行可能存在，所以不加唯一约束（U2 acceptable-change），重复行行为不变（U3）。实测加索引后同一导入 0.17–0.22 s、
+与用户行数无关；恢复中缺少 `customOrder` 的条目每条一次 `MAX(custom_order)` 仍需另起切片（U4）。合同见
+[`rss-source-user-url-index-p2-contract.md`](rss-source-user-url-index-p2-contract.md)。状态 **contract-only**。
+记录（2026-11-11，取代上段的状态）：合同 `48f2c28`、红测 `cee1589`、实现 `8f6bde5`（只改 `RSSSource` 标签）。红测在 `752aa4e` 上：T1 七条按 URL 的
+查询都走 `idx_rss_sources_user_id`；T2 4 万行用户的 5,000 条导入持写锁 11.4 s，另一用户的写入 5.18 s 后 `database is locked`；T3/T4 缺索引。
+实现后同一断言通过：T2 0.25–0.29 s（`-race` 0.95–0.97 s），同一用户 4 个并发满额导入全部成功（最长 0.87 s）；对照 C1（重复行行为）前后都通过；
+历史卷夹具与 smoke（H1）在本机二进制上验证。后端全量 31 包与 vet、race db/services 25 包、race api 通过（`-timeout 40m`，1070.0 s）；前端 877/877 与 build；
+公告门自测 138/138、smoke 自测 10/10、现场 Go 与前端扫描 0 发现。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，
+镜像未发布，生产未访问。
+
 ## 2026-11-10 P1 发布门：unknown origin 复审续期与运行时 CA bundle 20261020-r0
 
 OS APK 门对 5 个无 secdb 记录的 origin 的复审期限 2026-11-16 即将到期，到期后每次发布都会失败关闭。重新复审：v3.23 main（11-10）与 community（11-07）、
@@ -36,6 +67,7 @@ OS 门测试 25/25，公告门自测 139/139，smoke 自测 10/10，`docker comp
 发布（2026-11-11）：main 快进到 `2de7308`（ls-remote 核验，未强推），run `42939172405` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`
 （16/16 包、74 组比较无待修复项、复审期限 2026-12-10）；`2de7308`/`latest` = index `49b02ce1…ae75`（amd64 `338746ed…`、arm64 `da528bac…`，
 revision 标签核验）。已发布镜像内 CA bundle 为 20261020-r0、118 个根证书、不含 emSign C1/C3/G3。状态 released / Docker-published；生产未访问。
+
 
 ## 2026-11-10 P1 发布门：运行时 zlib 1.4-r0（CVE-2026-4738）
 
