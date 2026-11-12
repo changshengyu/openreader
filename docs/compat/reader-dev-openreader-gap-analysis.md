@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P2 账号 登录框“记住登录信息”
+
+上游 `App.vue` 登录框在用户名、密码（注册模式还有邀请码）之后显示“记住登录信息”，默认勾选，登录与注册都有。只有勾选时 `setToken` 才把
+`accessToken` 写入 `localStorage.api_token`；不勾选时浏览器不保存长期 token，登录只靠服务端内存会话（`reader.session`，7 天无访问或服务重启即失效）。
+OpenReader 没有这个复选框，`AuthForm` 总是把 JWT 写入 `localStorage.openreader_token`，并且 11 个文件直接读写它。
+M1/M2 must-fix：加复选框（默认勾选）；不勾选时 token 只放在本标签页的 `sessionStorage`（刷新和应用打开的窗口保留，独立新标签页和重开浏览器需重新登录），
+同时删除 `localStorage` 中旧的 token；`utils/authToken.js` 成为唯一读写点，401 门禁、会话失效与重新认证流程不变。
+A1–A3 acceptable-change：用 sessionStorage 代替服务端内存会话（JWT 没有 cookie 会话）、按标签页隔离、修正上游不勾选后仍保留旧 token 的缺口。合同见
+[`remember-login-fixed-baseline-second-audit-p2-contract.md`](remember-login-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-12 P2 账号 每用户书籍上限
 
 上游 `reader.app.userBookLimit`（默认 200，`READER_APP_USERBOOKLIMIT`）只在 `BookController.kt#saveBook` 检查：书名加作者不在书架上、

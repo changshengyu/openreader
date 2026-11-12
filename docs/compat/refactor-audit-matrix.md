@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：登录框“记住登录信息”（P2，M1–M2、A1–A3）
+
+见[`remember-login-fixed-baseline-second-audit-p2-contract.md`](remember-login-fixed-baseline-second-audit-p2-contract.md)。接在书籍上限切片之后，同一分支
+`claude/account-book-limit-remember-login-a2fb9c`。上游 `App.vue` 默认勾选，只在勾选时把 token 存入 localStorage。M1 复选框、M2 不勾选时只存本标签页 sessionStorage
+为 must-fix；A1 sessionStorage 代替服务端内存会话、A2 独立新标签页需重新登录、A3 不勾选时清除旧的 localStorage token 为 acceptable-change。
+计划测试 T1–T5，加三视口浏览器合同。状态 contract-only。
+
 ## 2026-11-12 当前切片：每用户书籍上限（P2，B1–B3、A1–A5）
 
 见[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。基于 main `f82e0f5a`，分支
