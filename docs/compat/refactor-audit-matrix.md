@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-12 当前切片：产品显示名“闲读”（D1，P0 标签页标题收尾）
+
+见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 14 节。基于 main `f82e0f5`。
+用户把 D1 定为 C“闲读”。壳标题 S1、首页与登录挂载 S2/S3、书源调试标题 T1（`闲读书源编辑器`）为 must-fix（原先 contract-only 等 D1）；
+侧栏品牌、登录页 `<h1>`、manifest `name`/`short_name`、`apple-mobile-web-app-title`、图标 `aria-label` 改为“闲读”是用户要求的差异；
+仓库、镜像、`OPENREADER_*`、存储 key、字体族与导出前缀不改。计划测试：单元 `displayNameContract.test.mjs`，浏览器 `document-title-contract.mjs` 新增 `shell` 流程。状态 contract-only。
+
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
 见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门
