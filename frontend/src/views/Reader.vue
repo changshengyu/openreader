@@ -430,6 +430,7 @@ import {
   selectedTextBookmarkContext,
 } from '../utils/readerBookmarkContext'
 import { readerCatalogRow } from '../utils/readerCatalogRow'
+import { runningChapterLabelFor } from '../utils/readerRunningTitle'
 import {
   READER_CHAPTER_ERROR_CATALOG,
   READER_CHAPTER_ERROR_CONTENT,
@@ -1492,13 +1493,13 @@ const bodyStyle = computed(() => {
   return baseStyle
 })
 
-function formatRunningChapterLabel(index, title) {
-  const ordinal = `第 ${Math.max(0, Number(index) || 0) + 1} 章`
-  const normalizedTitle = String(title || '').trim()
-  return normalizedTitle ? `${ordinal} ${normalizedTitle}` : ordinal
-}
-
-const runningChapterLabel = computed(() => formatRunningChapterLabel(currentIndex.value, chapter.value?.title))
+// Running title R1-R5: the catalog row at currentIndex (the row the tab title and the error page use), so the label
+// switches when navigation starts, stays on a failed or reloading target and never borrows another book's row.
+const runningChapterLabel = computed(() => runningChapterLabelFor({
+  book: book.value,
+  chapters: chapters.value,
+  index: currentIndex.value,
+}))
 const showRunningChapterHeader = computed(() => !isAudioChapter.value && !isCBZBook(book.value))
 const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const desktopWorkspacePanel = computed(() => {
