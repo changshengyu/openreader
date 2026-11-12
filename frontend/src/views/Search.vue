@@ -92,6 +92,7 @@ import { newestBookProgress } from '../utils/bookOrder'
 import { isLocalBook, localBookSearchText, normalizeLocalBookSearch } from '../utils/localBook'
 import { readerRouteQueryFromBook } from '../utils/readerRoute'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
+import { BOOK_LIMIT_MESSAGE, bookLimitMessage } from '../utils/bookLimit'
 import {
   DEFAULT_SEARCH,
   normalizeSearchConcurrent,
@@ -550,6 +551,8 @@ async function importLocalPaths(paths) {
     const success = imported.filter(item => item.book).length
     const failed = imported.filter(item => item.error).length
     ElMessage.success(`导入 ${success} 本` + (failed ? `，${failed} 本失败` : ''))
+    // reader-dev reports each book refused at the shelf limit as an error.
+    if (imported.some(item => bookLimitMessage(item.error))) ElMessage.error(BOOK_LIMIT_MESSAGE)
   } catch (err) {
     if (searchSessionOperations.canCommit(operation)) {
       ElMessage.error(readError(err, '导入本地书失败'))
