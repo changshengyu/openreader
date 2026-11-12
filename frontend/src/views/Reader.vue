@@ -140,7 +140,7 @@
         <div ref="contentBody" class="reader-body" :style="bodyStyle">
           <ReaderChapterContent
             :blocks="displayedChapterBlocks"
-            :error="chapterLoadError"
+            :error="mainChapterLoadError"
             :error-title="chapterErrorTitle"
             :error-label="chapterErrorLabel"
             :loaded="chapterLoaded"
@@ -1031,7 +1031,8 @@ const {
   compute: computeShowChapterList,
   invalidate: invalidateShowChapters,
   maybeExtend: maybeExtendShowChapters,
-  retry: retryContinuousChapter,
+  retry: retryChapterWindowBlock,
+  showFailedChapter: showFailedContinuousChapter,
   syncCurrentChapter: updateCurrentChapterFromScroll,
 } = useReaderChapterWindow({
   reader,
@@ -1067,6 +1068,51 @@ const {
   formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
 })
 onBeforeUnmount(invalidateShowChapters)
+
+// Error page R6: a continuous window shows its failed target chapter as its own inline error block instead of the
+// main error page.
+const mainChapterLoadError = computed(() => (
+  !readerCatalogLoadFailed.value
+  && isContinuousScrollRead.value
+  && chapterBlocks.value.some(block => block.error && Number(block.index) === currentIndex.value)
+    ? ''
+    : chapterLoadError.value
+))
+
+// The window retries a chapter in place. While the retried chapter is still the failed current load, a recovery
+// ends the failure and another failure toasts again (R4, R6).
+async function retryContinuousChapter(index) {
+  const target = Number(index)
+  const failedCurrent = Boolean(chapterLoadError.value)
+    && !readerCatalogLoadFailed.value
+    && target === currentIndex.value
+  const recovered = await retryChapterWindowBlock(target)
+  if (!failedCurrent || recovered === null || target !== currentIndex.value) return recovered
+  if (recovered) {
+    chapterLoadError.value = ''
+    chapterLoaded.value = true
+    return recovered
+  }
+  const reason = chapterBlocks.value.find(block => Number(block.index) === target)?.error
+  if (reason) {
+    chapterLoadError.value = reason
+    ElMessage.error(readerChapterErrorToast(READER_CHAPTER_ERROR_CONTENT, reason))
+  }
+  return recovered
+}
+
+// The failed load belongs to its target chapter. Once the continuous window makes another chapter current
+// (scrolling, an in-window jump, a layout restore) that chapter's own block applies, as after an adjacent failure.
+watch(currentIndex, (index, previous) => {
+  if (
+    index === previous
+    || !chapterLoadError.value
+    || readerCatalogLoadFailed.value
+    || !isContinuousScrollRead.value
+  ) return
+  chapterLoadError.value = ''
+  chapterLoaded.value = true
+}, { flush: 'sync' })
 const {
   readableViewportSize,
   resize: handleResize,
@@ -1857,6 +1903,7 @@ const {
   },
   formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
   notifyError: error => notifyReaderLoadFailure(READER_CHAPTER_ERROR_CONTENT, error),
+  showFailedChapterWindow: (index, error) => showFailedContinuousChapter(index, error),
   nextFrame,
   onEpubPrepared: pending => {
     epubPendingRestore.value = pending

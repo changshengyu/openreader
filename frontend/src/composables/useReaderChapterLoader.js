@@ -136,6 +136,11 @@ export function useReaderChapterLoader(options) {
       clearLoadingTimer()
       options.chapterLoading.value = false
       options.page.value = 0
+      // In a continuous window the failed target stays as its own inline error block and the next chapter
+      // still loads (R6).
+      if (unref(options.isContinuousScrollRead) && options.showFailedChapterWindow) {
+        Promise.resolve(options.showFailedChapterWindow(targetIndex, error)).catch(() => {})
+      }
       options.notifyError?.(error)
       await nextTick()
       if (isCurrent()) options.updateLayout()
