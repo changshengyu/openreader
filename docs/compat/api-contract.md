@@ -721,6 +721,18 @@ Exact-prefix growth preserves existing chapter IDs/cache; non-prefix replacement
 prunes only superseded derived cache after commit. `lastCheckTime` advances only for positive growth relative to the
 persisted book summary. Initial/focus/WebSocket shelf reloads do not invoke this route.
 
+### Per-user book limit
+
+`POST /api/books`, `POST /api/books/remote`, `POST /api/imports/books` (and `/api/imports/txt`), `POST /api/local-store/import`
+and `POST /api/webdav/import` refuse a new shelf row once the caller's shelf holds its limit, as reader-dev
+`BookController.kt#saveBook` does with 超过用户书籍数上限. The limit is the user's positive `bookLimit` (administrator
+API), otherwise `OPENREADER_USER_BOOK_LIMIT` (default 200). A refused add is `403 {"error":"book limit reached"}`; the two
+storage imports report the same string on the refused item inside their `200 {imported}` envelope. The count and the
+insert share one transaction; a new remote book is refused before any fetch and a local import before its archive is
+written, and the staged `importToken` stays reusable. A remote book whose `url` is already on the shelf, a reattached
+local placeholder, and every backup restore are not counted. See
+[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md).
+
 ## EPUB reader resource contract
 
 ### Authenticated chapter response
