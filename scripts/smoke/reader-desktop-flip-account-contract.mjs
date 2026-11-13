@@ -226,7 +226,8 @@ async function ensureMobileSettings(page, viewport) {
 
 async function ensureDesktopSettings(page) {
   if (!await page.locator('.reader-desktop-workspace .settings-body').count()) {
-    await page.locator('.reader-left-rail button[title="设置"]').click()
+    // Since da438bc7 the rail entries are .rail-item buttons labelled by aria-label (no title).
+    await page.locator('.reader-left-rail .rail-item[aria-label="设置"]').click()
     await page.waitForSelector('.reader-desktop-workspace .settings-body', { timeout: 5000 })
   }
   return page.locator('.reader-desktop-workspace')
