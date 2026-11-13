@@ -8,6 +8,10 @@
 前端文案“超过用户书籍数上限”和不受限的路径都不变。改写 L9（原断言默认 200），新增 L11/L12；README、README_CN、compose 与 api-contract 同步。合同第 5、12 节见
 [`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
 状态 **contract-only**。
+记录（2026-11-13，取代上段的状态）：合同 `9a83857`、红测 `ef71f3b`、实现 `1ac6c99`。红测在 `2f19133c` 上：L9 五个不限情况、L11、L12 后半都返回 403，对照通过；
+浏览器不限模式停在第 201 本 403。实现后转绿。后端全量 31 个包与 vet、race api/config/services 26 个包（api 1101.2 s）通过，无数据竞争；前端 997/997 与 build；`OPENREADER_USER_BOOK_LIMIT=2`
+时书籍上限合同三视口仍限制，不设变量时不限模式三视口通过（第 201 本 API 201、第 202 本界面导入成功），openreader-smoke 三视口通过。状态 implementation-complete /
+regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
 

@@ -205,4 +205,28 @@
   - `openreader-smoke.mjs` 三个视口。
 - 文档：`README.md`、`README_CN.md`、`docker-compose.yml` 注释与 `api-contract.md` 同步为默认不限。
 
-状态 **contract-only**。
+状态 **contract-only**（由下面的记录取代）。
+
+### 12.1 记录（2026-11-13）
+
+提交：合同与文档 `9a83857`；红测 `ef71f3b`；实现 `1ac6c99`（`config.go` 与 `services/booklimit`，前端不改）。
+
+红测在 `2f19133c` 上的结果：
+- L9 的五个“不限”情况（零值 `Config`、未设置、`abc`、`0`、`-5`）都在第 201 本返回 403；
+- L11 在已有 230 本时第一次新增就返回 403；L12 后半（`bookLimit` 改回 0，补到 200 本）返回 403；
+- 对照（L9 的 `5` 与 ` 7 `、L12 前半）和 L1–L8、L10 通过；
+- 浏览器 `USER_BOOK_LIMIT=unlimited` 模式停在 desktop：第 201 本返回 403。
+
+实现后，同一组断言全部转绿。改写的既有测试只有 L9（第 12 节已注明），其余断言没有改动。
+
+验证：
+- 后端：`go test ./...` 31 个包通过，`go vet ./...` 通过；`go test -race -timeout 40m ./api ./config ./services/...` 通过（26 个包：api 1101.2 秒、config 与 services 下 24 个有测试的包；`booklimit` 没有单独的测试文件，由 api 合同覆盖），没有数据竞争。
+- 前端：997/997（前端代码未改），build 通过（含 service worker 生成）。
+- 浏览器：真实 Go 服务，全新数据目录，Chromium：
+  - `OPENREADER_USER_BOOK_LIMIT=2` 的服务上，`user-book-limit-contract.mjs` 三个视口仍然限制：API 403，导入对话框显示“超过用户书籍数上限”，书架不变；
+  - 不设变量的服务上，`USER_BOOK_LIMIT=unlimited` 模式三个视口通过：经 API 放入 200 本后第 201 本返回 201，再在界面导入成功（返回 201，书架显示 202 本），没有“超过用户书籍数上限”；
+  - 同一服务上 `openreader-smoke.mjs` 三个视口通过；
+  - 两个服务日志都没有 5xx。
+- 没有跑公告门与存储合同：不改依赖、构建工具或存储格式。
+
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。

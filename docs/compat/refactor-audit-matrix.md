@@ -6,6 +6,10 @@
 `claude/user-book-limit-default-unlimited`。用户 2026-11-13 决定：`OPENREADER_USER_BOOK_LIMIT` 未设置或非正整数时不限，取代默认 200；用户 `bookLimit > 0` 仍覆盖，
 `0` 跟随实例值。上游默认 200，列为用户要求的差异。计划：改写 L9，新增 L11（未设置时 200 本后仍能新增）、L12（实例不限时按用户 `bookLimit` 限制），
 浏览器在 `OPENREADER_USER_BOOK_LIMIT=2` 与不设变量的服务上各跑一遍。状态 contract-only。
+记录（2026-11-13，取代上段的状态）：合同 `9a83857`、红测 `ef71f3b`、实现 `1ac6c99`。红测在 `2f19133c` 上：L9 五个不限情况、L11、L12 后半都返回 403，对照通过；
+浏览器不限模式停在第 201 本 403。实现后转绿。后端全量 31 个包与 vet、race api/config/services 26 个包（api 1101.2 s）通过，无数据竞争；前端 997/997 与 build；`OPENREADER_USER_BOOK_LIMIT=2`
+时书籍上限合同三视口仍限制，不设变量时不限模式三视口通过（第 201 本 API 201、第 202 本界面导入成功），openreader-smoke 三视口通过。状态 implementation-complete /
+regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 当前切片：PWA Service Worker 与离线外壳盘点（P2，W1–W21）
 
