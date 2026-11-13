@@ -114,3 +114,17 @@ OpenReader 当前映射：
   模板里不再出现 `音调`。`scripts/smoke/reader-tts-contract.mjs` 展开后检查行标签依次为 `语音库`、`语速`、`语调`、`定时`，按
   1440×900、390×844、360×800 各跑一次。`readerSettingsPanelContract.test.mjs` 原来的“设置面板不重复朗读控件”检查包含 `朗读音调`，
   这里再加上 `朗读语调`，原有字符串保留。
+
+## 9. 2026-11-12 第 8 节的实施与验证
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `a06b6f08` | 合同 | 第 8 节，gap analysis 与 matrix。 |
+| `6f8aff8a` | 红测 | `readerTTSBarLabels.test.mjs`（2 条）；`reader-tts-contract.mjs` 检查四行标签；设置面板防重复检查加 `朗读语调`。 |
+| `b650eede` | 实现 | `ReaderTTSBar.vue` 的标签和三个无障碍名称改成“语调”。 |
+
+单元：`a06b6f08` 上两条新断言失败（实际行标签 `语速`、`音调`、`定时`），设置面板检查通过；`b650eede` 上 935/935，`vite build` 通过。
+
+浏览器（go1.26.11 二进制，全新数据目录，模拟接口）：`reader-tts-contract.mjs` 依次用 1440×900、390×844、360×800 跑，`b650eede` 之前的前端 3 个视口都失败：`TTS rows must use the reader-dev labels: ["语音库","语速","音调","定时"]`；`b650eede` 的前端 3 个视口都通过。
+
+状态：**implementation-complete / regression-validated**。Git：分支 `claude/reader-error-title-progress-59bcb6`，未合入 main。镜像：未构建。生产：未访问。

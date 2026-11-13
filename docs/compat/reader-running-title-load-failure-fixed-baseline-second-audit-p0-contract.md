@@ -1,7 +1,7 @@
 # Reader 运行标题加载中与失败时的章节名盘点（P0）
 
-状态：**contract-only**。本切片只写文档；Reader 产品代码、单元合同和浏览器合同都没有改。第 4 节的真实浏览器复现用的是会话
-scratchpad 里的临时探针，没有入库。红测与实现按第 9 节在后续阶段进行。2026-11-12 起按第 11 节的实施补充推进。
+状态：**implementation-complete / regression-validated**（2026-11-12，见第 11、12 节；分支 `claude/reader-error-title-progress-59bcb6`，
+未合入 main）。原盘点只写文档，第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针；第 12 节的红绿证据由入库的单元与浏览器合同取得。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
 `/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不可写，上游克隆到会话 scratchpad 后 checkout 同一提交。  
@@ -423,3 +423,44 @@ R7. 不变：连续滚动跨章和已加载窗口内跳转的切换时机，加�
    一次 DOM 更新里，观察器能记到。
 7. **新浏览器合同**：`scripts/smoke/reader-running-title-load-contract.mjs`。S1–S4 跑 3 个视口 × 4 种模式；T1–T2、B1–B2、F1 跑 3 个视口
    的 page 模式。B 用两本不在书架上的书（书一第 2 行 `甲三 当前`，书二第 3 行 `乙四 目标`），书二的目录和目标章正文各延迟 1.5s。
+
+## 12. 实施与验证（2026-11-12）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `11a067ec` | 合同 | 第 11 节实施补充，gap analysis 与 matrix。 |
+| `314300c1` | 红测 | 见下。 |
+| `c2445c54` | 实现 | `frontend/src/utils/readerRunningTitle.js#runningChapterLabelFor` 经 `readerCatalogRow` 取行；`Reader.vue` 的 `runningChapterLabel` 改由它派生，删掉页面里的 `formatRunningChapterLabel`；`useReaderDocumentTitle` 改用同一个 `readerCatalogRow`（行为不变）；`useReaderRouteSync` 在打开另一本书的那次路由变化里跳过位置监听的 `loadChapter`。 |
+
+`git diff b33eb7a5 c2445c54 -- backend Dockerfile` 与依赖锁文件为空。
+
+**单元**（沙箱外）：
+
+| 代码 | 结果 |
+| --- | --- |
+| `b33eb7a5` 的产品代码加 `314300c1` 的测试 | 931 条中 918 通过，13 条失败，全部是新增或改写的断言：`readerRunningTitle` 5 条与 `readerRunningTitleTransaction` 6 条（模块不存在）、`readerRouteSync` 1 条（实际 `[start, book, chapter 3, jump]`）、帧合同 1 条（仍从 `chapter.value?.title` 派生）。另在只补上辅助函数、路由同步仍是旧代码的状态下单独跑过事务测试：两条换书用例仍在“no chapter of the new book may load against the previous catalog”上失败（实际 `[3]`），证明它们锁的是第二层机制。 |
+| `c2445c54`（工作树里另有切片 3 的两条单元） | 933/933；`vite build` 通过。 |
+| `b650eede`（四个切片都完成后） | 935/935。 |
+
+**浏览器**：go1.26.11 二进制加 `vite build` 生产前端；红测基线是错误面切片之后的前端（`127.0.0.1:18492`），修复是 `c2445c54`
+（`:18494`），各自全新的 data/cache/library/store 与随机 JWT secret；服务与 Playwright 都在沙箱外。
+
+| 合同 | 红测基线 | 修复后 |
+| --- | --- | --- |
+| `reader-running-title-load-contract.mjs`（24 例） | 24/24 FAIL，取值与第 4 节一致：S1 `第 2 章 第一章 起点`，S2 `第 5 章 第二章 延迟`，S3 加载中 `第 6 章 第二章 延迟`，切到缓存章时还记到一次中间值 `第 3 章 第二章 延迟`，S4 重新加载中 `第 5 章 第三章 缓存`；T1 `第 6 章 第一章 起点`，T2 `第 5 章 第六章 迟到`；B1、B2 都出现 `第 4 章 甲三 当前`，并在新书目录到达前请求了新书第 3 行正文；F1 依次是 `第 1 章`、`第 4 章`、`第 4 章 甲四 预载` | 24/24 PASS（4 种模式下 S1–S4 都是目标章标签，记录里没有异行值；B 只出现旧书完整标签、空串和新书目标章，目录到达前没有正文请求；F1 目录到达前只有空串） |
+| `reader-epub-contract.mjs`（真实服务） | 1440×900 失败：内链导航记录到 `["第 3 章 第一章（下）","第 3 章 第二章"]`（第 2 行来自预载的内存缓存，中间值存在于一次 DOM 更新） | 3 个视口通过 |
+| `reader-continuous-contract.mjs`（加固为精确相等） | 通过 | 通过 |
+
+浏览器层面的 M3（只去掉路由同步的跳过，单独构建，`:18495`）：B 的 6 例全部失败，都出现 `第 4 章 甲四 预载`（旧书另一章的完整标签），
+目录到达前请求了新书第 3 行。第二层机制因此不是多余的。
+
+**临时变异**（单元，改工作区后按原文恢复，逐字节核对）：M1 运行标题改回 `chapter.value?.title` 和 M2 序号改取已提交章节，都会让帧合同失败；
+M3 去掉路由同步的跳过会让路由同步用例和两条换书事务用例失败；M4 目录行未知时显示序号会让 5 条失败；M5 去掉加载器的 `isCurrent()`
+会让迟到用例和既有的加载器用例失败。
+
+**回归**（`:18494`，产品代码与 `c2445c54` 相同）：`reader-error-surface-contract` 48/48、`document-title-contract`、`reader-text-modes-contract`、`reader-reauthentication-contract`（4 视口）、`reader-mobile-contract`（含 iPad）、`reader-audio-contract`、`openreader-smoke`（3 视口）、`reader-desktop-panel-controls-contract` 120/120（含 C5）全部通过；运行标题合同 24/24、EPUB 3 视口与连续合同见上表。
+
+**其余门**：Go `test`/`vet`/`race` 跳过（后端无改动）；依赖 advisory、Compose 与卷门跳过（依赖、Dockerfile、数据格式都没有改）。
+
+**状态**：R1–R6 **implementation-complete / regression-validated**。Git：分支 `claude/reader-error-title-progress-59bcb6`，未合入 main。镜像：未构建，
+未推送。生产：未访问，未操作。第 10 节第 3 条（失败态进度载荷）仍未盘点。

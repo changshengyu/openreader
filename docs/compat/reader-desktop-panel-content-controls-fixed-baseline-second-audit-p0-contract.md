@@ -487,3 +487,25 @@ P8. 不变：关闭层、面板、进度块的层级与 DOM 顺序；P2–P6；�
 - 红灯：现行代码已经满足 P7，红灯只能取在 `da438bc7` 之前的 `5c087084`。`git diff 5c087084 HEAD -- frontend/package-lock.json frontend/package.json frontend/vite.config.js`
   为空，可以用同一份 `node_modules` 构建。预期：两条单元在 `5c087084` 上失败，C5 的 12 例都在“面板关闭”上失败；HEAD 上全部通过。
 - 实现：没有产品代码改动（P7 已由 `da438bc7` 实现），本节只补合同、单元与浏览器断言和记录。
+
+## 14. P7 测试与验证（2026-11-12）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `6055387c` | 合同 | 第 13 节，gap analysis 与 matrix。 |
+| `726d4696` | 测试 | 单元：`readerTools.test.mjs` 的派发用例；`readerDesktopPanelContentControls.test.mjs` 的 P7 源码合同。浏览器：C5。左栏入口与进度块按钮的选择器同时接受 `da438bc7` 之前的 `title` 写法，断言不变。 |
+
+没有实现提交：P7 已由 `da438bc7` 实现。
+
+| 代码 | 单元 | C5（3 视口 × 4 面板） |
+| --- | --- | --- |
+| `5c087084`（`da438bc7` 之前，同一份 `node_modules` 构建，`127.0.0.1:18493`） | 两条都失败：`@previous` 绑定的是 `goChapter(currentIndex - 1)`；派发调用序列为空，没有关面板 | 12/12 FAIL，都只在“面板关闭”上（下一章和上一章各一次）；路由、显示与进度写入都正常 |
+| `726d4696`（产品代码与 `c2445c54` 相同，`:18494`） | 通过 | 12/12 PASS：面板与关闭层卸载，路由与正文到目标章，各写一次该章进度 |
+
+C5 第一次在两份代码上跑时，没有等节流后的进度写入（`minimumInterval` 1200ms）就读了记录，进度断言在两边都偶发失败。改为和 C1 一样
+最多等 3s 后重跑，上表是重跑结果。
+
+**回归**：同一服务上 `reader-desktop-panel-controls-contract` 全量 120/120（C1–C5），另见运行标题合同第 12 节的回归列表。
+
+**状态**：P7 **implementation-complete（`da438bc7`）/ regression-validated**；第 10 节第 1 条关闭。Git：分支 `claude/reader-error-title-progress-59bcb6`，
+未合入 main。镜像：未构建。生产：未访问。
