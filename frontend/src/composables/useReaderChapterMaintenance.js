@@ -37,6 +37,12 @@ export function useReaderChapterMaintenance(options) {
   }
 
   async function reloadChapter() {
+    // After a failed book load there is no catalog to reload a chapter from: reload the whole book, which
+    // requests the catalog again and positions itself from the route or the saved progress.
+    if (options.isBookLoadFailed?.()) {
+      if (await options.reloadBook()) options.notify?.('章节已重新载入')
+      return
+    }
     const loaded = await options.loadChapter(
       unref(options.currentIndex),
       options.getCurrentOffset(),

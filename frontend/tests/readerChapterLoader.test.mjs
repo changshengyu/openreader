@@ -98,7 +98,9 @@ test('saves forced progress and expands continuous chapter windows', async () =>
   ])
 })
 
-test('records load failures and always releases loading guards', async () => {
+// The calls used to be [cancel, frame]: a failure kept the previous chapter's page count. Error surface contract R8
+// (section 13 item 9) rewrites the sequence: the error page itself is measured once before the guards are released.
+test('records load failures, measures the error page and always releases loading guards', async () => {
   const fixture = createController({
     loadContent: async () => {
       throw new Error('network error')
@@ -109,10 +111,76 @@ test('records load failures and always releases loading guards', async () => {
   assert.equal(fixture.state.chapterLoaded.value, false)
   assert.equal(fixture.state.chapterLoading.value, false)
   assert.equal(fixture.state.restoringPosition.value, false)
+  assert.equal(fixture.state.page.value, 0, 'the error page starts on its first page')
   assert.deepEqual(fixture.calls, [
     ['cancel'],
+    ['layout'],
     ['frame'],
   ])
+})
+
+test('reports every failed current load once, including a failed retry', async () => {
+  const reported = []
+  const fixture = createController({
+    loadContent: async () => {
+      throw new Error('network error')
+    },
+    notifyError: error => reported.push(error.message),
+  })
+  await fixture.controller.load(1)
+  assert.deepEqual(reported, ['network error'])
+  await fixture.controller.load(1, 0, { refresh: true })
+  assert.deepEqual(reported, ['network error', 'network error'])
+})
+
+test('does not report aborted or superseded loads', async () => {
+  const reported = []
+  const pending = new Map()
+  const fixture = createController({
+    loadContent: (index, options) => new Promise((resolve, reject) => {
+      pending.set(index, { resolve, reject, signal: options.signal })
+    }),
+    notifyError: error => reported.push(error.message),
+  })
+  const first = fixture.controller.load(0)
+  const second = fixture.controller.load(1)
+  const aborted = new Error('chapter request cancelled')
+  aborted.name = 'AbortError'
+  pending.get(0).reject(aborted)
+  assert.equal(await first, false)
+  const third = fixture.controller.load(2)
+  pending.get(1).reject(new Error('superseded failure'))
+  assert.equal(await second, false)
+  assert.deepEqual(reported, [], 'aborted and superseded loads must stay silent')
+  pending.get(2).reject(new Error('current failure'))
+  assert.equal(await third, false)
+  assert.deepEqual(reported, ['current failure'])
+  assert.equal(fixture.state.chapterLoadError.value, '加载失败：current failure')
+})
+
+test('keeps a failed continuous target chapter in the chapter window', async () => {
+  const fixture = createController({
+    loadContent: async () => {
+      throw new Error('network error')
+    },
+    showFailedChapterWindow: (index, error) => fixture.calls.push(['failed-window', index, error.message]),
+  })
+  fixture.state.isContinuousScrollRead.value = true
+  await fixture.controller.load(2)
+  assert.equal(fixture.state.chapterLoadError.value, '加载失败：network error')
+  assert.deepEqual(
+    fixture.calls.filter(call => call[0] === 'failed-window'),
+    [['failed-window', 2, 'network error']],
+  )
+
+  const single = createController({
+    loadContent: async () => {
+      throw new Error('network error')
+    },
+    showFailedChapterWindow: (index, error) => single.calls.push(['failed-window', index, error.message]),
+  })
+  await single.controller.load(2)
+  assert.deepEqual(single.calls.filter(call => call[0] === 'failed-window'), [], 'single-chapter modes show the error page')
 })
 
 test('discards an older main load that finishes after the active chapter', async () => {

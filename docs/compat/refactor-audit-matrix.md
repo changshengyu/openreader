@@ -31,6 +31,37 @@ A1 用户 `BookLimit > 0` 覆盖实例值、A2 HTTP 403、A3 沿用现有去重�
 race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
 重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
+## 2026-11-12 当前切片：朗读条“音调”改回上游“语调”（P0，文案）
+
+见[`reader-audio-tts-fixed-baseline-p0-contract.md`](reader-audio-tts-fixed-baseline-p0-contract.md)第 8 节。朗读条音高一行的标签与步进器无障碍名称从“音调”改为上游的“语调”；
+新增源码合同 `readerTTSBarLabels`，`reader-tts-contract` 检查四行标签（三视口），设置面板防重复检查加 `朗读语调`。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `a06b6f08`、红测 `6f8aff8a`、实现 `b650eede`；两条单元与 `reader-tts-contract` 三视口红 → 绿，前端 935/935 与 build。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 当前切片：桌面面板打开时进度块的上一章/下一章（P0）
+
+见[`reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)第 13 节。
+P7：桌面任一工作区面板打开时，进度块的上一章/下一章执行原动作（含首末章提示）并关闭面板；P8 其余不变。`da438bc7` 已经实现了 P7（`useReaderTools.run` 先关面板），
+本切片只补单元（工具派发、源码接线）与浏览器 C5（3 视口 × 4 面板），红灯取 `5c087084`，产品代码不改。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `6055387c`、测试 `726d4696`，产品改动来自 `da438bc7`，本次只补合同和测试；`5c087084` 上单元 2 条、C5 12/12 红，HEAD 上绿，桌面面板全量 120/120。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 当前切片：Reader 运行标题加载中与失败时的章节名（P0）
+
+见[`reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md`](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7、11 节。
+基于本分支错误面切片之后的 `b33eb7a5`。R1 运行标题由 `currentIndex` 的目录行派生（与标签页标题、错误页同一行），R2 目录行未知时为空，R3 导航开始即整体切换、
+失败与重新加载不回退，R4 迟到与中止不回写（回归），R5 不跨书拼接，R6 换源/目录刷新后立即用新目录。计划：`readerRunningTitle`、`readerRunningTitleTransaction`（新）、
+路由同步换书用例、帧合同改写，新 `reader-running-title-load-contract`（S1–S4、T1–T2、B1–B2、F1），EPUB 内链与连续合同加固。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `11a067ec`、红测 `314300c1`、实现 `c2445c54`；单元红 13/931 → 933/933（四个切片完成后 935/935）与 build，运行标题浏览器合同 24/24 红 → 绿，EPUB 内链红 → 绿，浏览器 M3 证明路由同步一层必要，错误面 48/48、桌面面板 120/120 等回归通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 当前切片：Reader 正文加载失败错误页 R1–R6、R8（P0）
+
+见[`reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md`](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)第 7、13 节。基于 main `f82e0f5a`。
+R1 错误页 `<h3>` 取 `currentIndex` 的目录行，R2 `获取章节内容失败！`/`获取章节目录失败！` 两行文字，R3 按 D1 (b) 把后端 code/状态映射成中文短句，R4 每次当前章失败
+提示一次，R5 目录失败时三个重试入口都重新加载整本书，R6 连续模式目标章失败留在窗口、后一章照常加载，R8 失败后按错误页重算页码；R7 已发布不重开。
+计划：`readerChapterErrorText`（新）、错误面源码合同、加载器/维护/目录/窗口单元，`reader-error-surface-contract` 补 E1、E4–E7 与连续模式目标章。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：补充 `c752efae`、`ed876aa7`、红测 `be9e9653`、实现 `246a829b`/`1aa2fa12`/`eac2fe5e`、测试改写 `ad7df218`/`3384ead6`。
+前端红 35/918 → 918/918 与 build；错误面浏览器合同红 36/48 → 48/48；连续、标签页标题、文字模式、重新认证、移动端、音频、openreader-smoke、EPUB、
+桌面面板 108 例通过；变异 M3–M9 均被抓到。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
 见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门

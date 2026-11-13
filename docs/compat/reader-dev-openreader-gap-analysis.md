@@ -37,6 +37,46 @@ B1–B3 must-fix：新增 `OPENREADER_USER_BOOK_LIMIT`（默认 200，未设置�
 race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
 重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
+## 2026-11-12 P0 Reader 朗读条“音调”改回上游“语调”
+
+上游 `web/src/views/Reader.vue` 朗读条展开后的行标签依次是 `语音库`、`语速`、`语调`、`定时`（L179–L208，`speechPitch` 标为 `语调`），
+[音频与 TTS 合同](reader-audio-tts-fixed-baseline-p0-contract.md)第 2 节“栏位结构”写的也是“语速、语调、定时”。OpenReader 的 `ReaderTTSBar.vue`
+把这一行标成 `音调`，步进器的无障碍名称也写成“音调”。合同第 8 节判 must-fix（文案），把标签改为 `语调`，三个无障碍名称同步改，
+数值范围、存储与朗读参数都不变。状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `a06b6f08`、红测 `6f8aff8a`、实现 `b650eede`（`ReaderTTSBar.vue` 的标签和三个无障碍名称改为“语调”）。`a06b6f08` 上两条新单元失败（实际行标签 `语速`、`音调`、`定时`），修复后通过；`reader-tts-contract` 在 1440×900、390×844、360×800 修复前都失败（`["语音库","语速","音调","定时"]`），修复后都通过；前端 935/935 与 build。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 桌面面板打开时进度块的上一章/下一章
+
+上游四个桌面面板是没有遮罩的 click popover，右侧进度块的上一章、下一章按下照常执行，面板随之关闭。[桌面面板正文控件合同](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)
+第 5 节第 8 行在 `0962dca` 上实测为“执行，面板不关”并判 must-fix，第 10 节第 1 条留待并入。新增第 13 节写成实施合同 P7、P8。核对发现
+`da438bc7`（2026-11-03）已把进度块改为经 `handleDesktopToolAction`，共享工具派发对非面板工具先 `closePrimaryPanels()`，所以 main 已满足 P7，
+但没有合同条目，也没有测试锁住。本切片补合同、单元与浏览器 C5，红灯取在 `da438bc7` 之前的 `5c087084`，产品代码不改。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：合同 `6055387c`、测试 `726d4696`；产品改动来自 `da438bc7`，本次只补合同和测试。`5c087084`（`da438bc7` 之前，同一份 `node_modules` 构建）上两条单元失败（`@previous` 绑定 `goChapter(currentIndex - 1)`，派发不关面板），C5 12/12 只在“面板关闭”上失败；HEAD 上单元通过、C5 12/12，桌面面板全量 120/120。状态 **implementation-complete / regression-validated**（实现即 `da438bc7`）；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 运行标题加载中与失败时的章节名（实施）
+
+固定上游 `Reader.vue#getContent` 在请求正文前就把 `this.title` 写成目标章目录标题，失败不回退，迟到响应被丢弃；Reader 内换书时页头
+只会是旧书的完整标签或新书目标章。OpenReader（错误面切片之后）的运行标题仍由 `currentIndex` 与已提交的 `chapter.title` 拼成，
+切章加载中、失败后、重新加载中都显示“新序号 + 旧章节名”，首次进入时显示猜测的 `第 1 章`，Reader 内换书时位置监听会用旧目录加载
+新书的目标章。按[运行标题合同](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7 节 R1–R7 实施；第 11 节补充：
+与标签页标题、错误页共用 `readerCatalogRow`，R5 由“目录行属于当前书”和“换书的那次路由变化不按旧目录加载章节”两层保证，单元与浏览器
+的记录粒度，以及两处既有断言的改写。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：合同 `11a067ec`、红测 `314300c1`、实现 `c2445c54`。单元在 `b33eb7a5` 的产品代码上 931 条中 13 条红（全部是新增或改写的断言），修复后 933/933（含切片 3 两条），四个切片完成后 935/935 与 build；`reader-running-title-load-contract` 红测基线 24/24 FAIL（S1 `第 2 章 第一章 起点`、S2 `第 5 章 第二章 延迟`、T1 `第 6 章 第一章 起点`、B1 `第 4 章 甲三 当前` 并提前请求新书正文、F1 `第 1 章`），修复后 24/24；EPUB 内链从记录到 `第 3 章 第一章（下）` 到三视口通过；连续合同加固前后都通过；浏览器 M3（去掉路由同步一层）让 B 的 6 例失败；单元变异 M1–M5 都被抓到；错误面 48/48、标签页标题、文字模式、重新认证、移动端、音频、openreader-smoke、桌面面板 120/120 回归通过，服务日志没有 5xx 和 panic。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 正文加载失败错误页 R1–R6、R8（实施）
+
+固定上游 `Reader.vue#getContent`/`loadCatalog` 与 `Content.vue#render`：当前章失败后正文区是“目标章 `<h3>` + `获取章节内容失败！` + 原因”的
+错误章节页，每次失败弹一次提示，页码按错误页重算，连续模式失败章留在列表里、后一章照常加载；目录失败显示 `获取章节目录失败！`。
+OpenReader（`f82e0f5a`）的错误块只有原因和“重新加载”（R7 已发布），没有标题、标签和提示，原因是后端英文消息，失败后沿用上一章页数，
+连续模式目标章失败占满正文，目录失败后“重新加载”按第 0 行显示另一章。按[错误面合同](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)
+第 7 节 R1–R6、R8 与 D1 (b) 映射表实施；第 13 节补充失败类型、目录行、提示范围、目录失败的三个重试入口与 R6 的状态规则，并记录两处与
+合同冲突的既有断言的改写。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：补充 `c752efae`、导入后缀 `ed876aa7`、红测 `be9e9653`、实现 `246a829b`（R1–R4、R8、D1）/`1aa2fa12`（R5）/
+`eac2fe5e`（R6）、测试改写 `ad7df218`（面板 C3 scroll 跟随 R6）/`3384ead6`（连续合同按 D1 不再要求后端原文）。前端红测基线 918 条中 35 条红，修复后
+918/918 与 build；`reader-error-surface-contract` 红测基线 36/48 FAIL、修复后 48/48；连续、标签页标题、文字模式、重新认证、移动端（含 iPad）、音频、
+openreader-smoke、EPUB（真实服务）与桌面面板 108 例通过；七个临时变异都被对应断言抓到。状态 **implementation-complete / regression-validated**；
+分支已推送，未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。

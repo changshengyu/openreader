@@ -4,6 +4,7 @@ import {
   formatReaderDocumentTitle,
   setDocumentTitle,
 } from '../utils/documentTitle.js'
+import { readerCatalogRow } from '../utils/readerCatalogRow.js'
 
 // Upstream Reader titles the tab `书名 - 章节名` and switches to the target catalog title as soon as
 // navigation starts, so the chapter name comes from the catalog row at currentIndex rather than the
@@ -28,14 +29,7 @@ export function useReaderDocumentTitle(options) {
   onScopeDispose(() => setTitle(shellTitle))
 }
 
+// The same catalog row as the running title and the error page (running title contract R1).
 function readerDocumentTitle(book, chapters, currentIndex) {
-  const row = Array.isArray(chapters) ? chapters[Number(currentIndex)] : null
-  const chapterTitle = row && persistedId(row.bookId) === persistedId(book?.id) ? row.title : ''
-  return formatReaderDocumentTitle(book?.title, chapterTitle)
-}
-
-// Shelf catalog rows carry their bookId; temporary remote sessions serialize book.id and row.bookId as 0.
-function persistedId(value) {
-  const id = Number(value)
-  return Number.isFinite(id) && id > 0 ? id : 0
+  return formatReaderDocumentTitle(book?.title, readerCatalogRow(book, chapters, currentIndex)?.title || '')
 }

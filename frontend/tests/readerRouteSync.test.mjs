@@ -107,3 +107,39 @@ test('parses optional route percentages within valid bounds', () => {
   assert.equal(parseReaderRoutePercent('0.45'), 0.45)
   assert.equal(parseReaderRoutePercent('2'), 1)
 })
+
+// Running title contract R5 (section 7): a route change that opens another book also changes the position query.
+// The book load positions itself from the route once the new catalog arrives, so the position watcher must not load
+// a chapter of the new book against the previous book's catalog.
+test('a route change that opens another book leaves positioning to the book load', async () => {
+  const controller = createController()
+  controller.bookId.value = 2
+  Object.assign(controller.query, { chapter: '3' })
+  await flushRouteSync()
+  assert.deepEqual(controller.calls, [['start'], ['book']])
+
+  controller.query.chapter = '4'
+  await flushRouteSync()
+  assert.deepEqual(controller.calls, [
+    ['start'],
+    ['book'],
+    ['chapter', 4, 0, { restorePercent: null, saveAfterLoad: true }],
+    ['jump'],
+  ], 'positions inside the opened book load as before')
+  controller.scope.stop()
+})
+
+test('a book change without a position change keeps later position loads', async () => {
+  const controller = createController()
+  controller.bookId.value = 2
+  await flushRouteSync()
+  controller.query.chapter = '1'
+  await flushRouteSync()
+  assert.deepEqual(controller.calls, [
+    ['start'],
+    ['book'],
+    ['chapter', 1, 0, { restorePercent: null, saveAfterLoad: true }],
+    ['jump'],
+  ])
+  controller.scope.stop()
+})

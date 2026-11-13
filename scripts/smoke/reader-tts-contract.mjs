@@ -272,6 +272,12 @@ async function verifyTTSContract(browser) {
   assert(await page.locator('.tts-voice-option').filter({ hasText: '中文' }).count() === 1, 'TTS voice list should include Chinese')
   assert(await page.locator('.tts-config .reader-setting-stepper').count() === 3, 'rate, pitch, and timer must use numeric steppers')
   assert(await page.locator('.tts-config input[type="range"], .tts-config select').count() === 0, 'TTS config must not restore sliders or select controls')
+  // reader-dev web/src/views/Reader.vue L179-L208: 语音库, 语速, 语调, 定时.
+  const rowLabels = (await page.locator('.tts-config .tts-label').allInnerTexts()).map(text => text.trim())
+  assert(
+    JSON.stringify(rowLabels) === JSON.stringify(['语音库', '语速', '语调', '定时']),
+    `TTS rows must use the reader-dev labels: ${JSON.stringify(rowLabels)}`,
+  )
   assert(await page.evaluate(() => window.__openreaderTTS.speakCalls) === 0, 'opening TTS must not start speech')
 
   await page.locator('.tts-play').click()

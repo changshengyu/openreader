@@ -56,7 +56,7 @@ test('ReaderSettingsPanel keeps requested anti-mistap additions without duplicat
   for (const requested of ['>亮度<', 'class="font-preview"', 'class="font-size-presets"']) {
     assert.match(panelSource, new RegExp(requested), `missing requested settings affordance ${requested}`)
   }
-  for (const duplicate of ['朗读语速', '朗读音调', '朗读语音']) {
+  for (const duplicate of ['朗读语速', '朗读音调', '朗读语调', '朗读语音']) {
     assert.doesNotMatch(panelSource, new RegExp(duplicate), `ReaderSettings must not duplicate TTS bar control ${duplicate}`)
   }
   assert.doesNotMatch(panelSource, /ttsVoices|ttsRateChange|ttsPitchChange|ttsVoiceChange/)

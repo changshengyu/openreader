@@ -56,3 +56,32 @@ test('keeps mobile chrome navigation and direct tool actions distinct', () => {
   assert.equal(fixture.mobileChromeVisible.value, true)
   assert.deepEqual(fixture.calls.slice(-2), [['bottom'], ['top']])
 })
+
+// Desktop panel content controls contract P7 (section 13): the progress block's 上一章/下一章 run with every primary
+// panel closed first, as a press outside reader-dev's click popovers closes them, at the book boundaries too.
+test('desktop chapter steps close every primary panel before they step', () => {
+  const calls = []
+  const currentIndex = ref(0)
+  const controller = useReaderTools({
+    currentIndex,
+    chapterCount: () => 3,
+    mobileChromeVisible: ref(false),
+    goChapter: index => calls.push(['chapter', index]),
+    toggleChrome: () => calls.push(['toggle']),
+    notify: message => calls.push(['notify', message]),
+    closePrimaryPanels: () => calls.push(['close']),
+    actions: {},
+  })
+  controller.handleDesktopToolAction('next')
+  controller.handleDesktopToolAction('previous')
+  currentIndex.value = 2
+  controller.handleDesktopToolAction('next')
+  assert.deepEqual(calls, [
+    ['close'],
+    ['chapter', 1],
+    ['close'],
+    ['notify', '本章是第一章'],
+    ['close'],
+    ['notify', '本章是最后一章'],
+  ])
+})

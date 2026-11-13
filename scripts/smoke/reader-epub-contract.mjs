@@ -709,8 +709,47 @@ async function assertFrameContract(page, viewport, resourceResponses) {
   await frame.locator('#part-b-content').waitFor({ timeout: 10_000 })
   assert.equal(await frame.locator('#part-a').count(), 1)
 
+  // Running title contract R3 (section 8.2 item 2): the label names the link target as soon as it is followed, while
+  // the target's content request is still pending, and no DOM update pairs 第 3 章 with the previous chapter name.
+  // The target may already sit in the memory cache from preloading; the observer still sees every DOM update.
+  await page.evaluate(() => {
+    window.__epubRunningTitles = []
+    const read = () => document.querySelector('.reader-running-chapter-title')?.textContent.trim() ?? null
+    let last = read()
+    window.__epubRunningTitleObserver = new MutationObserver(() => {
+      const value = read()
+      if (value === null || value === last) return
+      last = value
+      window.__epubRunningTitles.push(value)
+    })
+    window.__epubRunningTitleObserver.observe(document, { childList: true, subtree: true, characterData: true })
+  })
+  const delayedTarget = /\/api\/books\/\d+\/chapters\/2\/content(?:\?|$)/
+  let targetRequested = false
+  await page.route(delayedTarget, async (route) => {
+    targetRequested = true
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    await route.continue()
+  })
   await frame.locator('#next-chapter').click()
+  await page.waitForTimeout(400)
+  const followedTitle = await page.evaluate(() => document.querySelector('.reader-running-chapter-title')?.textContent.trim() ?? null)
+  assert.equal(
+    followedTitle,
+    '第 3 章 第二章',
+    `${viewport.width}: the running title must name the followed chapter at once (content request ${targetRequested ? 'pending' : 'served from memory'})`,
+  )
   await frame.locator('h1').filter({ hasText: '第二章 EPUB 文档' }).waitFor({ timeout: 10_000 })
+  await page.unroute(delayedTarget)
+  const followedTitles = await page.evaluate(() => {
+    window.__epubRunningTitleObserver?.disconnect()
+    return window.__epubRunningTitles
+  })
+  assert.deepEqual(
+    followedTitles.filter(value => value !== '第 3 章 第二章'),
+    [],
+    `${viewport.width}: following the EPUB link showed another running title on the way: ${JSON.stringify(followedTitles)}`,
+  )
   if (viewport.width <= 750 && !await page.locator('.reader-mobile-top.visible').count()) {
     await page.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height / 2))
     await page.waitForTimeout(150)

@@ -140,7 +140,9 @@
         <div ref="contentBody" class="reader-body" :style="bodyStyle">
           <ReaderChapterContent
             :blocks="displayedChapterBlocks"
-            :error="chapterLoadError"
+            :error="mainChapterLoadError"
+            :error-title="chapterErrorTitle"
+            :error-label="chapterErrorLabel"
             :loaded="chapterLoaded"
             :loading="chapterLoading"
             :mode="effectiveReaderMode"
@@ -427,6 +429,16 @@ import {
   readerBookmarkText,
   selectedTextBookmarkContext,
 } from '../utils/readerBookmarkContext'
+import { readerCatalogRow } from '../utils/readerCatalogRow'
+import { runningChapterLabelFor } from '../utils/readerRunningTitle'
+import {
+  READER_CHAPTER_ERROR_CATALOG,
+  READER_CHAPTER_ERROR_CONTENT,
+  READER_EPUB_RESOURCE_ERROR_REASON,
+  readerChapterErrorLabel,
+  readerChapterErrorReason,
+  readerChapterErrorToast,
+} from '../utils/readerChapterError'
 import { readerTextProgress, selectVisibleReaderBlock } from '../utils/readerVisibility'
 import { readerTTSBarVisible } from '../utils/readerTTS'
 import { createReaderScrollAnimator } from '../utils/readerAnimation'
@@ -549,6 +561,8 @@ const chapterBlocks = ref([])
 const chapterWindowBusy = ref(false)
 const chapterLoading = ref(true)
 const chapterLoadError = ref('')
+// The failure came from the book load (catalog, book info or remote session): reader-dev's catalog failure page.
+const readerCatalogLoadFailed = ref(false)
 const chapterLoaded = ref(false)
 const contentEl = ref(null)
 const contentBody = ref(null)
@@ -691,6 +705,8 @@ const {
   goChapter: (...args) => goChapter(...args),
   refreshRemoteCatalog: (...args) => refreshReaderBookCatalog(...args),
   refreshLocalCatalog: (...args) => loadChapters(...args),
+  isBookLoadFailed: () => readerCatalogLoadFailed.value,
+  reloadBook: () => retryReaderBookLoad(),
 })
 const {
   cachedChapters: browserCachedChapters,
@@ -766,6 +782,8 @@ const {
   resetBrowserState: resetBrowserCachedChapters,
   clearBrowserCache: clearBookBrowserChapterCache,
   loadChapter: (...args) => loadChapter(...args),
+  isBookLoadFailed: () => readerCatalogLoadFailed.value,
+  reloadBook: () => retryReaderBookLoad(),
   getCurrentOffset: () => currentOffset(),
   clearServerCache: ids => bookshelf.batchClearCache(ids),
   clearCurrentBrowserCache: clearCurrentBookBrowserCache,
@@ -843,6 +861,27 @@ const {
   book,
   chapters,
 })
+
+// Error page R1-R2: the target chapter's catalog title (same row as the tab title, same text rule as the chapter
+// <h3>) and the upstream label line; a failed catalog has no row to name.
+const chapterErrorTitle = computed(() => {
+  if (readerCatalogLoadFailed.value) return ''
+  const row = readerCatalogRow(book.value, chapters.value, currentIndex.value)
+  return row ? displayChapterTitle(row.title || `第 ${currentIndex.value + 1} 章`) : ''
+})
+const chapterErrorLabel = computed(() => readerChapterErrorLabel(
+  readerCatalogLoadFailed.value ? READER_CHAPTER_ERROR_CATALOG : READER_CHAPTER_ERROR_CONTENT,
+))
+
+function notifyReaderLoadFailure(kind, error) {
+  ElMessage.error(readerChapterErrorToast(kind, readerChapterErrorReason(error, kind)))
+}
+
+// Error page R8: a failure is laid out as a page of its own instead of keeping the previous chapter's pages.
+function measureReaderErrorPage() {
+  page.value = 0
+  return nextTick(() => updateFlipLayout())
+}
 
 const chapterParagraphs = computed(() => {
   return makeParagraphs(content.value, chapter.value?.title)
@@ -993,7 +1032,8 @@ const {
   compute: computeShowChapterList,
   invalidate: invalidateShowChapters,
   maybeExtend: maybeExtendShowChapters,
-  retry: retryContinuousChapter,
+  retry: retryChapterWindowBlock,
+  showFailedChapter: showFailedContinuousChapter,
   syncCurrentChapter: updateCurrentChapterFromScroll,
 } = useReaderChapterWindow({
   reader,
@@ -1026,9 +1066,54 @@ const {
     applyLocalProgressSnapshot()
     scheduleProgressSave(120)
   },
-  formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
+  formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
 })
 onBeforeUnmount(invalidateShowChapters)
+
+// Error page R6: a continuous window shows its failed target chapter as its own inline error block instead of the
+// main error page.
+const mainChapterLoadError = computed(() => (
+  !readerCatalogLoadFailed.value
+  && isContinuousScrollRead.value
+  && chapterBlocks.value.some(block => block.error && Number(block.index) === currentIndex.value)
+    ? ''
+    : chapterLoadError.value
+))
+
+// The window retries a chapter in place. While the retried chapter is still the failed current load, a recovery
+// ends the failure and another failure toasts again (R4, R6).
+async function retryContinuousChapter(index) {
+  const target = Number(index)
+  const failedCurrent = Boolean(chapterLoadError.value)
+    && !readerCatalogLoadFailed.value
+    && target === currentIndex.value
+  const recovered = await retryChapterWindowBlock(target)
+  if (!failedCurrent || recovered === null || target !== currentIndex.value) return recovered
+  if (recovered) {
+    chapterLoadError.value = ''
+    chapterLoaded.value = true
+    return recovered
+  }
+  const reason = chapterBlocks.value.find(block => Number(block.index) === target)?.error
+  if (reason) {
+    chapterLoadError.value = reason
+    ElMessage.error(readerChapterErrorToast(READER_CHAPTER_ERROR_CONTENT, reason))
+  }
+  return recovered
+}
+
+// The failed load belongs to its target chapter. Once the continuous window makes another chapter current
+// (scrolling, an in-window jump, a layout restore) that chapter's own block applies, as after an adjacent failure.
+watch(currentIndex, (index, previous) => {
+  if (
+    index === previous
+    || !chapterLoadError.value
+    || readerCatalogLoadFailed.value
+    || !isContinuousScrollRead.value
+  ) return
+  chapterLoadError.value = ''
+  chapterLoaded.value = true
+}, { flush: 'sync' })
 const {
   readableViewportSize,
   resize: handleResize,
@@ -1408,13 +1493,13 @@ const bodyStyle = computed(() => {
   return baseStyle
 })
 
-function formatRunningChapterLabel(index, title) {
-  const ordinal = `第 ${Math.max(0, Number(index) || 0) + 1} 章`
-  const normalizedTitle = String(title || '').trim()
-  return normalizedTitle ? `${ordinal} ${normalizedTitle}` : ordinal
-}
-
-const runningChapterLabel = computed(() => formatRunningChapterLabel(currentIndex.value, chapter.value?.title))
+// Running title R1-R5: the catalog row at currentIndex (the row the tab title and the error page use), so the label
+// switches when navigation starts, stays on a failed or reloading target and never borrows another book's row.
+const runningChapterLabel = computed(() => runningChapterLabelFor({
+  book: book.value,
+  chapters: chapters.value,
+  index: currentIndex.value,
+}))
 const showRunningChapterHeader = computed(() => !isAudioChapter.value && !isCBZBook(book.value))
 const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const desktopWorkspacePanel = computed(() => {
@@ -1812,11 +1897,14 @@ const {
   captureScrollAnchor: () => captureReaderScrollAnchor(),
   onStart: transaction => {
     pendingReaderChapterLoad = transaction
+    readerCatalogLoadFailed.value = false
   },
   onSettled: transaction => {
     if (pendingReaderChapterLoad === transaction) pendingReaderChapterLoad = null
   },
-  formatError: error => readError(error, '章节加载失败，请检查书源或网络后重试'),
+  formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
+  notifyError: error => notifyReaderLoadFailure(READER_CHAPTER_ERROR_CONTENT, error),
+  showFailedChapterWindow: (index, error) => showFailedContinuousChapter(index, error),
   nextFrame,
   onEpubPrepared: pending => {
     epubPendingRestore.value = pending
@@ -2029,11 +2117,9 @@ const readerRouteSync = useReaderRouteSync({
     readerBookDeleted.value = false
     resumeProgressSaving()
     chapterLoadError.value = ''
+    readerCatalogLoadFailed.value = false
   },
-  onBookLoadError: error => {
-    chapterLoadError.value = readError(error, '章节加载失败')
-    chapterLoading.value = false
-  },
+  onBookLoadError: handleReaderBookLoadError,
 })
 suppressNextReaderPositionReload = readerRouteSync.suppressNextPositionReload
 
@@ -2097,10 +2183,7 @@ useReaderPageLifecycle({
   sliderLineHeight,
   syncFonts: syncReaderFontFaces,
   loadBook: loadReaderBook,
-  onBookLoadError: error => {
-    chapterLoadError.value = readError(error, '章节加载失败')
-    chapterLoading.value = false
-  },
+  onBookLoadError: handleReaderBookLoadError,
   cancelProgressSave,
   clearChapterLoadingTimer,
   stopAutoReading,
@@ -2228,9 +2311,36 @@ function handleEpubPreview(payload) {
   epubPreviewVisible.value = true
 }
 
-function handleEpubError(error) {
-  chapterLoadError.value = error?.message || 'EPUB 正文加载失败，请重试'
+// Error page R5: the retries of a failed book load run the whole book load again (catalog first, then the
+// route or saved target chapter) instead of loading a chapter clamped into an empty catalog. Resolves true when
+// the target chapter loaded.
+async function retryReaderBookLoad() {
+  readerCatalogLoadFailed.value = false
+  chapterLoadError.value = ''
+  chapterLoading.value = true
+  try {
+    await loadReaderBook()
+  } catch (error) {
+    handleReaderBookLoadError(error)
+    return false
+  }
+  return !readerCatalogLoadFailed.value && !chapterLoadError.value
+}
+
+// A failed book load (catalog, book info or remote session) is reader-dev's catalog failure page.
+function handleReaderBookLoadError(error) {
+  readerCatalogLoadFailed.value = true
+  chapterLoadError.value = readerChapterErrorReason(error, READER_CHAPTER_ERROR_CATALOG)
+  chapterLoading.value = false
+  notifyReaderLoadFailure(READER_CHAPTER_ERROR_CATALOG, error)
+  measureReaderErrorPage()
+}
+
+function handleEpubError() {
+  chapterLoadError.value = READER_EPUB_RESOURCE_ERROR_REASON
   chapterLoaded.value = false
+  ElMessage.error(readerChapterErrorToast(READER_CHAPTER_ERROR_CONTENT, READER_EPUB_RESOURCE_ERROR_REASON))
+  measureReaderErrorPage()
 }
 
 function handleReaderImageLoad() {

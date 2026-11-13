@@ -100,3 +100,62 @@ for (const { blockClass, clickHandler } of RETRY_BLOCKS) {
     assert(buttonZ < dimmingZ, `${selector} z-index ${buttonZ} must stay below the .reader-page::after dimming layer ${dimmingZ}`)
   })
 }
+
+// R1-R2 (sections 7 and 13): the main error block is reader-dev's error chapter page: the target chapter <h3>,
+// the label line, the reason line and then 重新加载; the continuous inline block carries the same label line.
+// Everything is text interpolation, never v-html.
+
+function blockMarkup(template, blockClass) {
+  const start = template.indexOf(`class="${blockClass}"`)
+  assert.notEqual(start, -1, `${blockClass} block is missing`)
+  const end = template.indexOf('</button>', start)
+  assert.notEqual(end, -1, `${blockClass} block has no closing button`)
+  return template.slice(start, end)
+}
+
+function propDefinition(script, name) {
+  const match = script.match(new RegExp(`\\b${name}\\s*:\\s*\\{([^}]*)\\}`))
+  return match ? match[1] : null
+}
+
+test('chapter-load-error renders the target chapter title, the label and the reason in reader-dev order', async () => {
+  const { contentSource } = await readSources()
+  const block = blockMarkup(section(contentSource, 'template'), 'chapter-load-error')
+  const heading = block.match(/<h3\b([^>]*)>\s*\{\{\s*errorTitle\s*\}\}\s*<\/h3>/)
+  assert(heading, `chapter-load-error must start with <h3 data-pos="0">{{ errorTitle }}</h3>: ${block}`)
+  assert.match(heading[1], /\bdata-pos="0"/, 'the error page title is the chapter heading at position 0')
+  const label = block.search(/<p\b[^>]*>\s*\{\{\s*errorLabel\s*\}\}\s*<\/p>/)
+  const reason = block.search(/<p\b[^>]*>\s*\{\{\s*error\s*\}\}\s*<\/p>/)
+  assert.notEqual(label, -1, `chapter-load-error has no {{ errorLabel }} line: ${block}`)
+  assert.notEqual(reason, -1, `chapter-load-error has no {{ error }} reason line: ${block}`)
+  assert(heading.index < label && label < reason, 'the title, the label and the reason must come in reader-dev order')
+  assert(!/v-html/.test(block), 'error text must not be rendered with v-html')
+
+  const script = section(contentSource, 'script')
+  const titleProp = propDefinition(script, 'errorTitle')
+  assert(titleProp, 'ReaderChapterContent needs an errorTitle prop')
+  assert.match(titleProp, /default:\s*''/, 'an unknown catalog row shows no title text')
+  const labelProp = propDefinition(script, 'errorLabel')
+  assert(labelProp, 'ReaderChapterContent needs an errorLabel prop')
+  assert.match(labelProp, /default:\s*'获取章节内容失败！'/, 'the label defaults to the content failure line')
+})
+
+test('chapter-inline-error renders the upstream label line between the title and the reason', async () => {
+  const { contentSource } = await readSources()
+  const block = blockMarkup(section(contentSource, 'template'), 'chapter-inline-error')
+  const heading = block.search(/<h3\b[^>]*>/)
+  const label = block.search(/<p\b[^>]*>\s*获取章节内容失败！\s*<\/p>/)
+  const reason = block.search(/<p\b[^>]*>\s*\{\{\s*block\.error\s*\}\}\s*<\/p>/)
+  assert.notEqual(label, -1, `chapter-inline-error has no 获取章节内容失败！ line: ${block}`)
+  assert.notEqual(reason, -1, `chapter-inline-error has no {{ block.error }} reason line: ${block}`)
+  assert(heading !== -1 && heading < label && label < reason, 'the title, the label and the reason must come in reader-dev order')
+  assert(!/v-html/.test(block), 'error text must not be rendered with v-html')
+})
+
+test('Reader passes the catalog title and the failure label to the error page', async () => {
+  const { readerSource } = await readSources()
+  const element = section(readerSource, 'template').match(/<ReaderChapterContent\b((?:[^>"']|"[^"]*"|'[^']*')*)\/>/)
+  assert(element, 'Reader.vue must render <ReaderChapterContent />')
+  assert.match(element[1], /:error-title="[^"]+"/, 'Reader.vue must bind :error-title')
+  assert.match(element[1], /:error-label="[^"]+"/, 'Reader.vue must bind :error-label')
+})
