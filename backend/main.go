@@ -281,8 +281,25 @@ func serveFrontendFile(c *gin.Context, publicDir, name string) bool {
 	} else if contentType := mime.TypeByExtension(extension); contentType != "" {
 		c.Header("Content-Type", contentType)
 	}
+	c.Header("Cache-Control", frontendCacheControl(name))
 	http.ServeContent(c.Writer, c.Request, filepath.Base(name), info.ModTime(), file)
 	return true
+}
+
+const (
+	frontendShellCacheControl       = "no-cache"
+	frontendHashedAssetCacheControl = "public, max-age=31536000, immutable"
+)
+
+// frontendCacheControl keeps releases visible on the next navigation: Vite writes
+// content-hashed names under assets/, so those bytes never change, while index.html,
+// the service worker script and the other public files always revalidate (PWA
+// contract W15).
+func frontendCacheControl(name string) string {
+	if strings.HasPrefix(name, "assets/") {
+		return frontendHashedAssetCacheControl
+	}
+	return frontendShellCacheControl
 }
 
 func openFrontendFile(publicDir, name string) (*os.File, os.FileInfo, error) {
