@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-13 当前切片：设置写入在客户端取消时不返回或记录 500（P2，运行时适配 + 日志加固）
+
+见[`user-setting-write-request-cancellation-p2-contract.md`](user-setting-write-request-cancellation-p2-contract.md)。基于 main `9602dc4`，分支 `claude/settings-write-client-cancel`，只改后端。
+目标：`PUT /api/settings/:key` 在请求 context 结束时不写 500、不写库也不广播（提交前）或照常读回并广播一次（提交后）；GORM 不打印因语句自身 context
+结束而失败的错误，`文件:行号` 仍指向调用方。不改 `_txlock=immediate`、WAL、连接池、访问日志格式，不新增 499。盘点的 C2–C8 同类写法只记录。
+计划红测：`user_setting_request_cancellation_contract_test.go`（T1–T3 加对照）与 `db_test.go`（L1 加对照）。状态 **contract-only**。
+
 ## 2026-11-13 当前切片：manifest 显示方式按上游 `fullscreen`、不锁方向（W19，P2）
 
 见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。
