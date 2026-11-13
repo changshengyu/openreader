@@ -384,7 +384,7 @@ Ask an administrator to click **重置密码** (Reset password) in user manageme
 Yes, unless you set `OPENREADER_INVITE_CODE`: then only people who know the invite code can register. `OPENREADER_USER_LIMIT` caps the number of accounts (default 50). See [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet).
 
 **Can I read offline?**
-The page needs a connection to your OpenReader server. Chapters you cache ahead of time stay readable even when the source website is down.
+Partly. Over HTTPS (or on `localhost`), the browser keeps an offline copy of the app after you have opened it once online. If your server is then unreachable, the page still opens, your cached bookshelf is shown and chapters you cached ahead of time stay readable. Search, book sources, RSS and syncing still need the server. Over plain HTTP on a LAN address, browsers don't allow the offline copy, so the page needs a connection to your server. Either way, cached chapters stay readable when the source website is down. To remove the offline copy, open the page with `?nopwa=1` added to the address.
 
 **Will upgrading lose my data?**
 No, as long as you keep `data/`, `cache/`, and `library/` (or the three Docker volumes). Backing up before an upgrade is still a good idea.
