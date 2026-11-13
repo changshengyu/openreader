@@ -7,6 +7,19 @@ PWA 合同把 W19 交给显示名切片。上游实际发布的 `manifest.json` 
 计划测试：单元 `manifestDisplayContract.test.mjs`（红：display 与 orientation；对照：名称、start_url、scope、manifest 链接）。状态 **contract-only**。
 记录（2026-11-13）：合同 `508fa5a`、红测 `61598ac`、实现 `47375c8`。前端 999/999 与 build（SW 构建号 `e5c767f8429a3a17`）；PWA E1–E7、openreader-smoke、标签页标题、移动端合同通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
+## 2026-11-13 P2 账号 每用户书籍上限改为默认不限（用户决定）
+
+用户决定（2026-11-13）：每用户书籍上限改为默认不限，取代 2026-11-12 起按上游取的默认 200（已随 `f8786ab` 发布）。`OPENREADER_USER_BOOK_LIMIT`
+未设置、为空、不是整数或 ≤ 0 时不限；为正整数时作为实例上限。用户 `bookLimit > 0` 仍覆盖实例值（实例不限时同样生效），`0` 跟随实例值；
+不经 `config.Load` 构造的配置也不限。上游 `READER_APP_USERBOOKLIMIT` 默认 200，这里列为用户要求的差异。计数时机、403 响应、批量逐项报告、
+前端文案“超过用户书籍数上限”和不受限的路径都不变。改写 L9（原断言默认 200），新增 L11/L12；README、README_CN、compose 与 api-contract 同步。合同第 5、12 节见
+[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+记录（2026-11-13，取代上段的状态）：合同 `9a83857`、红测 `ef71f3b`、实现 `1ac6c99`。红测在 `2f19133c` 上：L9 五个不限情况、L11、L12 后半都返回 403，对照通过；
+浏览器不限模式停在第 201 本 403。实现后转绿。后端全量 31 个包与 vet、race api/config/services 26 个包（api 1101.2 s）通过，无数据竞争；前端 997/997 与 build；`OPENREADER_USER_BOOK_LIMIT=2`
+时书籍上限合同三视口仍限制，不设变量时不限模式三视口通过（第 201 本 API 201、第 202 本界面导入成功），openreader-smoke 三视口通过。状态 implementation-complete /
+regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
 
 上游 fa22f27 在生产构建中注册 Workbox 4.3.1 生成的 `service-worker.js`（`vue.config.js#pwa`、`public/sw.js`、

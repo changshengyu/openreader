@@ -62,7 +62,7 @@ Open `http://<server-ip>:8080` in a browser (or <http://localhost:8080> on the s
 - **The first account becomes the administrator.** Accounts registered later are regular users.
 - Usernames need at least 5 characters and may contain only letters and digits. Passwords need at least 8 characters.
 - If you set `OPENREADER_INVITE_CODE`, registration also asks for **邀请码** (invite code). At most `OPENREADER_USER_LIMIT` accounts can exist (default and maximum 50).
-- Each bookshelf holds at most `OPENREADER_USER_BOOK_LIMIT` books (default 200). Adding one more shows **超过用户书籍数上限** (book limit reached); books already on the shelf are kept and can still be updated.
+- Bookshelves have no book limit unless you set `OPENREADER_USER_BOOK_LIMIT`. Past that limit, adding a book shows **超过用户书籍数上限** (book limit reached); books already on the shelf are kept and can still be updated.
 
 > [!WARNING]
 > Unless you set an invite code, anyone who can open the page can create an account. Register your own administrator account right after the first start, and read [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) before making it reachable from outside your home network.
@@ -316,7 +316,7 @@ Most installations never need these. Change them only for a specific need.
 | `OPENREADER_JWT_SECRET` | Not set: a random key is generated in `data/instance-secret` | Signs login sessions and resource links. Optional; see [Exposing OpenReader to the internet](#exposing-openreader-to-the-internet) |
 | `OPENREADER_INVITE_CODE` | empty | Invite code (邀请码) that registration requires. Empty keeps registration open; administrators add users without it. Same as reader's `READER_APP_INVITECODE` |
 | `OPENREADER_USER_LIMIT` | `50` | Maximum number of accounts, from 1 to 50, for registration and for administrators adding users. Existing accounts keep signing in. Same as reader's `READER_APP_USERLIMIT` |
-| `OPENREADER_USER_BOOK_LIMIT` | `200` | Maximum number of books on each user's bookshelf. Adding, importing or saving one more new book is refused with 超过用户书籍数上限; books already on the shelf stay and can still be updated, and restoring a backup is never limited. An administrator can give one user a different limit with the `bookLimit` field of `PUT /api/admin/users/:id` (`0` follows this value). Empty, zero or invalid values use 200; set a large number to lift the limit. Same as reader's `READER_APP_USERBOOKLIMIT` |
+| `OPENREADER_USER_BOOK_LIMIT` | empty (no limit) | Maximum number of books on each user's bookshelf. Empty, zero or invalid values mean no limit. Past the limit, adding, importing or saving one more new book is refused with 超过用户书籍数上限; books already on the shelf stay and can still be updated, and restoring a backup is never limited. An administrator can give one user a limit with the `bookLimit` field of `PUT /api/admin/users/:id`, also when this variable is empty (`0` follows this variable). Same setting as reader's `READER_APP_USERBOOKLIMIT`, which defaults to 200 |
 | `OPENREADER_TRUSTED_PROXIES` | empty | Your reverse proxy's own IP addresses or network ranges, comma-separated. Leave empty for direct access |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | empty | Local-network hostnames, IP addresses, or ranges that book sources may reach, comma-separated |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | How often the bookshelf is checked for updates |

@@ -30,6 +30,12 @@ import (
 // file is moved or remote book info is fetched; books already on the shelf are
 // still updated, and backup restore is not counted. The limit comes from the
 // real environment loader, so these cases also pin OPENREADER_USER_BOOK_LIMIT.
+// Since the user's decision of 2026-11-13 (contract section 12), an unset or
+// non-positive OPENREADER_USER_BOOK_LIMIT means no limit instead of 200.
+
+// legacyDefaultBookLimit is reader-dev's default, which OpenReader shipped
+// from 2026-11-12 until the 2026-11-13 decision.
+const legacyDefaultBookLimit = 200
 
 func setupBookLimitServer(t *testing.T, limit string) (*gin.Engine, *Server) {
 	t.Helper()
@@ -498,18 +504,20 @@ func TestBookLimitDoesNotLimitBackupRestore(t *testing.T) {
 	}
 }
 
-// L9
+// L9, rewritten for the 2026-11-13 contract: unset, invalid, zero and
+// negative values (and a Config built without config.Load) mean no limit;
+// positive values still limit (controls). limit 0 means "no limit".
 func TestBookLimitEnvironmentParsing(t *testing.T) {
 	cases := []struct {
 		name  string
 		value *string
 		limit int
 	}{
-		{name: "zero-value config", value: nil, limit: 200},
-		{name: "unset", value: stringPointer(""), limit: 200},
-		{name: "not a number", value: stringPointer("abc"), limit: 200},
-		{name: "zero", value: stringPointer("0"), limit: 200},
-		{name: "negative", value: stringPointer("-5"), limit: 200},
+		{name: "zero-value config", value: nil, limit: 0},
+		{name: "unset", value: stringPointer(""), limit: 0},
+		{name: "not a number", value: stringPointer("abc"), limit: 0},
+		{name: "zero", value: stringPointer("0"), limit: 0},
+		{name: "negative", value: stringPointer("-5"), limit: 0},
 		{name: "five", value: stringPointer("5"), limit: 5},
 		{name: "padded seven", value: stringPointer(" 7 "), limit: 7},
 	}
@@ -525,6 +533,18 @@ func TestBookLimitEnvironmentParsing(t *testing.T) {
 			}
 			auth := authHeader(t, router)
 			user := bookLimitUser(t, server, "testuser")
+			if tc.limit == 0 {
+				seedShelfBooks(t, server, user.ID, legacyDefaultBookLimit, "解析")
+				for index := 1; index <= 2; index++ {
+					if response := createShelfBook(router, auth, fmt.Sprintf("不限的一本%d", index)); response.Code != http.StatusCreated {
+						t.Fatalf("book %d with no limit: status=%d, want 201: %s", legacyDefaultBookLimit+index, response.Code, response.Body.String())
+					}
+				}
+				if count := shelfBookCount(t, server, user.ID); count != legacyDefaultBookLimit+2 {
+					t.Fatalf("shelf holds %d books, want %d", count, legacyDefaultBookLimit+2)
+				}
+				return
+			}
 			seedShelfBooks(t, server, user.ID, tc.limit-1, "解析")
 			if response := createShelfBook(router, auth, "最后一本"); response.Code != http.StatusCreated {
 				t.Fatalf("book %d of %d: status=%d, want 201: %s", tc.limit, tc.limit, response.Code, response.Body.String())
@@ -534,6 +554,70 @@ func TestBookLimitEnvironmentParsing(t *testing.T) {
 				t.Fatalf("shelf holds %d books, want %d", count, tc.limit)
 			}
 		})
+	}
+}
+
+// L11: a shelf that already holds more than the old default of 200 books keeps
+// accepting new books on every add path when OPENREADER_USER_BOOK_LIMIT is unset.
+func TestBookLimitUnsetKeepsAnUpgradedShelfOpen(t *testing.T) {
+	router, server := setupBookLimitServer(t, "")
+	auth := authHeader(t, router)
+	user := bookLimitUser(t, server, "testuser")
+	source, calls := bookLimitRemoteSource(t, server)
+	seedShelfBooks(t, server, user.ID, legacyDefaultBookLimit+30, "升级前")
+
+	if response := createShelfBook(router, auth, "升级后新书"); response.Code != http.StatusCreated {
+		t.Fatalf("POST /api/books past 200 books with no limit: status=%d, want 201: %s", response.Code, response.Body.String())
+	}
+	remote := bookLimitJSONRequest(router, http.MethodPost, "/api/books/remote", auth,
+		remoteBookBody("升级后远程书", bookLimitRemoteBase+"/after-upgrade", source.ID))
+	if remote.Code != http.StatusCreated {
+		t.Fatalf("remote add past 200 books with no limit: status=%d, want 201: %s", remote.Code, remote.Body.String())
+	}
+	if calls.Load() == 0 {
+		t.Fatalf("the remote add should have fetched the book")
+	}
+	imported := directLocalBookMultipartRequest(t, router, auth, "/api/imports/books", "升级后导入.txt",
+		[]byte("第一章 开始\n这是正文内容"), nil)
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("local import past 200 books with no limit: status=%d, want 201: %s", imported.Code, imported.Body.String())
+	}
+	if count := shelfBookCount(t, server, user.ID); count != legacyDefaultBookLimit+33 {
+		t.Fatalf("shelf holds %d books, want %d", count, legacyDefaultBookLimit+33)
+	}
+}
+
+// L12: with no instance limit, a positive per-user bookLimit still limits
+// (control); back at 0 the user follows the unlimited instance again.
+func TestBookLimitPerUserLimitWithoutAnInstanceLimit(t *testing.T) {
+	router, server := setupBookLimitServer(t, "")
+	adminAuth := authHeader(t, router)
+	readerAuth := "Bearer " + assertRegistered(t, registerAccount(t, router, "reader12", nil), "reader12")
+	reader := bookLimitUser(t, server, "reader12")
+	setLimit := func(limit int) {
+		t.Helper()
+		response := bookLimitJSONRequest(router, http.MethodPut, "/api/admin/users/"+strconv.FormatUint(uint64(reader.ID), 10), adminAuth,
+			`{"bookLimit":`+strconv.Itoa(limit)+`}`)
+		if response.Code != http.StatusOK {
+			t.Fatalf("set bookLimit %d: status=%d: %s", limit, response.Code, response.Body.String())
+		}
+	}
+
+	setLimit(2)
+	for index := 1; index <= 2; index++ {
+		if response := createShelfBook(router, readerAuth, fmt.Sprintf("读者书%d", index)); response.Code != http.StatusCreated {
+			t.Fatalf("reader book %d under a per-user limit of 2: status=%d: %s", index, response.Code, response.Body.String())
+		}
+	}
+	assertBookLimitReached(t, createShelfBook(router, readerAuth, "读者书3"), "third book with a per-user limit of 2 and no instance limit")
+
+	setLimit(0)
+	seedShelfBooks(t, server, reader.ID, legacyDefaultBookLimit-2, "补足")
+	if response := createShelfBook(router, readerAuth, "跟随实例的一本"); response.Code != http.StatusCreated {
+		t.Fatalf("book %d after clearing the per-user limit: status=%d, want 201: %s", legacyDefaultBookLimit+1, response.Code, response.Body.String())
+	}
+	if count := shelfBookCount(t, server, reader.ID); count != legacyDefaultBookLimit+1 {
+		t.Fatalf("reader shelf holds %d books, want %d", count, legacyDefaultBookLimit+1)
 	}
 }
 
