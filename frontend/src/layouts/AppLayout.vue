@@ -16,7 +16,7 @@
         <div>
           <div class="app-brand-title-row">
             <div class="app-brand-title">阅读</div>
-            <button class="app-version-text" type="button" @click.stop="refreshHealthInfo(true)">{{ appVersionLabel }}</button>
+            <button class="app-version-text" type="button" @click.stop="updateAppVersion">{{ appVersionLabel }}</button>
           </div>
           <div class="app-brand-subtitle">清风不识字，何故乱翻书</div>
         </div>
@@ -175,6 +175,7 @@ import { cacheFirstRequest, networkFirstRequest, removeBrowserCache } from '../u
 import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../utils/localCacheStats'
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
+import { forceServiceWorkerUpdate } from '../utils/serviceWorker'
 import { createShelfForegroundReconciler } from '../utils/shelfSyncFreshness'
 
 const router = useRouter()
@@ -629,6 +630,13 @@ async function refreshHealthInfo(showMessage = false) {
     healthInfo.value = null
     if (showMessage) ElMessage.error(readError(err, '读取版本信息失败'))
   }
+}
+
+// Upstream Index.vue#updateForce: the version text forces an update. The build-info
+// toast comes first; without a registered service worker nothing else happens (Q2-A).
+async function updateAppVersion() {
+  await refreshHealthInfo(true)
+  await forceServiceWorkerUpdate()
 }
 
 function shortCommit(value) {
