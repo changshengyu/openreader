@@ -9,10 +9,18 @@
 // userBookLimit books, and plugins/axios.js shows 超过用户书籍数上限 as an error
 // message. Each viewport fills a fresh account's shelf to the limit through the
 // API, then imports one more TXT through the real 导入书籍 dialog.
+//
+// USER_BOOK_LIMIT=unlimited checks the default since 2026-11-13 (contract section
+// 12) on a server started WITHOUT OPENREADER_USER_BOOK_LIMIT: each viewport puts
+// reader-dev's default of 200 books on a fresh shelf through the API, expects
+// book 201 to be accepted, then imports one more TXT through the dialog.
 import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 const targetURL = (process.env.TARGET_URL || 'http://127.0.0.1:8080').replace(/\/$/, '')
-const limit = Number.parseInt(process.env.USER_BOOK_LIMIT || '2', 10)
+const limitSetting = String(process.env.USER_BOOK_LIMIT || '2').trim()
+const unlimited = limitSetting === 'unlimited'
+const limit = unlimited ? 0 : Number.parseInt(limitSetting, 10)
+const legacyDefaultLimit = 200
 const runID = `${Date.now().toString(36)}${process.pid}`.replace(/[^a-z0-9]/gi, '').slice(-10)
 const upstreamText = '超过用户书籍数上限'
 const viewports = [
@@ -45,16 +53,16 @@ async function api(path, { method = 'GET', token = '', body } = {}) {
   return { status: response.status, data }
 }
 
-async function fillShelfToLimit(name) {
+async function fillShelf(name, count) {
   const username = `limit${name.replace(/[^a-z0-9]/g, '')}${runID}`.slice(0, 30)
   const registered = await api('/api/auth/register', { method: 'POST', body: { username, password: 'password88' } })
   assert(registered.status === 200 && registered.data?.token, `${name}: register ${registered.status} ${JSON.stringify(registered.data)}`)
   const token = registered.data.token
   const titles = []
-  for (let index = 1; index <= limit; index += 1) {
+  for (let index = 1; index <= count; index += 1) {
     const title = `上限书${index}-${name}`
     const created = await api('/api/books', { method: 'POST', token, body: { title } })
-    assert(created.status === 201, `${name}: book ${index} of ${limit} returned ${created.status} ${JSON.stringify(created.data)}`)
+    assert(created.status === 201, `${name}: book ${index} of ${count} returned ${created.status} ${JSON.stringify(created.data)}`)
     titles.push(title)
   }
   return { token, titles }
@@ -99,7 +107,7 @@ async function assertNoHorizontalOverflow(page, label) {
 }
 
 async function runViewport(browser, name, viewport) {
-  const { token, titles } = await fillShelfToLimit(name)
+  const { token, titles } = await fillShelf(name, limit)
   const context = await browser.newContext({
     viewport,
     isMobile: viewport.width <= 750,
@@ -154,21 +162,78 @@ async function runViewport(browser, name, viewport) {
   }
 }
 
+// Default since 2026-11-13: no limit when OPENREADER_USER_BOOK_LIMIT is unset.
+async function runUnlimitedViewport(browser, name, viewport) {
+  const { token } = await fillShelf(name, legacyDefaultLimit)
+  const extra = await api('/api/books', { method: 'POST', token, body: { title: `第${legacyDefaultLimit + 1}本-${name}` } })
+  assert(extra.status === 201,
+    `${name}: book ${legacyDefaultLimit + 1} with no limit returned ${extra.status} ${JSON.stringify(extra.data)}, want 201`)
+  const context = await browser.newContext({
+    viewport,
+    isMobile: viewport.width <= 750,
+    hasTouch: viewport.width <= 750,
+  })
+  await context.addInitScript(value => localStorage.setItem('openreader_token', value), token)
+  const page = await context.newPage()
+  const pageErrors = []
+  page.on('pageerror', error => pageErrors.push(String(error?.message || error)))
+  const importStatuses = []
+  page.on('response', response => {
+    if (new URL(response.url()).pathname === '/api/imports/books') importStatuses.push(response.status())
+  })
+  try {
+    await page.goto(targetURL, { waitUntil: 'networkidle' })
+    await page.locator('.shelf-title', { hasText: `书架 (${legacyDefaultLimit + 1})` }).waitFor({ timeout: 20_000 })
+
+    await openImport(page)
+    const importedTitle = `不限导入-${name}`
+    await page.locator('.direct-import-picker-dialog input[type="file"]').setInputFiles([{
+      name: `${importedTitle}.txt`,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('第一章 开始\n不限时可以继续导入。', 'utf8'),
+    }])
+    const dialog = page.locator('.storage-import-single-dialog')
+    await dialog.waitFor({ timeout: 15_000 })
+    await dialog.getByRole('button', { name: '确定导入', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden', timeout: 15_000 })
+    assert(importStatuses.at(-1) === 201, `${name}: import returned ${JSON.stringify(importStatuses)}, want 201`)
+    assert(await page.locator('.el-message__content', { hasText: upstreamText }).count() === 0,
+      `${name}: ${upstreamText} was shown although no limit is set`)
+    await page.locator('.shelf-title', { hasText: `书架 (${legacyDefaultLimit + 2})` }).waitFor({ timeout: 15_000 })
+    await assertNoHorizontalOverflow(page, `${name} import with no limit`)
+
+    const shelf = await api('/api/books', { token })
+    const shelfTitles = Array.isArray(shelf.data) ? shelf.data.map(book => book.title) : []
+    assert(shelf.status === 200 && shelfTitles.length === legacyDefaultLimit + 2,
+      `${name}: shelf holds ${shelfTitles.length} books, want ${legacyDefaultLimit + 2}`)
+    assert(shelfTitles.includes(importedTitle), `${name}: the imported book is missing from the shelf`)
+    assert(pageErrors.length === 0, `${name}: page errors ${pageErrors.join('; ')}`)
+  } finally {
+    await context.close()
+  }
+}
+
 async function main() {
-  assert(Number.isInteger(limit) && limit > 0, `USER_BOOK_LIMIT must be a positive integer, got ${process.env.USER_BOOK_LIMIT}`)
+  assert(unlimited || (Number.isInteger(limit) && limit > 0),
+    `USER_BOOK_LIMIT must be a positive integer or "unlimited", got ${process.env.USER_BOOK_LIMIT}`)
   const health = await fetch(`${targetURL}/api/health`, { signal: AbortSignal.timeout(10_000) })
   assert(health.ok, `health returned ${health.status}`)
   const browser = await openSmokeBrowser()
   const checks = []
   try {
     for (const [name, viewport] of viewports) {
-      await runViewport(browser, name, viewport)
-      checks.push(`${name} ${viewport.width}x${viewport.height}: ${limit} books, API 403, import dialog shows ${upstreamText}, shelf unchanged`)
+      if (unlimited) {
+        await runUnlimitedViewport(browser, name, viewport)
+        checks.push(`${name} ${viewport.width}x${viewport.height}: no limit, API accepts book ${legacyDefaultLimit + 1}, import ${legacyDefaultLimit + 2} succeeds without ${upstreamText}`)
+      } else {
+        await runViewport(browser, name, viewport)
+        checks.push(`${name} ${viewport.width}x${viewport.height}: ${limit} books, API 403, import dialog shows ${upstreamText}, shelf unchanged`)
+      }
     }
   } finally {
     await browser.close()
   }
-  console.log(JSON.stringify({ status: 'pass', targetURL, limit, checks }, null, 2))
+  console.log(JSON.stringify({ status: 'pass', targetURL, limit: unlimited ? 'unlimited' : limit, checks }, null, 2))
 }
 
 main().catch(error => {
