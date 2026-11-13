@@ -41,6 +41,7 @@ T4 取消，本切片不触碰 `stores/user.js`。实施顺序为 T0 缓存头 �
 
 标签页标题合同的 D1（产品名用 `阅读` 还是 `OpenReader`）自 2026-10-16 起一直待定。用户 2026-11-12 选了第三个名字“闲读”。因此壳标题（`index.html` `<title>` 与 `SHELL_DOCUMENT_TITLE`）、首页工作区与 `/login` 挂载时设置壳标题、书源调试独立标题 `闲读书源编辑器`（上游 `Reader书源编辑器` 的格式）转为 must-fix。侧栏品牌（原按上游为 `阅读`）、登录页标题、主屏幕应用名与图标无障碍名同步改为“闲读”，记为用户要求的差异；技术名（仓库、镜像、环境变量、存储 key）不变。合同见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 14 节。状态 **contract-only**。
 记录（2026-11-13，取代上段的状态）：合同 `cb2c545`、红测 `7b181ca`、实现 `52cec1e`。前端 886/886 与 build；真实 Go 服务下标签页标题合同（含新增的首页、登录与书源调试流程）三视口通过，壳标题为 `闲读`，openreader-smoke、重新认证、书源调试、注册限制合同对照通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P2 账号 登录框“记住登录信息”
 
@@ -56,6 +57,7 @@ A1–A3 acceptable-change：用 sessionStorage 代替服务端内存会话（JWT
 不记住的 token 不进请求头、11 个文件直接读写、表单无复选框、接线正则），对照通过；浏览器停在缺少复选框处。实现后同一组断言转绿。前端 900/900 与 build；后端未改动。
 真实 Go 服务全新数据目录下 `remember-login-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、重新认证四视口、openreader-smoke 三视口、
 `user-book-limit-contract.mjs` 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P2 账号 每用户书籍上限
 
@@ -73,6 +75,7 @@ B1–B3 must-fix：新增 `OPENREADER_USER_BOOK_LIMIT`（默认 200，未设置�
 并发 8 个全部建成，解析 7 种情况不限），占位挂接等对照通过；前端 7 个失败；浏览器停在 desktop（第三本导入 201、无提示）。实现后同一组断言转绿。后端全量 31 个包与 vet、
 race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
 重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P0 Reader 朗读条“音调”改回上游“语调”
 
@@ -81,6 +84,7 @@ race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；
 把这一行标成 `音调`，步进器的无障碍名称也写成“音调”。合同第 8 节判 must-fix（文案），把标签改为 `语调`，三个无障碍名称同步改，
 数值范围、存储与朗读参数都不变。状态 **contract-only**。
 记录（2026-11-12，取代上段的状态）：合同 `a06b6f08`、红测 `6f8aff8a`、实现 `b650eede`（`ReaderTTSBar.vue` 的标签和三个无障碍名称改为“语调”）。`a06b6f08` 上两条新单元失败（实际行标签 `语速`、`音调`、`定时`），修复后通过；`reader-tts-contract` 在 1440×900、390×844、360×800 修复前都失败（`["语音库","语速","音调","定时"]`），修复后都通过；前端 935/935 与 build。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P0 Reader 桌面面板打开时进度块的上一章/下一章
 
@@ -89,6 +93,7 @@ race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；
 `da438bc7`（2026-11-03）已把进度块改为经 `handleDesktopToolAction`，共享工具派发对非面板工具先 `closePrimaryPanels()`，所以 main 已满足 P7，
 但没有合同条目，也没有测试锁住。本切片补合同、单元与浏览器 C5，红灯取在 `da438bc7` 之前的 `5c087084`，产品代码不改。状态 **contract-only**（实施补充）。
 记录（2026-11-12，取代上段的状态）：合同 `6055387c`、测试 `726d4696`；产品改动来自 `da438bc7`，本次只补合同和测试。`5c087084`（`da438bc7` 之前，同一份 `node_modules` 构建）上两条单元失败（`@previous` 绑定 `goChapter(currentIndex - 1)`，派发不关面板），C5 12/12 只在“面板关闭”上失败；HEAD 上单元通过、C5 12/12，桌面面板全量 120/120。状态 **implementation-complete / regression-validated**（实现即 `da438bc7`）；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P0 Reader 运行标题加载中与失败时的章节名（实施）
 
@@ -99,6 +104,7 @@ race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；
 与标签页标题、错误页共用 `readerCatalogRow`，R5 由“目录行属于当前书”和“换书的那次路由变化不按旧目录加载章节”两层保证，单元与浏览器
 的记录粒度，以及两处既有断言的改写。状态 **contract-only**（实施补充）。
 记录（2026-11-12，取代上段的状态）：合同 `11a067ec`、红测 `314300c1`、实现 `c2445c54`。单元在 `b33eb7a5` 的产品代码上 931 条中 13 条红（全部是新增或改写的断言），修复后 933/933（含切片 3 两条），四个切片完成后 935/935 与 build；`reader-running-title-load-contract` 红测基线 24/24 FAIL（S1 `第 2 章 第一章 起点`、S2 `第 5 章 第二章 延迟`、T1 `第 6 章 第一章 起点`、B1 `第 4 章 甲三 当前` 并提前请求新书正文、F1 `第 1 章`），修复后 24/24；EPUB 内链从记录到 `第 3 章 第一章（下）` 到三视口通过；连续合同加固前后都通过；浏览器 M3（去掉路由同步一层）让 B 的 6 例失败；单元变异 M1–M5 都被抓到；错误面 48/48、标签页标题、文字模式、重新认证、移动端、音频、openreader-smoke、桌面面板 120/120 回归通过，服务日志没有 5xx 和 panic。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P0 Reader 正文加载失败错误页 R1–R6、R8（实施）
 
@@ -113,6 +119,7 @@ OpenReader（`f82e0f5a`）的错误块只有原因和“重新加载”（R7 已
 918/918 与 build；`reader-error-surface-contract` 红测基线 36/48 FAIL、修复后 48/48；连续、标签页标题、文字模式、重新认证、移动端（含 iPad）、音频、
 openreader-smoke、EPUB（真实服务）与桌面面板 108 例通过；七个临时变异都被对应断言抓到。状态 **implementation-complete / regression-validated**；
 分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
@@ -435,6 +442,7 @@ build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go �
 [`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
 状态 **contract-only**。
 2026-11-02 记录（合同第 9 节）：合同 `5026d6b`；红测 `fcfd19e`（单元 11 条失败；新浏览器合同 8/9 失败，A3 手机对照与 A1 的位置、进度守卫通过）；实现 `c2c7789`（导出 `readerInterfaceMode`，删除两个转换 watcher，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar` 改读界面模式）。单元 857/857 与 build；新合同 9/9（两次）、晚到设置合同 7/7、面板正文控件合同连续 3 次 108/108，TTS 四个视口、settings-position、text-modes、mobile、error-surface 30/30、continuous、openreader-smoke 通过；Go advisory 门通过。前端 advisory 门因 follow-redirects 1.16.1（GHSA-mrwp-f3q8-3g9p）失败，与本切片无关但阻塞任何发布。状态 **implementation-complete / regression-validated**；分支包含未合入 main 的晚到设置切片，未合入 main。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-10-30 P0 Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局
 
@@ -446,6 +454,7 @@ build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go �
 （`setMode('page', { deviceLocal: true })`，不写回账号，避免把其他设备刚选的“左右滑动”撤销）；setup 时已有转换写回账号（D4）记为观察，不在本切片。
 完整合同见 [`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。状态 **contract-only**。
 2026-10-30 记录（合同第 11 节，面板正文控件合同第 15 节）：合同 `098a662`；红测 `0a73689`（单元 3/5 失败，浏览器 L1、L2 共 6 组失败，对照通过）；实现 `8cb15dc`（`readerEffectiveMode` 加 `isDesktop`，`useReaderMode` 的原始设置 watcher，store `setMode` 的 `deviceLocal`）。只加 watcher 的原型在 L2 丢阅读位置（滚动 → 54），所以有效模式也要按上游派生。单元 5/5、前端 841/841 与 build；新浏览器合同 7/7；面板正文控件合同连续 5 次全量 108/108（`C1 flip` 60/60）；TTS（手机与三个桌面视口）、设置位置、文字模式、移动、错误面 30/30、连续与 openreader-smoke 通过。状态 **implementation-complete / regression-validated**；本地分支未推送，镜像未构建，生产未访问。
+发布（2026-11-13）：与“闲读”显示名、每用户书籍上限、“记住登录信息”、Reader 错误页/运行标题/进度块/“语调”、桌面端“左右滑动”两项修复一起合入，main 由 `f82e0f5` 快进到 `f8786ab`（ls-remote 核验，未强推）；run `43400193943` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，secdb main 11-12 22:52:32，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（250 条公告，x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`f8786ab`/`latest` = index `0066943b…2890f`（amd64 `6944f679…`、arm64 `2537a5de…`），两平台 revision 标签为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-10-30 P1 Reader 夜间目录/书架/换源列表文字
 
