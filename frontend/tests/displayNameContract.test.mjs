@@ -28,7 +28,8 @@ test('the app names itself 闲读 in the tab, home-screen, icon, sidebar and log
 
 test('technical names keep OpenReader', () => {
   // Storage keys, font families and export prefixes are identifiers, not the display name.
-  assert.match(read('src/stores/user.js'), /localStorage\.getItem\('openreader_token'\)/)
+  // The 记住登录信息 slice moved the login token key into utils/authToken.js, its only reader and writer.
+  assert.match(read('src/utils/authToken.js'), /export const AUTH_TOKEN_KEY = 'openreader_token'/, 'login token storage key')
   assert.match(read('src/utils/readerFonts.js'), /customFamily: 'OpenReaderCustomSystem'/)
   assert.match(read('src/views/SourceDebug.vue'), /OpenReader-source-debug-/)
 })
