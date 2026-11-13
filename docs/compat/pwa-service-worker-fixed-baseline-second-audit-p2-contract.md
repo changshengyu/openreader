@@ -1,6 +1,7 @@
 # PWA Service Worker 与离线外壳：固定基准第二轮盘点（P2）
 
-审查日期：2026-11-12。基于 main `f82e0f5a`。状态：**contract-only / awaiting-user-decision**。
+审查日期：2026-11-12。基于 main `f82e0f5a`。状态：**contract-only / user-decided**（2026-11-12：Q1、Q2、Q3 均选 A，
+见第 10 节，第 10 节优先于第 4–8 节中与之冲突的内容）。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -413,4 +414,35 @@ W19（manifest）由显示名切片处理；W18 只在 Q1 选 C 或 D 时需要�
 
 ## 9. 状态
 
-contract-only / awaiting-user-decision。只修改 `docs/`：没有改应用代码，没有构建或发布镜像，生产未访问。
+contract-only / user-decided（决定见第 10 节）。合同提交 `b3ed696`，只修改 `docs/`：没有改应用代码，没有构建或发布镜像，
+生产未访问。下一步是按第 10 节的顺序先提交红测。
+
+## 10. 用户决定（2026-11-12）
+
+用户的选择：
+
+- **Q1 选 A**：实现最小离线外壳，即构建资源预缓存、导航 network-first 离线回退、所有接口不缓存，另加 W15 缓存头。
+  **不缓存封面。**
+- **Q2 选 A**：启用 SW 后，版本号点击先提示构建信息，再执行修正后的强制更新。
+- **Q3 选 A**：新 SW 按默认生命周期等待，直到所有页面关闭或用户点击版本号才接管，不自动刷新。
+
+据此更新的判定（取代第 4 节对应行）：
+
+| ID | 新判定 | 说明 |
+| --- | --- | --- |
+| W1–W4、W21 | **must-fix（已批准）** | 按下方顺序实施 |
+| W7 | **must-fix（已批准）** | 恢复上游强制更新；改向 `registration.waiting` 发 `SKIP_WAITING` 属 acceptable-change 修正 |
+| W6 | **acceptable-change（已确认）** | 不自动接管，不新增 `READER_APP_BUILD_VERSION` 键 |
+| W8 | **intentional-redesign（用户决定）** | SW 不缓存封面；离线时封面依靠 24 h 内仍新鲜的浏览器 HTTP 缓存，否则显示现有占位 |
+| W18 | **aligned** | 上游在 SW 就绪时同样直连 RSS 图片；Referer 剥离与 opaque 缓存按 W9 不复制 |
+
+范围随之收窄：
+
+- SW 不持有任何账号数据。S2、S3 保留为将来新增账号相关 SW 缓存时的约束；S5 不需要改登出流程。T4 取消，本切片
+  不再触碰 `frontend/src/stores/user.js`，与账号限制会话没有文件冲突。
+- 测试计划删去封面部分：F3 改为“`/api/cover/*` 同样不处理”；F6 取消；E4 改为“账号 A 登出、账号 B 登录后，
+  Cache Storage 中没有任何 `/api/` 条目，也没有账号相关条目”。
+- 实施顺序：T0（缓存头）→ T1（SW 本体，含 W21）→ T2（注册与 `?nopwa`）→ T3（版本号点击）→ T5（文档）。每一步
+  先单独提交红测，再实现。
+- 实施会修改 `backend/main.go`、`frontend/vite.config.js`、`frontend/src/main.js` 和 `frontend/src/layouts/AppLayout.vue`。
+  若显示名切片也改 `AppLayout.vue` 的标题区，须先协调提交顺序；manifest 与 `index.html` 仍归显示名切片。

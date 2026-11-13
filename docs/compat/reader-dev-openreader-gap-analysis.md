@@ -26,6 +26,10 @@
 SW 缓存不计入已签收的本地缓存范围。合同见
 [`pwa-service-worker-fixed-baseline-second-audit-p2-contract.md`](pwa-service-worker-fixed-baseline-second-audit-p2-contract.md)。
 状态 **contract-only / awaiting-user-decision**。
+决定（2026-11-12，取代上段的状态）：合同 `b3ed696`。用户选择 Q1-A（最小离线外壳 + 缓存头，不缓存封面）、Q2-A（版本号
+先提示构建信息再强制更新）、Q3-A（新 SW 等待，不自动刷新）。W7 改为 must-fix，W8 改为 intentional-redesign，W18 对齐；
+T4 取消，本切片不触碰 `stores/user.js`。实施顺序为 T0 缓存头 → T1 SW → T2 注册 → T3 版本号 → T5 文档，每步先红测。
+状态 **contract-only / user-decided**。
 
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 

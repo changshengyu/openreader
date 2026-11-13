@@ -8,6 +8,9 @@
 intentional-redesign；W6、W10、W12–W15、W17 为 acceptable-change；W7、W8、W19 为 unknown；W11（接口不缓存）为不变量。
 待用户决定：Q1 是否加 SW 及缓存范围，Q2 版本号点击，Q3 新 SW 的接管时机。manifest 归显示名切片，本切片不改。
 状态 contract-only / awaiting-user-decision；未改应用代码，镜像未构建，生产未动。
+决定（2026-11-12，取代上段的状态）：合同 `b3ed696`；用户选 Q1-A（最小离线外壳 + 缓存头，不缓存封面）、Q2-A（提示后强制更新）、
+Q3-A（新 SW 等待）。W7 改为 must-fix，W8 改为 intentional-redesign，W18 对齐，T4 取消。下一步按 T0→T1→T2→T3→T5 先提交红测。
+状态 contract-only / user-decided；未改应用代码，镜像未构建，生产未动。
 
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
