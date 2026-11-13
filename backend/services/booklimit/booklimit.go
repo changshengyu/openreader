@@ -5,6 +5,7 @@
 // Only a path that is about to create a new shelf row checks the cap. Books
 // already on the shelf keep being updated and backup restores are not
 // counted, so a shelf that is already over the cap is never changed by it.
+// Since 2026-11-13 there is no cap unless the instance or the user sets one.
 package booklimit
 
 import (
@@ -21,7 +22,7 @@ import (
 var ErrReached = errors.New("book limit reached")
 
 // Effective is the cap for one user: their own positive BookLimit, set by an
-// administrator, otherwise the instance value.
+// administrator, otherwise the instance value. 0 means no limit.
 func Effective(userBookLimit int, cfg config.Config) int {
 	if userBookLimit > 0 {
 		return userBookLimit
@@ -38,11 +39,15 @@ func Check(db *gorm.DB, userID uint, cfg config.Config) error {
 	if err := db.Model(&models.User{}).Select("book_limit").Where("id = ?", userID).Take(&user).Error; err != nil {
 		return err
 	}
+	limit := Effective(user.BookLimit, cfg)
+	if limit <= 0 {
+		return nil
+	}
 	var count int64
 	if err := db.Model(&models.Book{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
 		return err
 	}
-	if count >= int64(Effective(user.BookLimit, cfg)) {
+	if count >= int64(limit) {
 		return ErrReached
 	}
 	return nil

@@ -15,8 +15,9 @@ const (
 )
 
 // reader-dev caps each bookshelf with reader.app.userBookLimit, default 200
-// (BookController.kt#saveBook: 超过用户书籍数上限).
-const DefaultUserBookLimit = 200
+// (BookController.kt#saveBook: 超过用户书籍数上限). OpenReader applies no limit
+// unless OPENREADER_USER_BOOK_LIMIT is set: the user's decision of 2026-11-13,
+// docs/compat/user-book-limit-fixed-baseline-second-audit-p2-contract.md section 12.
 
 type Config struct {
 	Address                     string
@@ -69,7 +70,7 @@ type Config struct {
 	UserLimit int
 	// UserBookLimit caps the books on each shelf unless an administrator gave
 	// the user a positive BookLimit. Read it through EffectiveUserBookLimit: a
-	// zero value means "not configured".
+	// zero value means "not configured", which is no limit.
 	UserBookLimit int
 	// JWTPreviousSecrets are published values that signed sessions before an
 	// instance secret replaced JWTSecret (services/instancesecret). They only
@@ -170,21 +171,21 @@ func (cfg Config) EffectiveUserLimit() int {
 }
 
 // userBookLimitFromEnv reads OPENREADER_USER_BOOK_LIMIT (reader-dev
-// READER_APP_USERBOOKLIMIT). Unset, non-numeric, zero or negative values use
-// the default; there is no upper bound.
+// READER_APP_USERBOOKLIMIT). Only a positive integer sets a limit; unset,
+// empty, non-numeric, zero or negative values mean no limit (0).
 func userBookLimitFromEnv() int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(os.Getenv("OPENREADER_USER_BOOK_LIMIT")))
 	if err != nil || parsed <= 0 {
-		return DefaultUserBookLimit
+		return 0
 	}
 	return parsed
 }
 
-// EffectiveUserBookLimit is the instance bookshelf cap. A Config built without
-// Load (UserBookLimit 0) gets the default.
+// EffectiveUserBookLimit is the instance bookshelf cap, or 0 for no limit. A
+// Config built without Load (UserBookLimit 0) has no limit.
 func (cfg Config) EffectiveUserBookLimit() int {
 	if cfg.UserBookLimit <= 0 {
-		return DefaultUserBookLimit
+		return 0
 	}
 	return cfg.UserBookLimit
 }
