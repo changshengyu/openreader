@@ -381,19 +381,29 @@ async function runReleaseFlows(browser, server, configA) {
   }
 }
 
-async function runInsecureContext(server) {
-  const label = 'insecure http'
-  const host = 'openreader-pwa-contract.test'
-  const browser = await openSmokeBrowser({ args: [`--host-resolver-rules=MAP ${host} 127.0.0.1`] })
+// E6: over plain HTTP on a LAN address Chromium reports isSecureContext=false and hides
+// navigator.serviceWorker (and caches). That API surface is reproduced on 127.0.0.1,
+// because a made-up host name is not reachable through every environment's proxy.
+async function runInsecureContext(browser, server) {
+  const label = 'insecure context'
   const account = await seedAccount(server, 'pwainsecure')
   const context = await browser.newContext({ viewport: VIEWPORTS[0], serviceWorkers: 'allow' })
   const page = await context.newPage()
+  const workerRequests = []
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/sw.js') workerRequests.push(request.url())
+  })
   try {
-    await page.addInitScript(token => localStorage.setItem('openreader_token', token), account.token)
-    await page.goto(`http://${host}:${server.port}/`, { waitUntil: 'domcontentloaded' })
+    await page.addInitScript(token => {
+      delete Navigator.prototype.serviceWorker
+      delete window.caches
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, get: () => false })
+      localStorage.setItem('openreader_token', token)
+    }, account.token)
+    await page.goto(server.root, { waitUntil: 'load' })
     await shelfRow(page, account.book.title).waitFor({ state: 'visible', timeout: 15_000 })
     const state = await page.evaluate(() => ({ secure: window.isSecureContext, supported: 'serviceWorker' in navigator }))
-    assert(state.secure === false && state.supported === false, `${label} E6: expected an insecure context without service workers, got ${JSON.stringify(state)}`)
+    assert(state.secure === false && state.supported === false, `${label} E6: the insecure API surface was not reproduced: ${JSON.stringify(state)}`)
 
     let navigations = 0
     page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations += 1 })
@@ -401,9 +411,9 @@ async function runInsecureContext(server) {
     await page.locator('.el-message').filter({ hasText: /构建|开发构建/ }).first().waitFor({ state: 'visible', timeout: 10_000 })
     await page.waitForTimeout(1_500)
     assert(navigations === 0, `${label} E6: the version click reloaded a page without a service worker`)
+    assert(workerRequests.length === 0, `${label} E6: a page without service worker support requested ${workerRequests.join(', ')}`)
   } finally {
     await context.close()
-    await browser.close()
   }
 }
 
@@ -413,7 +423,7 @@ try {
   const configA = await readWorkerConfig(server.publicDir)
   for (const viewport of VIEWPORTS) await runViewport(browser, server, configA, viewport)
   await runReleaseFlows(browser, server, configA)
-  await runInsecureContext(server)
+  await runInsecureContext(browser, server)
   console.log(`PWA service worker contract passed: build ${configA.buildId}, ${configA.precache.length} precached files, offline shell, account isolation, A→B release, version click, nopwa, insecure HTTP, 1440/390/360`)
 } finally {
   await browser.close()
