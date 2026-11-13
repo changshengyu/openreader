@@ -342,10 +342,16 @@ async function runReleaseFlows(browser, server, configA) {
         if (text) sessionStorage.setItem('pwa-contract-toast', text)
       }).observe(document.body, { childList: true, subtree: true })
     })
-    const reloaded = page.waitForEvent('framenavigated', { timeout: 20_000 })
+    // Wait for the reloaded document's load event. framenavigated also fires for the
+    // router's same-document replaceState, and waitForLoadState right after the commit can
+    // still report the old document's state, so an evaluate could land in a dying context.
+    let loads = 0
+    page.on('load', () => { loads += 1 })
+    const reloaded = page.waitForEvent('load', { timeout: 20_000 })
     await page.locator('.app-version-text').click()
     await reloaded
-    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(1_000)
+    assert(loads === 1, `${label} E7: the version click loaded the page ${loads} times, want one reload`)
     const toast = await page.evaluate(() => sessionStorage.getItem('pwa-contract-toast') || '')
     assert(/构建/.test(toast), `${label} E7: the version click reloaded without showing build info first (toast: ${toast})`)
     const activated = await page.evaluate(async () => {
