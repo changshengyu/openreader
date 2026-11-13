@@ -1,5 +1,12 @@
 import { nextTick, unref, watch } from 'vue'
 
+// reader-dev only slides in its mini interface (isSlideRead), so a flip
+// setting renders as the page layout on the desktop. The setting itself is
+// never rewritten: the mini interface slides again with it.
+export function readerInterfaceMode(mode, isDesktop = false) {
+  return isDesktop && mode === 'flip' ? 'page' : mode
+}
+
 export function readerEffectiveMode(
   mode,
   isEPUB,
@@ -7,6 +14,7 @@ export function readerEffectiveMode(
   isReadBarOpen = false,
   isOrdinaryImageComic = false,
   isAutoReading = false,
+  isDesktop = false,
 ) {
   // reader-dev's isCarToon excludes CBZ. Ordinary image-comic chapters use
   // the non-slide page branch, while a CBZ keeps an explicitly selected flip
@@ -16,7 +24,7 @@ export function readerEffectiveMode(
   // non-slide branch is the vertical page interaction, while scroll modes
   // remain native scrolling.
   if ((isReadBarOpen || isAutoReading) && mode === 'flip') return 'page'
-  return mode
+  return readerInterfaceMode(mode, isDesktop)
 }
 
 export function readerAutoReadingSupported({
@@ -157,16 +165,6 @@ export function useReaderMode(options) {
       if (options.progressVersion) options.progressVersion.value += 1
       options.saveProgress()
     },
-  )
-
-  watch(
-    options.isMobileReader,
-    mobile => {
-      if (!mobile && options.reader.mode === 'flip') {
-        options.reader.setMode('page')
-      }
-    },
-    { immediate: true },
   )
 
   return {

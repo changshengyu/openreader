@@ -122,3 +122,50 @@ test('does not clear cache for a local book', async () => {
   await fixture.controller.clearCurrentBookCache()
   assert.deepEqual(fixture.calls, [])
 })
+
+// Error surface contract R5 (sections 7 and 13 item 6): after the book load failed there is no catalog to retry
+// against, so 重新载入章节 and 重新加载 run the whole book load instead of loading the clamped chapter 0.
+test('reloads the whole book instead of a clamped chapter after the book load failed', async () => {
+  const fixture = createController({
+    isBookLoadFailed: () => true,
+    reloadBook: async () => {
+      fixture.calls.push(['reload-book'])
+      return true
+    },
+  })
+  fixture.chapters.value = []
+  fixture.currentIndex.value = 0
+  await fixture.controller.reloadChapter()
+  assert.deepEqual(fixture.calls, [
+    ['reload-book'],
+    ['notify', '章节已重新载入'],
+  ])
+})
+
+test('does not report a whole-book reload that failed again', async () => {
+  const fixture = createController({
+    isBookLoadFailed: () => true,
+    reloadBook: async () => {
+      fixture.calls.push(['reload-book'])
+      return false
+    },
+  })
+  fixture.chapters.value = []
+  await fixture.controller.reloadChapter()
+  assert.deepEqual(fixture.calls, [['reload-book']])
+})
+
+test('keeps reloading the current chapter while the book load is healthy', async () => {
+  const fixture = createController({
+    isBookLoadFailed: () => false,
+    reloadBook: async () => {
+      fixture.calls.push(['reload-book'])
+      return true
+    },
+  })
+  await fixture.controller.reloadChapter()
+  assert.deepEqual(fixture.calls, [
+    ['load-chapter', 4, 88, { refresh: true }],
+    ['notify', '章节已重新载入'],
+  ])
+})

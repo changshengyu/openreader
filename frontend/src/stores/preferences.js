@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import api from '../api/client'
 import { currentUserScope } from '../utils/authScope'
+import { readAuthToken } from '../utils/authToken'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { DEFAULT_SEARCH, sanitizeSearchPreference } from '../utils/searchPreference.js'
 
@@ -189,7 +190,7 @@ function readLocalSearchPreference() {
 }
 
 function hasAuthToken() {
-  return typeof localStorage !== 'undefined' && Boolean(localStorage.getItem('openreader_token'))
+  return Boolean(readAuthToken())
 }
 
 function readErrorMessage(err) {

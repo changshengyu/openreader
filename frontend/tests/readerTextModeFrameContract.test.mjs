@@ -126,10 +126,17 @@ test('reader exposes the current chapter number and title in the upstream runnin
     /const chapterLabel = computed/,
     'the unused chapter counter computed must be removed so it cannot be rendered again',
   )
+  // Rewritten for the running title contract R1 (section 8.1 item 1): the label used to come from the committed
+  // chapter object, which shows the new ordinal with the previous chapter name while loading and after a failure.
   assert.match(
     readerSource,
-    /const runningChapterLabel = computed\(\(\) => formatRunningChapterLabel\(currentIndex\.value, chapter\.value\?\.title\)\)/,
-    'the label must derive from the current 1-based chapter position and active title',
+    /const runningChapterLabel = computed\(\(\) => runningChapterLabelFor\(\{[^}]*\bchapters:\s*chapters\.value\b[^}]*\bindex:\s*currentIndex\.value\b[^}]*\}\)\)/,
+    'the label must derive from the catalog row at the current 1-based chapter position',
+  )
+  assert.doesNotMatch(
+    readerSource,
+    /formatRunningChapterLabel\([^)]*chapter\.value\?\.title/,
+    'the running title must not read the committed chapter object',
   )
   assert.match(
     readerSource,

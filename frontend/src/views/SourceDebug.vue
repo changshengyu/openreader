@@ -145,6 +145,7 @@ import { createSource, debugSourceStream, deleteSource, importSources, listSourc
 import { createSourceImportForm, parseImportSourceList } from '../composables/useSourceTransfer'
 import { useUserStore } from '../stores/user'
 import { currentUserScope } from '../utils/authScope'
+import { SOURCE_DEBUG_DOCUMENT_TITLE, restoreShellDocumentTitle, setDocumentTitle } from '../utils/documentTitle'
 import {
   buildBookSourcePayload,
   buildReaderDevBookSource,
@@ -281,6 +282,10 @@ const debugCompatibilityMessage = computed(() => {
   if (!unsupported) return ''
   return `当前服务不会执行此书源在${debugStageLabel(unsupported.data.stage)}阶段需要的 JavaScript 或 WebView；配置会保留。`
 })
+
+// T1: source debug has its own tab title and hands the shell title back when it unmounts in the same tab.
+onMounted(() => setDocumentTitle(SOURCE_DEBUG_DOCUMENT_TITLE))
+onBeforeUnmount(restoreShellDocumentTitle)
 
 onMounted(async () => {
   localSources.value = loadSourceDebugSources(localStorage, scope)

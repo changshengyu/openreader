@@ -18,7 +18,7 @@ export function useReaderChapterWindow(options) {
   function scopeKey() {
     return [
       options.getScopeKey?.() || '',
-      options.reader.mode || '',
+      options.getMode() || '',
       unref(options.isContinuousScrollRead) ? 'continuous' : 'single',
     ].join('|')
   }
@@ -115,7 +115,7 @@ export function useReaderChapterWindow(options) {
         }
       }
       const indexes = readerChapterWindowIndexes({
-        mode: options.reader.mode,
+        mode: options.getMode(),
         anchorIndex,
         startIndex: scrollStartIndex,
         totalChapters: chapterRows.length,
@@ -192,7 +192,7 @@ export function useReaderChapterWindow(options) {
       ]
       const plan = readerChapterWindowPrunePlan({
         blocks: appended,
-        mode: options.reader.mode,
+        mode: options.getMode(),
         currentIndex: unref(options.currentIndex),
         totalChapters: chapterRows.length,
       })
@@ -220,24 +220,41 @@ export function useReaderChapterWindow(options) {
     }
   }
 
+  // Error surface R6: a failed main load keeps its target chapter as an inline error block at the head of the window
+  // and the window still loads the following chapter (reader-dev computeShowChapterList(true) after getContent fails).
+  function showFailedChapter(index, error) {
+    const targetIndex = Number(index)
+    options.chapterBlocks.value = [errorBlockFor(targetIndex, error)]
+    return compute({ anchorIndex: targetIndex })
+  }
+
+  // A retry replaces the chapter's block in place. Resolves true when it recovered, false when it failed again and
+  // null when another window transaction superseded it. A recovered current chapter is committed as the current one.
   async function retry(index) {
     const targetIndex = Number(index)
     const blockIndex = options.chapterBlocks.value.findIndex(
       block => Number(block.index) === targetIndex,
     )
-    if (blockIndex < 0) return
+    if (blockIndex < 0) return null
     const transaction = beginTransaction()
     try {
       const data = await options.loadContent(targetIndex, { refresh: true })
-      if (!isCurrentTransaction(transaction)) return
+      if (!isCurrentTransaction(transaction)) return null
       const blocks = [...options.chapterBlocks.value]
-      blocks[blockIndex] = blockFor(targetIndex, data)
-      await replaceBlocks(blocks, true, transaction)
+      const block = blockFor(targetIndex, data)
+      blocks[blockIndex] = block
+      if (!await replaceBlocks(blocks, true, transaction)) return null
+      if (targetIndex === unref(options.currentIndex)) {
+        options.chapter.value = data?.chapter || unref(options.chapters)[targetIndex] || options.chapter.value
+        options.content.value = block.content
+        if (options.cachedImages) options.cachedImages.value = { ...(block.cachedImages || {}) }
+      }
+      return true
     } catch (error) {
-      if (!isCurrentTransaction(transaction)) return
+      if (!isCurrentTransaction(transaction)) return null
       const blocks = [...options.chapterBlocks.value]
       blocks[blockIndex] = errorBlockFor(targetIndex, error)
-      await replaceBlocks(blocks, true, transaction)
+      return await replaceBlocks(blocks, true, transaction) ? false : null
     } finally {
       finishTransaction(transaction)
     }
@@ -249,7 +266,7 @@ export function useReaderChapterWindow(options) {
     const lastBlock = options.chapterBlocks.value[options.chapterBlocks.value.length - 1]
     if (lastBlock?.error) return
     const extension = readerChapterWindowExtension({
-      mode: options.reader.mode,
+      mode: options.getMode(),
       scrollTop: viewport.scrollTop,
       clientHeight: viewport.clientHeight,
       scrollHeight: viewport.scrollHeight,
@@ -276,6 +293,7 @@ export function useReaderChapterWindow(options) {
     invalidate,
     maybeExtend,
     retry,
+    showFailedChapter,
     syncCurrentChapter,
   }
 }

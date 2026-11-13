@@ -1,12 +1,9 @@
-export function currentUserScope(token = storedAuthToken()) {
+import { readAuthToken } from './authToken.js'
+
+export function currentUserScope(token = readAuthToken()) {
   const payload = decodeJWTPayload(token)
   const userId = payload?.userId || payload?.sub || ''
   return userId ? `user:${userId}` : 'anonymous'
-}
-
-function storedAuthToken() {
-  if (typeof localStorage === 'undefined') return ''
-  return localStorage.getItem('openreader_token') || ''
 }
 
 function decodeJWTPayload(token) {

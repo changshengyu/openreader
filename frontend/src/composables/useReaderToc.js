@@ -1,5 +1,5 @@
 import { nextTick, onBeforeUnmount, ref, unref } from 'vue'
-import { readerTocTargetIndex, toggleReaderTocReverse } from '../utils/readerToc'
+import { readerTocTargetIndex, toggleReaderTocReverse } from '../utils/readerToc.js'
 
 export function useReaderToc(options) {
   const visible = ref(false)
@@ -70,6 +70,12 @@ export function useReaderToc(options) {
     return runRefreshing(async () => {
       if (unref(options.isTemporaryReader)) {
         options.onUnavailable?.()
+        return
+      }
+      // After a failed book load, refreshing the catalog reloads the whole book so the target chapter
+      // loads once the catalog arrives (reader-dev refreshCatalog -> loadCatalog -> getContent).
+      if (options.isBookLoadFailed?.()) {
+        await options.reloadBook()
         return
       }
       if (unref(options.isRemoteBook)) {

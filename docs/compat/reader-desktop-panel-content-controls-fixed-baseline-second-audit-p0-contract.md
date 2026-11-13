@@ -5,6 +5,7 @@
 上 cherry-pick 为 `20fb76d`）只写文档；第 2.4 节、第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，没有入库，探针和原始输出的
 副本在共享笔记目录 `panel-content-controls/`；其中第 4.2、4.3 节的正文控件与对照部分已由入库的
 `scripts/smoke/reader-desktop-panel-controls-contract.mjs` 承接。第 10 节第 1 条（桌面进度块）没有并入。
+浏览器合同 `C1 flip` 的偶发超时是 Reader 竞态（账号设置晚于 Reader setup 到达时桌面停在 flip），由 `8cb15dc` 修复，原因与证据见第 15 节。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
 `/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不可写，用的是另一个会话 scratchpad 里已 checkout 同一提交的克隆
@@ -450,3 +451,96 @@ Compose、存储 HTTP 合同、浏览器启动门、两平台 OS APK 门、新�
 里的 Reader 与本切片验证过的相同。
 
 状态：P3、P4 **released / awaiting-device-verification**；第 10 节第 1 条（桌面进度块）仍开放。生产未访问，实际运行版本未知。
+
+## 13. 第 10 节第 1 条：桌面进度块的上一章/下一章（实施合同，2026-11-12）
+
+协调方 2026-11-12 把第 10 节第 1 条并入本轮（简报：“桌面工作区面板打开时，进度块的上一章/下一章应执行动作并关闭面板”）。判定沿用第 5 节
+第 8 行：**`must-fix`**。上游四个桌面面板是没有遮罩的 click popover，右侧 `.read-bar` 的阅读进度、上一章、下一章（`Reader.vue` L140–156）
+按下照常执行，事件冒泡到 `document` 后面板关闭（第 2.3 节表格，第 2.4 节“右栏下一章”复现）。
+
+**现状核对**（main `f82e0f5a`）：
+
+- 第 4.3 节“执行，面板不关”是在 `0962dca` 上测的。当时 `Reader.vue` 把进度块直接绑定成 `@previous="goChapter(currentIndex - 1)"`、
+  `@next="goChapter(currentIndex + 1)"`，`f82e0f5a` 之前的 `5c087084` 仍是这样。
+- `da438bc7`（2026-11-03，“align the Reader menu bars, panels and their logic with reader-dev”）把两个绑定改成
+  `handleDesktopToolAction('previous'/'next')`。`useReaderTools.run` 对每个非面板工具都先调用 `closePrimaryPanels()`，`Reader.vue` 传入的
+  `closeReaderPrimaryPanels` 会关掉书架、书源、目录、设置四个状态，桌面工作区面板就是由这四个状态派生的。所以现行代码按下进度块的
+  上一章/下一章已经是“执行并关闭”，首章/末章的边界提示（`本章是第一章`/`本章是最后一章`）同样先关面板。这个提交的说明只提到移动端
+  浮动按钮和底栏，没有给桌面进度块写合同条目，也没有测试锁住这一点。
+
+**目标合同**：
+
+P7. 桌面场景（`isMobileReader` 为假）任一工作区面板打开时，按进度块的“上一章”或“下一章”，一次按下既执行原动作（有相邻章时进入
+  该章；首章、末章时提示 `本章是第一章`、`本章是最后一章`），也关闭当前面板，结果与“先关面板、再按”相同；进入新章后只写一次指向
+  该章的进度。
+
+P8. 不变：关闭层、面板、进度块的层级与 DOM 顺序；P2–P6；移动端主面板。进度块的“阅读进度”（缓存区开关）和右栏书签、搜索、信息、
+  笔记、缓存入口仍按第 10 节第 1 条后半另行裁决。现行代码里“阅读进度”同样经 `handleDesktopToolAction('cache')` 先关面板，本节不为它
+  加断言，也不改它。
+
+**测试计划**：
+
+- 单元：`readerTools.test.mjs` 新增“desktop chapter steps close every primary panel before they step”，覆盖下一章、首章边界和末章边界。
+  `readerDesktopPanelContentControls.test.mjs` 新增 P7 源码合同，检查三点：进度块的两个事件绑定到共享工具派发；派发带
+  `closePrimaryPanels: closeReaderPrimaryPanels`；后者覆盖四个面板状态。
+- 浏览器：`reader-desktop-panel-controls-contract.mjs` 新增 C5，3 个视口 × 4 个面板，page 模式。从第 0 章打开面板，先按“下一章”，
+  再打开面板按“上一章”。每次都要求面板与关闭层卸载，路由和正文到达目标章，并且只写一次该章进度。
+- 红灯：现行代码已经满足 P7，红灯只能取在 `da438bc7` 之前的 `5c087084`。`git diff 5c087084 HEAD -- frontend/package-lock.json frontend/package.json frontend/vite.config.js`
+  为空，可以用同一份 `node_modules` 构建。预期：两条单元在 `5c087084` 上失败，C5 的 12 例都在“面板关闭”上失败；HEAD 上全部通过。
+- 实现：没有产品代码改动（P7 已由 `da438bc7` 实现），本节只补合同、单元与浏览器断言和记录。
+
+## 14. P7 测试与验证（2026-11-12）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `6055387c` | 合同 | 第 13 节，gap analysis 与 matrix。 |
+| `726d4696` | 测试 | 单元：`readerTools.test.mjs` 的派发用例；`readerDesktopPanelContentControls.test.mjs` 的 P7 源码合同。浏览器：C5。左栏入口与进度块按钮的选择器同时接受 `da438bc7` 之前的 `title` 写法，断言不变。 |
+
+没有实现提交：P7 已由 `da438bc7` 实现。
+
+| 代码 | 单元 | C5（3 视口 × 4 面板） |
+| --- | --- | --- |
+| `5c087084`（`da438bc7` 之前，同一份 `node_modules` 构建，`127.0.0.1:18493`） | 两条都失败：`@previous` 绑定的是 `goChapter(currentIndex - 1)`；派发调用序列为空，没有关面板 | 12/12 FAIL，都只在“面板关闭”上（下一章和上一章各一次）；路由、显示与进度写入都正常 |
+| `726d4696`（产品代码与 `c2445c54` 相同，`:18494`） | 通过 | 12/12 PASS：面板与关闭层卸载，路由与正文到目标章，各写一次该章进度 |
+
+C5 第一次在两份代码上跑时，没有等节流后的进度写入（`minimumInterval` 1200ms）就读了记录，进度断言在两边都偶发失败。改为和 C1 一样
+最多等 3s 后重跑，上表是重跑结果。
+
+**回归**：同一服务上 `reader-desktop-panel-controls-contract` 全量 120/120（C1–C5），另见运行标题合同第 12 节的回归列表。
+
+**状态**：P7 **implementation-complete（`da438bc7`）/ regression-validated**；第 10 节第 1 条关闭。Git：分支 `claude/reader-error-title-progress-59bcb6`，
+未合入 main。镜像：未构建。生产：未访问。
+
+## 15. `C1 flip` 偶发超时的原因（2026-10-30）
+
+现象：2026-10-29 起，`C1 flip` 的 12 组（3 个视口 × 4 个面板）每次跑都有 2–6 组在 `runChapterEndCase` 第一步
+`page.waitForSelector('.reader-chapter-end')` 超时（`harness: page.waitForSelector: Timeout 10000ms exceeded.`，notes 为空）。失败组每次不同，
+`c62c619` 与 `24511c0` 两个构建都有；`C1 page` 与 C2–C4 从不失败。
+
+原因：不是 harness 的等待或分页稳定问题，而是 Reader 的竞态，详见
+[晚到左右滑动设置合同](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)第 3.2、4 节：
+
+- harness 在 `localStorage.reader` 里写了 `mode: 'flip'`，但 App 挂载时自动日夜（`autoTheme` 默认为真）先用内置白天方案的快照覆盖了
+  `mode`（`page`）。真正带来 flip 的是模拟的账号设置 `GET /api/settings/reader`。
+- 桌面把 flip 转成 page 的 watcher（`useReaderMode.js:162–170`）只在 Reader setup 与界面切换时运行。GET 先到时转换成功，按钮出现。
+  Reader 先 setup 时，GET 随后把 `mode` 设回 flip，桌面停在 `.reader-shell.flip`，`showChapterEndPrompt` 为假，按钮永不挂载。哪组失败
+  取决于这两件事的先后，所以每次不同。
+- 临时探针（scratchpad，未入库）：失败组 Reader setup 92ms、GET 应用 102ms，超时时 `reader.mode` 仍为 `flip`、第 0 章已加载；通过组
+  GET 应用 181ms、setup 196ms。让 GET 等 `.reader-shell` 出现后才返回，1440×900 `C1 flip` 4/4 失败、`C1 page` 4/4 通过，竞态变成确定的失败。
+- 同一机制在 WebSocket `settings_update`、冲突响应、备份恢复和桌面套用 flip 方案时必然发生，不只是测试时序。
+
+第 4.1 节那一次超时不是这个原因：盘点探针的原始输出（共享笔记 `panel-content-controls/output/panel-controls-probe-portrait.txt`）记的是
+`chapter-end/page`，即 page 设置、`98f4ddb`、1024×1366、书源。page 设置不经过这个竞态。那一组当时单独重跑两次正常，之后（包括下面
+5 次全量里的 60 组 `C1 page`）没有再出现，原因未定。
+
+修复：合同 `098a662`、红测 `0a73689`、实现 `8cb15dc`（有效模式在桌面把 flip 当作 page，原始设置只在本设备转回 page）。本合同的脚本、
+断言与等待都没有改。
+
+验证（`8cb15dc` 的 `npm run build`，服务与浏览器同第 11 节）：
+
+| 构建 | 结果 |
+| --- | --- |
+| `ec3736f`（修复前） | `SMOKE_CASES='^C1 flip'` 两次各 9/12：第一次失败 1440 书源、1024×1366 书源与设置，第二次失败 1440 书架与书源、1366×1024 目录，都是上面的超时。 |
+| `8cb15dc`（修复后） | 连续 5 次全量，每次 108/108，每次约 399s；`C1 flip` 共 60/60，`C1 page` 60/60，C2–C4 420/420；没有 harness、页面或路由错误。 |
+
+状态：本合同 P3、P4 的结论与状态不变（released / awaiting-device-verification）；本节只记录浏览器合同的稳定性。

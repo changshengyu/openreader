@@ -32,6 +32,7 @@ function createController(overrides = {}) {
     getCurrentPercent: () => 0.4,
     mergeBook: (current, incoming) => ({ ...current, ...incoming }),
     now: () => new Date('2026-07-02T00:00:00Z'),
+    getMode: () => reader.mode,
     ...overrides,
   })
   return { book, calls, chapter, controller, reader }
@@ -73,4 +74,13 @@ test('preserves a pending server base and updates unrelated shelf progress', () 
   assert.deepEqual(fixture.calls, [
     ['shelf', { bookId: 8, updatedAt: 'other-v1' }, { replace: true }],
   ])
+})
+
+// docs/compat/reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md U8.
+test('records the mode it is given rather than the raw setting', () => {
+  const fixture = createController({ getMode: () => 'page' })
+  fixture.reader.mode = 'flip'
+  fixture.controller.apply()
+  const applied = fixture.calls.filter(call => call[0] === 'apply').map(call => call[1].mode)
+  assert.deepEqual(applied, ['page'])
 })

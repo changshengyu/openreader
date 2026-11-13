@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
+import { bookLimitDisplayError } from '../utils/bookLimit.js'
 import {
   remoteBookCreatePayload,
   remoteBookKey,
@@ -99,7 +100,7 @@ export function useRemoteBookResultEditor(options) {
       return data
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '保存书籍失败')
+        options.onError(bookLimitDisplayError(error), '保存书籍失败')
       }
       return null
     } finally {

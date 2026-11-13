@@ -20,5 +20,7 @@ services:
       OPENREADER_INVITE_CODE: ${OPENREADER_INVITE_CODE:-}
       # Optional: maximum number of accounts, 1-50. Empty uses the default 50.
       OPENREADER_USER_LIMIT: ${OPENREADER_USER_LIMIT:-}
+      # Optional: maximum number of books on each bookshelf. Empty uses the default 200.
+      OPENREADER_USER_BOOK_LIMIT: ${OPENREADER_USER_BOOK_LIMIT:-}
     # Restart after host/container-engine restarts unless explicitly stopped.
     restart: unless-stopped

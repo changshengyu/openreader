@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { safeReturnTo } from '../utils/authNavigation'
+import { readAuthToken } from '../utils/authToken'
 
 const Home = () => import('../views/Home.vue')
 const Login = () => import('../views/Login.vue')
@@ -124,7 +125,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const token = localStorage.getItem('openreader_token')
+  const token = readAuthToken()
   if (!token && to.name !== 'login') {
     return {
       name: 'login',

@@ -31,6 +31,83 @@ SW 缓存不计入已签收的本地缓存范围。合同见
 T4 取消，本切片不触碰 `stores/user.js`。实施顺序为 T0 缓存头 → T1 SW → T2 注册 → T3 版本号 → T5 文档，每步先红测。
 状态 **contract-only / user-decided**。
 
+## 2026-11-12 P0 Reader/首页 产品显示名“闲读”（D1 决定）
+
+标签页标题合同的 D1（产品名用 `阅读` 还是 `OpenReader`）自 2026-10-16 起一直待定。用户 2026-11-12 选了第三个名字“闲读”。因此壳标题（`index.html` `<title>` 与 `SHELL_DOCUMENT_TITLE`）、首页工作区与 `/login` 挂载时设置壳标题、书源调试独立标题 `闲读书源编辑器`（上游 `Reader书源编辑器` 的格式）转为 must-fix。侧栏品牌（原按上游为 `阅读`）、登录页标题、主屏幕应用名与图标无障碍名同步改为“闲读”，记为用户要求的差异；技术名（仓库、镜像、环境变量、存储 key）不变。合同见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 14 节。状态 **contract-only**。
+记录（2026-11-13，取代上段的状态）：合同 `cb2c545`、红测 `7b181ca`、实现 `52cec1e`。前端 886/886 与 build；真实 Go 服务下标签页标题合同（含新增的首页、登录与书源调试流程）三视口通过，壳标题为 `闲读`，openreader-smoke、重新认证、书源调试、注册限制合同对照通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+
+## 2026-11-12 P2 账号 登录框“记住登录信息”
+
+上游 `App.vue` 登录框在用户名、密码（注册模式还有邀请码）之后显示“记住登录信息”，默认勾选，登录与注册都有。只有勾选时 `setToken` 才把
+`accessToken` 写入 `localStorage.api_token`；不勾选时浏览器不保存长期 token，登录只靠服务端内存会话（`reader.session`，7 天无访问或服务重启即失效）。
+OpenReader 没有这个复选框，`AuthForm` 总是把 JWT 写入 `localStorage.openreader_token`，并且 11 个文件直接读写它。
+M1/M2 must-fix：加复选框（默认勾选）；不勾选时 token 只放在本标签页的 `sessionStorage`（刷新和应用打开的窗口保留，独立新标签页和重开浏览器需重新登录），
+同时删除 `localStorage` 中旧的 token；`utils/authToken.js` 成为唯一读写点，401 门禁、会话失效与重新认证流程不变。
+A1–A3 acceptable-change：用 sessionStorage 代替服务端内存会话（JWT 没有 cookie 会话）、按标签页隔离、修正上游不勾选后仍保留旧 token 的缺口。合同见
+[`remember-login-fixed-baseline-second-audit-p2-contract.md`](remember-login-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `d27661a`、红测 `a4f4737`、实现 `9c9b1b8`。红测在合同提交上前端 10 个失败（`authToken.js` 不存在、store 无 `rememberLogin`、
+不记住的 token 不进请求头、11 个文件直接读写、表单无复选框、接线正则），对照通过；浏览器停在缺少复选框处。实现后同一组断言转绿。前端 900/900 与 build；后端未改动。
+真实 Go 服务全新数据目录下 `remember-login-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、重新认证四视口、openreader-smoke 三视口、
+`user-book-limit-contract.mjs` 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P2 账号 每用户书籍上限
+
+上游 `reader.app.userBookLimit`（默认 200，`READER_APP_USERBOOKLIMIT`）只在 `BookController.kt#saveBook` 检查：书名加作者不在书架上、
+并且书架已有 ≥ 上限本时返回“超过用户书籍数上限”，检查在移动本地文件和远程抓取之前；已在书架上的书照常更新；恢复备份（`syncFromWebdav`）
+直接覆盖书架，不检查。OpenReader 的 `users.book_limit` 只能由管理员 API 设置，没有任何代码读取；五条加书路径（`POST /api/books`、
+`/books/remote`、`/imports/books`、`/local-store/import`、`/webdav/import`）都不检查数量。
+B1–B3 must-fix：新增 `OPENREADER_USER_BOOK_LIMIT`（默认 200，未设置、非整数或 ≤ 0 时按 200），用户 `BookLimit > 0` 时覆盖实例值；只在将要新建一行时计数，
+计数与插入在同一个事务里；远程加入在抓取前、本地导入在写归档前先查一次；达到上限返回 `403 {"error":"book limit reached"}`，批量导入逐项报告；
+前端显示“超过用户书籍数上限”。已在书架上的书、恢复占位行的挂接和备份恢复不受限，已超过上限的书架不改动。默认 200 会让升级前已有 200 本以上的用户
+不能再新增，理由与调整方式写在合同第 5 节。合同见
+[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `523f104`、红测 `e34ad5b`、实现 `1e18d6a`（后端）/`dac67c3`（前端）/`87e239a`（文档）。红测在合同提交上：后端 9 个失败（403 处为 201，
+并发 8 个全部建成，解析 7 种情况不限），占位挂接等对照通过；前端 7 个失败；浏览器停在 desktop（第三本导入 201、无提示）。实现后同一组断言转绿。后端全量 31 个包与 vet、
+race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
+重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 朗读条“音调”改回上游“语调”
+
+上游 `web/src/views/Reader.vue` 朗读条展开后的行标签依次是 `语音库`、`语速`、`语调`、`定时`（L179–L208，`speechPitch` 标为 `语调`），
+[音频与 TTS 合同](reader-audio-tts-fixed-baseline-p0-contract.md)第 2 节“栏位结构”写的也是“语速、语调、定时”。OpenReader 的 `ReaderTTSBar.vue`
+把这一行标成 `音调`，步进器的无障碍名称也写成“音调”。合同第 8 节判 must-fix（文案），把标签改为 `语调`，三个无障碍名称同步改，
+数值范围、存储与朗读参数都不变。状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `a06b6f08`、红测 `6f8aff8a`、实现 `b650eede`（`ReaderTTSBar.vue` 的标签和三个无障碍名称改为“语调”）。`a06b6f08` 上两条新单元失败（实际行标签 `语速`、`音调`、`定时`），修复后通过；`reader-tts-contract` 在 1440×900、390×844、360×800 修复前都失败（`["语音库","语速","音调","定时"]`），修复后都通过；前端 935/935 与 build。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 桌面面板打开时进度块的上一章/下一章
+
+上游四个桌面面板是没有遮罩的 click popover，右侧进度块的上一章、下一章按下照常执行，面板随之关闭。[桌面面板正文控件合同](reader-desktop-panel-content-controls-fixed-baseline-second-audit-p0-contract.md)
+第 5 节第 8 行在 `0962dca` 上实测为“执行，面板不关”并判 must-fix，第 10 节第 1 条留待并入。新增第 13 节写成实施合同 P7、P8。核对发现
+`da438bc7`（2026-11-03）已把进度块改为经 `handleDesktopToolAction`，共享工具派发对非面板工具先 `closePrimaryPanels()`，所以 main 已满足 P7，
+但没有合同条目，也没有测试锁住。本切片补合同、单元与浏览器 C5，红灯取在 `da438bc7` 之前的 `5c087084`，产品代码不改。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：合同 `6055387c`、测试 `726d4696`；产品改动来自 `da438bc7`，本次只补合同和测试。`5c087084`（`da438bc7` 之前，同一份 `node_modules` 构建）上两条单元失败（`@previous` 绑定 `goChapter(currentIndex - 1)`，派发不关面板），C5 12/12 只在“面板关闭”上失败；HEAD 上单元通过、C5 12/12，桌面面板全量 120/120。状态 **implementation-complete / regression-validated**（实现即 `da438bc7`）；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 运行标题加载中与失败时的章节名（实施）
+
+固定上游 `Reader.vue#getContent` 在请求正文前就把 `this.title` 写成目标章目录标题，失败不回退，迟到响应被丢弃；Reader 内换书时页头
+只会是旧书的完整标签或新书目标章。OpenReader（错误面切片之后）的运行标题仍由 `currentIndex` 与已提交的 `chapter.title` 拼成，
+切章加载中、失败后、重新加载中都显示“新序号 + 旧章节名”，首次进入时显示猜测的 `第 1 章`，Reader 内换书时位置监听会用旧目录加载
+新书的目标章。按[运行标题合同](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7 节 R1–R7 实施；第 11 节补充：
+与标签页标题、错误页共用 `readerCatalogRow`，R5 由“目录行属于当前书”和“换书的那次路由变化不按旧目录加载章节”两层保证，单元与浏览器
+的记录粒度，以及两处既有断言的改写。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：合同 `11a067ec`、红测 `314300c1`、实现 `c2445c54`。单元在 `b33eb7a5` 的产品代码上 931 条中 13 条红（全部是新增或改写的断言），修复后 933/933（含切片 3 两条），四个切片完成后 935/935 与 build；`reader-running-title-load-contract` 红测基线 24/24 FAIL（S1 `第 2 章 第一章 起点`、S2 `第 5 章 第二章 延迟`、T1 `第 6 章 第一章 起点`、B1 `第 4 章 甲三 当前` 并提前请求新书正文、F1 `第 1 章`），修复后 24/24；EPUB 内链从记录到 `第 3 章 第一章（下）` 到三视口通过；连续合同加固前后都通过；浏览器 M3（去掉路由同步一层）让 B 的 6 例失败；单元变异 M1–M5 都被抓到；错误面 48/48、标签页标题、文字模式、重新认证、移动端、音频、openreader-smoke、桌面面板 120/120 回归通过，服务日志没有 5xx 和 panic。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P0 Reader 正文加载失败错误页 R1–R6、R8（实施）
+
+固定上游 `Reader.vue#getContent`/`loadCatalog` 与 `Content.vue#render`：当前章失败后正文区是“目标章 `<h3>` + `获取章节内容失败！` + 原因”的
+错误章节页，每次失败弹一次提示，页码按错误页重算，连续模式失败章留在列表里、后一章照常加载；目录失败显示 `获取章节目录失败！`。
+OpenReader（`f82e0f5a`）的错误块只有原因和“重新加载”（R7 已发布），没有标题、标签和提示，原因是后端英文消息，失败后沿用上一章页数，
+连续模式目标章失败占满正文，目录失败后“重新加载”按第 0 行显示另一章。按[错误面合同](reader-chapter-error-surface-fixed-baseline-second-audit-p0-contract.md)
+第 7 节 R1–R6、R8 与 D1 (b) 映射表实施；第 13 节补充失败类型、目录行、提示范围、目录失败的三个重试入口与 R6 的状态规则，并记录两处与
+合同冲突的既有断言的改写。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：补充 `c752efae`、导入后缀 `ed876aa7`、红测 `be9e9653`、实现 `246a829b`（R1–R4、R8、D1）/`1aa2fa12`（R5）/
+`eac2fe5e`（R6）、测试改写 `ad7df218`（面板 C3 scroll 跟随 R6）/`3384ead6`（连续合同按 D1 不再要求后端原文）。前端红测基线 918 条中 35 条红，修复后
+918/918 与 build；`reader-error-surface-contract` 红测基线 36/48 FAIL、修复后 48/48；连续、标签页标题、文字模式、重新认证、移动端（含 iPad）、音频、
+openreader-smoke、EPUB（真实服务）与桌面面板 108 例通过；七个临时变异都被对应断言抓到。状态 **implementation-complete / regression-validated**；
+分支已推送，未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。
@@ -337,6 +414,32 @@ Element Plus 组件（消息框、按钮、输入框、选择下拉、对话框�
 build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go 服务导入 TXT 的夜间对照、真实接口合同（书籍信息“追更”一项在改前构建同样
 失败，另起）通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
 2026-11-02 发布：main 快进到 `0ce2bff`（ls-remote 核验，未强推）；可信 Actions run `41450840714` 全部成功（13:11–13:35Z）。`ghcr.io/changshengyu/openreader:0ce2bff` 与 `latest` 为 OCI index `sha256:4e17ce2b55ce3e3c999df31ddfa9571a6cc3f9331f325feaa5d5e7f27e43821a`（linux/amd64 `sha256:d9309c69…`、linux/arm64 `sha256:237abbf5…`），两平台 `org.opencontainers.image.revision` 均为 `0ce2bffd082b117059ed6fd292df4e5b110b933e`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
+
+## 2026-10-30 P1 Reader 桌面端把账号的“左右滑动”改写成“上下滑动”（D4）
+
+晚到设置合同第 10 节观察 1、2。桌面 Reader setup 时与 mini→桌面切换时，`useReaderMode.js:166–174` 的 immediate watcher 调用
+`setMode('page')`：刷新设置时间戳、改写当前方案并 `PUT` `page`。手机选了“左右滑动”后在电脑或横屏 iPad 打开 Reader，账号就变成
+“上下滑动”；iPad 手机模式→自适应→手机模式之后不再左右滑动；晚到 `flip` 只改本设备的 `page` 也会随桌面下一次保存写回账号。上游
+`isSlideRead = miniInterface && readMethod === "左右滑动"`（`vuex.js` L451–453）是派生，界面切换只改 `miniInterface`，`readMethod`
+只由用户选择与配置恢复改变；桌面翻页方式隐藏“左右滑动”，账号为“左右滑动”时没有高亮项。盘点修正了晚到设置合同第 3.1 节：
+布局、键盘、指针拿到的是只暴露有效模式的 `effectiveReaderState`，真正读原始设置的是位置恢复、章节窗口、本地进度、store 的
+`saveProgress`、`closeTTSBar` 与设置面板高亮。D4-1–D4-4 **`must-fix`**：删除两个转换 watcher，原始设置只由明确选择改变；新增界面模式
+`readerInterfaceMode`（桌面 `flip` 为 `page`），原始设置读者改读它（`getMode`、`saveProgress` 的 `payload.mode`），行为不变；D4-6（缺
+`mode` 的旧本地进度回退值）`acceptable-change`。完整合同见
+[`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+2026-11-02 记录（合同第 9 节）：合同 `5026d6b`；红测 `fcfd19e`（单元 11 条失败；新浏览器合同 8/9 失败，A3 手机对照与 A1 的位置、进度守卫通过）；实现 `c2c7789`（导出 `readerInterfaceMode`，删除两个转换 watcher，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar` 改读界面模式）。单元 857/857 与 build；新合同 9/9（两次）、晚到设置合同 7/7、面板正文控件合同连续 3 次 108/108，TTS 四个视口、settings-position、text-modes、mobile、error-surface 30/30、continuous、openreader-smoke 通过；Go advisory 门通过。前端 advisory 门因 follow-redirects 1.16.1（GHSA-mrwp-f3q8-3g9p）失败，与本切片无关但阻塞任何发布。状态 **implementation-complete / regression-validated**；分支包含未合入 main 的晚到设置切片，未合入 main。
+
+## 2026-10-30 P0 Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局
+
+面板正文控件浏览器合同的 `C1 flip` 每次有 2–6/12 组在等 `加载下一章` 时超时，查明是 Reader 的竞态而不是 harness：桌面把 `flip` 转成
+`page` 的 watcher（`useReaderMode.js:162–170`）只在 Reader setup 与界面切换时运行；账号设置 GET 晚于 Reader setup 到达时，
+`applyReaderSettings` 把 `mode` 设回 `flip`，桌面停在 `.reader-shell.flip`，章末按钮永不挂载。WebSocket `settings_update`、冲突响应、
+备份恢复和本设备套用 flip 方案时每次都会这样。上游 `isSlideRead = miniInterface && readMethod === "左右滑动"` 是实时派生，桌面从不滑动，也不改写
+设置。D1/D2 **`must-fix`**：有效模式在桌面把 `flip` 当作 `page`（不跑位置事务），原始设置在同一轮更新里只在本设备转回 `page`
+（`setMode('page', { deviceLocal: true })`，不写回账号，避免把其他设备刚选的“左右滑动”撤销）；setup 时已有转换写回账号（D4）记为观察，不在本切片。
+完整合同见 [`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。状态 **contract-only**。
+2026-10-30 记录（合同第 11 节，面板正文控件合同第 15 节）：合同 `098a662`；红测 `0a73689`（单元 3/5 失败，浏览器 L1、L2 共 6 组失败，对照通过）；实现 `8cb15dc`（`readerEffectiveMode` 加 `isDesktop`，`useReaderMode` 的原始设置 watcher，store `setMode` 的 `deviceLocal`）。只加 watcher 的原型在 L2 丢阅读位置（滚动 → 54），所以有效模式也要按上游派生。单元 5/5、前端 841/841 与 build；新浏览器合同 7/7；面板正文控件合同连续 5 次全量 108/108（`C1 flip` 60/60）；TTS（手机与三个桌面视口）、设置位置、文字模式、移动、错误面 30/30、连续与 openreader-smoke 通过。状态 **implementation-complete / regression-validated**；本地分支未推送，镜像未构建，生产未访问。
 
 ## 2026-10-30 P1 Reader 夜间目录/书架/换源列表文字
 

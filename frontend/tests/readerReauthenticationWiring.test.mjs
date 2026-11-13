@@ -11,6 +11,7 @@ const app = source('../src/App.vue')
 const authDialog = source('../src/components/AuthDialog.vue')
 const apiClient = source('../src/api/client.js')
 const booksAPI = source('../src/api/books.js')
+const sourcesAPI = source('../src/api/sources.js')
 const reader = source('../src/views/Reader.vue')
 const router = source('../src/router/index.js')
 const user = source('../src/stores/user.js')
@@ -53,8 +54,12 @@ test('session clearing dispatches invalidation before token removal and resets o
 })
 
 test('only the currently stored rejected token can create a new auth-required event', () => {
-  assert.match(apiClient, /localStorage\.getItem\('openreader_token'\) !== rejectedToken[\s\S]*?return Promise\.reject\(error\)/)
-  assert.match(booksAPI, /localStorage\.getItem\('openreader_token'\) === token[\s\S]*?openreader:auth-required/)
+  // The current token is read through utils/authToken.js, which covers the
+  // remembered (localStorage) and unremembered (sessionStorage) login:
+  // docs/compat/remember-login-fixed-baseline-second-audit-p2-contract.md
+  assert.match(apiClient, /readAuthToken\(\) !== rejectedToken[\s\S]*?return Promise\.reject\(error\)/)
+  assert.match(booksAPI, /readAuthToken\(\) === token[\s\S]*?openreader:auth-required/)
+  assert.match(sourcesAPI, /readAuthToken\(\) === token[\s\S]*?openreader:auth-required/)
 })
 
 test('unauthenticated route redirects preserve a safe return path', () => {

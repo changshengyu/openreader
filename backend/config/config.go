@@ -14,6 +14,10 @@ const (
 	MaxUserLimit     = 50
 )
 
+// reader-dev caps each bookshelf with reader.app.userBookLimit, default 200
+// (BookController.kt#saveBook: 超过用户书籍数上限).
+const DefaultUserBookLimit = 200
+
 type Config struct {
 	Address                     string
 	DataDir                     string
@@ -63,6 +67,10 @@ type Config struct {
 	// UserLimit caps accounts for registration and the admin add-user action.
 	// Read it through EffectiveUserLimit: a zero value means "not configured".
 	UserLimit int
+	// UserBookLimit caps the books on each shelf unless an administrator gave
+	// the user a positive BookLimit. Read it through EffectiveUserBookLimit: a
+	// zero value means "not configured".
+	UserBookLimit int
 	// JWTPreviousSecrets are published values that signed sessions before an
 	// instance secret replaced JWTSecret (services/instancesecret). They only
 	// verify jti-backed session tokens and never sign anything.
@@ -124,6 +132,7 @@ func Load() Config {
 		MaxCoverImageRedirects:      envPositiveInt("OPENREADER_MAX_COVER_IMAGE_REDIRECTS", 3),
 		InviteCode:                  strings.TrimSpace(os.Getenv("OPENREADER_INVITE_CODE")),
 		UserLimit:                   userLimitFromEnv(),
+		UserBookLimit:               userBookLimitFromEnv(),
 	}
 }
 
@@ -158,6 +167,26 @@ func (cfg Config) EffectiveUserLimit() int {
 		return DefaultUserLimit
 	}
 	return clampUserLimit(cfg.UserLimit)
+}
+
+// userBookLimitFromEnv reads OPENREADER_USER_BOOK_LIMIT (reader-dev
+// READER_APP_USERBOOKLIMIT). Unset, non-numeric, zero or negative values use
+// the default; there is no upper bound.
+func userBookLimitFromEnv() int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(os.Getenv("OPENREADER_USER_BOOK_LIMIT")))
+	if err != nil || parsed <= 0 {
+		return DefaultUserBookLimit
+	}
+	return parsed
+}
+
+// EffectiveUserBookLimit is the instance bookshelf cap. A Config built without
+// Load (UserBookLimit 0) gets the default.
+func (cfg Config) EffectiveUserBookLimit() int {
+	if cfg.UserBookLimit <= 0 {
+		return DefaultUserBookLimit
+	}
+	return cfg.UserBookLimit
 }
 
 func env(key, fallback string) string {

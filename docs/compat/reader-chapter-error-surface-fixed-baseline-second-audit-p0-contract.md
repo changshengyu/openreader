@@ -1,7 +1,7 @@
 # Reader 正文加载失败错误面盘点（P0）
 
-状态：R7 **implementation-complete / regression-validated**（红测 `e497358`、实现 `a6af2d6`，见第 11 节）；R1–R6、R8 仍为
-**contract-only**；D1 已于 2026-10-17 由用户决定为 (b)（第 7 节）。盘点提交 `0427dd4` 只写文档；第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，
+状态：R7 **released / awaiting-device-verification**（红测 `e497358`、实现 `a6af2d6`，见第 11、12 节）；R1–R6、R8 与 D1 (b)
+**implementation-complete / regression-validated**（2026-11-12，见第 13、14 节；分支 `claude/reader-error-title-progress-59bcb6`，未合入 main）。盘点提交 `0427dd4` 只写文档；第 4 节的真实浏览器复现用的是会话 scratchpad 里的临时探针，
 没有入库，其中第 4.2、4.3、4.5 节的按钮命中与真实指针部分已由入库的 `scripts/smoke/reader-error-surface-contract.mjs` 承接。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
@@ -593,3 +593,104 @@ portable 通过）。`ghcr.io/changshengyu/openreader:238e3f3` 与 `latest` 指�
 63 个文件与本地同一提交的 build 逐字节一致；zlib 1.3.2-r1、SQLite 3.51.3 与完整 revision 标签保持。
 
 状态：R7 **released / awaiting-device-verification**；R1–R6、R8 仍 contract-only，D1 已决定为 (b)（第 7 节）。生产未访问，实际运行版本未知。
+
+## 13. R1–R6、R8 实施补充（2026-11-12，实施前）
+
+基线：main `f82e0f5a`（分支 `claude/reader-error-title-progress-59bcb6`）。R7（`a6af2d6`）、桌面面板 P3/P4（`74da65c`）和标签页标题
+（`useReaderDocumentTitle`，按 `currentIndex` 的目录行派生、要求目录行属于当前书）都已在这个基线里。本节行号以 `f82e0f5a` 为准；
+第 3、4 节的现状描述在 `f82e0f5a` 上仍然成立（错误块只有原因和按钮，没有标题、标签和提示；失败后不重算布局；连续模式目标章失败是
+主错误块；目录失败时“重新加载”按截断后的第 0 行请求）。本节只把实施时必须确定的细节写下来，不新增 must-fix，不改第 7 节的目标。
+
+1. **失败类型**。`chapterLoadError` 仍然只保存原因；另用一个状态记录这次失败是不是书籍加载失败。`useReaderBookLoad.load`
+   （`useReaderBookLoad.js:82–201`）会抛错的地方有目录请求、书不在书架时的书籍信息请求和远程临时阅读的会话请求，三者都按 R2 的
+   目录失败页处理：`获取章节目录失败！` 加原因、没有章节标题、提示前缀 `获取书籍目录列表`、重试走整本书加载（R5）。上游的
+   `readingBook` 来自书架或最近阅读，没有单独的书籍信息请求，书籍级失败只有 `loadCatalog`。两个书籍加载入口（挂载
+   `useReaderPageLifecycle.js:51–60`，Reader 内换书 `useReaderRouteSync.js:18–25`）共用同一个失败处理。
+2. **R1 的目录行**。取 `chapters[currentIndex]`，并且只在这一行属于当前书时使用，规则与 `useReaderDocumentTitle` 相同（目录行的
+   `bookId` 等于 `book.id`；远程临时阅读两者都是 0）。标题文字的规则与同一章正常显示时的 `<h3>` 相同（`makeChapterBlock`：目录标题，
+   为空时 `第 N 章`，再做简繁转换）；CBZ 的错误页同样显示 `<h3>`（上游错误时不走 CBZ 分支）。目录行未知时不渲染 `<h3>`：上游渲染一个
+   空的 `<h3>`，高度为 0，可见结果相同。
+3. **R2 的结构**。主错误块依次是 `<h3 data-pos="0">`、标签行（`获取章节内容失败！` 或 `获取章节目录失败！`）、原因行和“重新加载”；
+   连续模式内联错误块依次是 `<h3>`、`获取章节内容失败！`、原因行和“重新加载”。全部文本插值，不用 `v-html`。
+4. **R3 的映射**。按第 7 节 D1 表的顺序在前端纯函数里判定；补充两点：`{"error":{"code":"NOT_FOUND"}}` 信封不论状态码都按 404 处理；
+   没有 `response` 的 `Error`（网络错误、超时、远程会话无效）按失败类型取顺序 4 的中文兜底。
+5. **R4 的提示**。`ElMessage.error` 一次：加载器当前事务的失败、EPUB 资源失败（`handleEpubError`，原因为固定文案）、两个书籍加载入口
+   的失败；连续模式下目标章仍处于失败状态时，按它自己的内联“重新加载”再次失败也提示（这就是 R4 的“重试再次失败”）。不提示：预载、
+   相邻章（窗口追加、重算和对其他章的重试）、被取代或中止的加载。
+6. **R5 的入口**。目录失败状态下，工具栏“重新载入章节”、正文“重新加载”（两者都走 `reloadChapter`）和目录面板“刷新”都重新执行
+   `useReaderBookLoad.load`：重新请求书籍与目录，再按路由或已存进度定位目标章。成功提示 `章节已重新载入` 只在目标章随后加载成功时
+   显示（与内容失败时的现状一致）。
+7. **R6 的状态**。目标章主加载失败时 `chapterLoadError` 照常写入，`useReaderChapterReady` 的等待者（朗读跨章）照常被拒绝；窗口以
+   `[目标章错误块]` 为种子按连续合同的规则重算，后一章照常加载。窗口里 `currentIndex` 处是错误块时，不渲染主错误块。按目标章自己的
+   内联“重新加载”成功时原位替换该块，并在它仍是当前章时提交章节对象、正文和图片映射，结束失败状态（清空 `chapterLoadError`，
+   `chapterLoaded` 为真）。窗口把另一章变成当前章（滚动同步、已加载窗口内跳转、版式切换后的位置恢复）时，失败状态同样结束，当前章
+   按它自己的块显示，与相邻章失败一致。失败章是否写进度仍按第 10 节第 2 条另行裁决，本切片不改进度载荷。
+8. **R8**。加载器、书籍加载和 EPUB 资源三种失败之后都把 `page` 置 0，`nextTick` 后调用一次 `updateLayout()`。
+9. **测试改写（不是弱化）**：
+   - `frontend/tests/readerChapterLoader.test.mjs` 的“records load failures and always releases loading guards”把失败路径的调用序列
+     固定为 `[cancel, frame]`，这正是 R8 判为 must-fix 的“失败后不重算布局”。按 CLAUDE.md“与合同冲突的 Reader 测试应重写”，改为要求
+     失败后有一次 `layout`，其余断言不变。
+   - `scripts/smoke/reader-error-surface-contract.mjs` 的主错误块用例在 scroll、scroll2 下等待 `.chapter-load-error`。R6 要求这两种模式的
+     目标章失败显示为内联错误块，所以这两种模式改为按目标章内联块的按钮做同一组 E2、E3 检查（命中、只请求一次、路由、工具层、
+     没有指向其他章或旧章节名的进度、按后显示该章正文），page、flip 不变。
+10. **提交拆分**（第 9 节第 4 步）：红测一次提交；实现按 R1–R4/R8（含 D1）、R5、R6 三个提交。
+
+## 14. R1–R6、R8 实施与验证（2026-11-12）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `c752efae` | 合同 | 第 13 节实施补充，gap analysis 与 matrix。 |
+| `ed876aa7` | 测试前置 | `useReaderToc.js` 的 `../utils/readerToc` 补 `.js` 后缀，让 `node --test` 能加载它；Vite 行为不变。 |
+| `be9e9653` | 红测 | 见下。 |
+| `246a829b` | 实现 | R1–R4、R8 与 D1：`frontend/src/utils/readerChapterError.js`（D1 表）、`readerCatalogRow.js`（与标签页标题同一行）、错误页 `<h3>` + 标签 + 原因、内联块标签行、每次当前章失败一次 `ElMessage.error`、失败后 `page = 0` 并重算布局。 |
+| `1aa2fa12` | 实现 | R5：书籍加载失败后，`reloadChapter`（工具栏与正文“重新加载”）和目录面板“刷新”都重新执行整本书加载。 |
+| `eac2fe5e` | 实现 | R6：连续模式目标章失败时窗口以 `[目标章错误块]` 为种子重算，后一章照常加载；窗口里当前章是错误块时不渲染主错误页；目标章内联重试原位替换并提交当前章，仍失败时再提示一次；窗口把别的章变成当前章时结束失败状态。 |
+| `ad7df218` | 测试改写 | `reader-desktop-panel-controls-contract.mjs` C3 scroll：R6 之后失败章是内联块，改为检查它的按钮“被面板盖住（P5）或露出且命中按钮本身（P4）”，关面板后可达、失败仍显示；page 不变。 |
+| `3384ead6` | 测试改写 | `reader-continuous-contract.mjs` 失败重试一步原来要求看到后端原文 `fixture adjacent chapter failure`，与 D1 (b) 冲突；改为要求 `获取章节内容失败！` 与 `服务器处理失败，请稍后重试`，且不出现后端原文。 |
+
+`git diff f82e0f5a eac2fe5e -- backend Dockerfile` 与依赖锁文件为空：后端、依赖、构建配置都没有改。
+
+**单元**（`node --test`，沙箱外）：
+
+| 代码 | 结果 |
+| --- | --- |
+| `be9e9653` | 918 条中 883 通过，35 条失败，全部是新增红测：`readerChapterErrorText` 23 条（模块不存在）；错误面源码合同 3 条（`chapter-load-error must start with <h3 data-pos="0">{{ errorTitle }}</h3>`、内联块没有 `获取章节内容失败！` 行、`Reader.vue` 没有 `:error-title`/`:error-label`）；加载器 4 条（改写后的失败调用序列缺 `layout`、`page` 仍为 4、失败不提示、连续模式不进窗口）；维护 2 条（仍 `load-chapter 0`）；目录刷新 1 条（仍 `local-catalog`）；窗口 2 条（没有 `showFailedChapter`）。对照用例（维护、目录刷新的健康路径）通过。 |
+| `eac2fe5e` | 918/918。`npm run build` 通过，只有既有的 chunk 大小提示。 |
+
+**浏览器**：本 worktree 用 go1.26.11 编译的二进制加 `vite build` 生产前端；每个服务独立的全新 data/cache/library/store 目录与随机 JWT
+secret（未输出），监听 `127.0.0.1:18491`（红测基线 `ed876aa7`，产品代码与 `f82e0f5a` 只差导入后缀）与 `:18492`（`eac2fe5e`）。
+Playwright chromium-headless-shell 1228，Node v26.4.0，服务与浏览器都在沙箱外。
+
+`reader-error-surface-contract.mjs`（48 例）：
+
+| 用例 | 红测基线 | 修复后 |
+| --- | --- | --- |
+| main page/flip（3 视口 × 鼠标与手机触摸/鼠标，12 例） | 全部 FAIL：没有 `<h3>`，只有一行 `failed to load chapter content`，没有提示，手机页码 `第 1/8 页`；E2/E3 通过 | 全部 PASS：`<h3 data-pos="0">第六章 失败</h3>`、`获取章节内容失败！`、`书源没有返回可用正文`，一次 `获取章节内容失败 书源没有返回可用正文`，手机 `第 1/1 页`，没有 `加载下一章` |
+| main scroll/scroll2（8 例） | 全部 FAIL：显示主错误页，没有目标章内联块，第 6 行不显示 | 全部 PASS：第 5 行是内联块（标题与两行文字），第 6 行有正文；按内联“重新加载”只请求 `[5]`、原位替换、路由与工具层不变、没有进度写入 |
+| inline（相邻章，10 例） | 全部 FAIL：只有一行英文原因 | 全部 PASS：`第二章 后邻` + 两行文字，相邻章失败不提示；R7 的命中、按下检查不变 |
+| toolbar（12 例，回归对照） | 全部 PASS | 全部 PASS（请求 `[5,6,4,7,3]`，路由不变，`章节已重新载入`） |
+| copy（3 视口） | 全部 FAIL：网络失败只有兜底且无提示；两次 409 显示通用兜底；502 与 404 显示英文 | 全部 PASS：五种注入各显示对应中文原因并各提示一次，页面与提示都没有英文 |
+| catalog（3 视口） | 全部 FAIL：`failed to list chapters`，无提示；按钮之后没有重新请求目录，`?chapter=2` 下显示第一章 | 全部 PASS：`获取章节目录失败！` + `服务器处理失败，请稍后重试`，没有标题，一次 `获取书籍目录列表 服务器处理失败，请稍后重试`；按钮之后重新请求目录并显示 `第三章 平稳` |
+
+合计：红测基线 36/48 FAIL（main 20、inline 10、copy 3、catalog 3），toolbar 12 例通过；修复后 48/48。连续模式 main 用例在红测基线上
+第一次运行时因找不到内联按钮多出一行 harness 错误，加了“按钮缺失时不按”的保护后重跑这 10 例，失败点只剩断言。
+
+回归（`eac2fe5e` 与上述测试改写，同一服务）：`reader-continuous-contract`、`document-title-contract`、`reader-text-modes-contract`、
+`reader-reauthentication-contract`（4 视口）、`reader-mobile-contract`（含 iPad）、`reader-audio-contract`、`openreader-smoke`（3 视口）、
+`reader-epub-contract`（真实服务，3 视口）、`reader-desktop-panel-controls-contract`（108/108；C3 scroll 在 1440×900 与 1366×1024
+被面板盖住，在 1024×1366 露在书架、书源、目录面板下方并命中按钮本身，设置面板盖住）全部通过。服务日志 6228 个 200、6 个 201、
+545 个 401（全部是模拟上下文的 `/ws/sync`），没有 5xx，没有 panic。
+
+**临时变异**（只改工作区，跑相关单元后立即 `git checkout` 还原，未提交，还原后工作树干净）：M3 去掉错误页 `<h3>`、M4 去掉失败提示、M5 目录失败时
+`reloadChapter` 改回按下标加载、M6 stale 改回通用兜底、M7 连续模式目标章改回主错误页、M8 失败后不重算布局、M9 原因退回服务端 `error`
+字段，七个变异各自让对应断言失败（M9 让 18 条映射用例失败），其余不受影响。浏览器层面的变异没有单独构建：红测基线本身就是 M3、M4、
+M6–M9 的组合，修复后的 48 例与其一一对应。
+
+**其余门**：Go `test`/`vet`/`race` 跳过（后端无改动）；依赖 advisory、Compose 与卷门跳过（依赖、Dockerfile、数据格式都没有改，卷门只在
+Actions 上运行）。实现提交改了 `frontend/**`，合入 main 会触发镜像发布，由协调会话统一决定。
+
+**状态**：R1–R6、R8 **implementation-complete / regression-validated**。Git：分支 `claude/reader-error-title-progress-59bcb6`，未合入 main。镜像：未构建，
+未推送。生产：未访问，未操作。
+
+观察（不在本切片）：第 10 节第 2 条失败态进度仍未盘点。R6 之后，连续模式目标章失败时，滚动产生的进度写入用的是错误块所在目录行
+（`5:第六章 失败`，序号与标题一致）；上游在失败状态下不保存进度。是否保存，留给失败态进度载荷盘点。

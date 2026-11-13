@@ -12,10 +12,10 @@
     <aside class="app-sidebar" :style="mobileNavigationStyle">
       <div class="app-sidebar-scroll">
       <div class="app-brand" @click="goHome">
-        <div class="app-brand-mark">阅</div>
+        <div class="app-brand-mark">闲</div>
         <div>
           <div class="app-brand-title-row">
-            <div class="app-brand-title">阅读</div>
+            <div class="app-brand-title">闲读</div>
             <button class="app-version-text" type="button" @click.stop="updateAppVersion">{{ appVersionLabel }}</button>
           </div>
           <div class="app-brand-subtitle">清风不识字，何故乱翻书</div>
@@ -176,6 +176,7 @@ import { clearBrowserLocalCacheGroup, currentBrowserLocalCacheStats } from '../u
 import { currentViewportWidth, shouldUseMiniInterface } from '../utils/responsive'
 import { currentUserScope } from '../utils/authScope'
 import { forceServiceWorkerUpdate } from '../utils/serviceWorker'
+import { restoreShellDocumentTitle } from '../utils/documentTitle'
 import { createShelfForegroundReconciler } from '../utils/shelfSyncFreshness'
 
 const router = useRouter()
@@ -911,6 +912,9 @@ watch(
   ],
   () => clearRouteWorkspaceOperationOverlayIntent(),
 )
+
+// The home workspace shows the shell title whenever it mounts (S2), also after returning from source debug.
+onMounted(restoreShellDocumentTitle)
 
 onMounted(() => {
   updateViewportFlags()

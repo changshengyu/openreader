@@ -1,9 +1,8 @@
 import { currentUserScope } from './authScope.js'
+import { readAuthToken } from './authToken.js'
 
 export function currentAuthenticatedIdentity() {
-  const token = typeof localStorage === 'undefined'
-    ? ''
-    : String(localStorage.getItem('openreader_token') || '')
+  const token = readAuthToken()
   return {
     scope: currentUserScope(),
     // This value stays only in the short-lived operation closure. It is never

@@ -14,6 +14,7 @@ import (
 	"openreader/backend/engine"
 	"openreader/backend/models"
 	"openreader/backend/services/bookcatalog"
+	"openreader/backend/services/booklimit"
 	"openreader/backend/services/cbzreader"
 	"openreader/backend/services/epubreader"
 	"openreader/backend/services/rootedfs"
@@ -142,6 +143,14 @@ func (importer Importer) persistParsedBook(existing *models.Book, request Import
 	if err := ctx.Err(); err != nil {
 		return ImportedBook{}, err
 	}
+	// reader-dev refuses a new book at the limit before it moves any file; a
+	// reattached placeholder is already on the shelf. The transaction below
+	// checks again before the row is created.
+	if existing == nil {
+		if err := booklimit.Check(importer.db, request.UserID, importer.cfg); err != nil {
+			return ImportedBook{}, err
+		}
+	}
 	archive, tree, err := engine.OpenImportedBookArchive(ctx, importer.cfg.LibraryDir, request.UserName, title, author, request.FileName, request.Data)
 	if err != nil {
 		return ImportedBook{}, err
@@ -198,6 +207,9 @@ func (importer Importer) persistParsedBook(existing *models.Book, request Import
 				return gorm.ErrDuplicatedKey
 			}
 		} else {
+			if err := booklimit.Check(tx, request.UserID, importer.cfg); err != nil {
+				return err
+			}
 			book = models.Book{UserID: request.UserID, SourceID: 0, URL: fmt.Sprintf("local://pending/%d", request.UserID)}
 		}
 		book.Type, book.Title, book.Author = 0, title, author

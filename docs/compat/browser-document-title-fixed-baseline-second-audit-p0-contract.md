@@ -537,3 +537,55 @@ Go 1.26.9、Node v26.4.0、Playwright 1.61.1 / Chrome Headless Shell 1228。会�
 63 个文件与本地同一提交的 build 逐字节一致，bundle 含 document.title 写入；zlib 1.3.2-r1、SQLite 3.51.3 与完整
 revision 标签保持。生产未访问，实际运行版本未知。
 状态：Reader 部分 **released / awaiting-device-verification**；首页、首屏、登录与书源调试标题仍 contract-only，等用户决定 D1。
+
+## 14. D1 决定：产品显示名“闲读”（2026-11-12）
+
+用户在第 6 节的 A（`阅读`）、B（`OpenReader`）之外选了 C：产品显示名为 **闲读**。2026-11-12 先请求“想个更好听的名字”，在候选
+开卷、书舟、青灯、拾卷、闲读、书斋中选定“闲读”。这是品牌名的决定，所以范围比第 6 节的标签页文字更大，第 6 节末尾“不改 manifest”的约束由本节取代。
+
+| 位置 | 现状 | 目标 | 分类 |
+| --- | --- | --- | --- |
+| `frontend/index.html` `<title>`（壳标题，S1） | `OpenReader` | `闲读` | `must-fix`（D1 已决定） |
+| `utils/documentTitle.js` `SHELL_DOCUMENT_TITLE` | `OpenReader` | `闲读`（与 `<title>` 一致，已有单元合同） | `must-fix` |
+| 首页工作区挂载（S2）与 `/login` 挂载（S3） | 只靠 `index.html` 初值和 Reader 卸载恢复 | 挂载时主动设壳标题 | `must-fix` |
+| 书源调试（T1） | 壳标题 | 挂载设 `闲读书源编辑器`（上游 `Reader书源编辑器` 的 `<产品名>书源编辑器` 格式），卸载恢复壳标题 | `must-fix` |
+| 侧栏品牌 `.app-brand-title` | `阅读`（`bd8afe5` 按上游改回） | `闲读` | 用户要求的差异 |
+| 登录页 `<h1 class="auth-title">` | `OpenReader` | `闲读` | 用户要求的差异 |
+| `manifest.webmanifest` `name`/`short_name`、`apple-mobile-web-app-title` | `OpenReader` | `闲读` | 用户要求的差异 |
+| 图标 `openreader.svg` 的 `aria-label` | `OpenReader` | `闲读` | 用户要求的差异 |
+
+不改：仓库与镜像名 `changshengyu/openreader`、`OPENREADER_*` 环境变量、浏览器存储 key（`openreader_token` 等）、`OpenReaderCustom*`
+字体族、导出文件名前缀（`OpenReader-source-debug-…`）、README 中作为项目名的 OpenReader、Reader 标题格式与运行标题。
+
+测试（先红后绿）：
+- 单元 `frontend/tests/displayNameContract.test.mjs`：
+  - 产品名是 `闲读`，`<title>`、`apple-mobile-web-app-title`、manifest `name`/`short_name`、图标 `aria-label`、侧栏品牌与登录页 `<h1>` 都等于它；
+  - `SOURCE_DEBUG_DOCUMENT_TITLE === '闲读书源编辑器'`；
+  - 首页工作区与登录页挂载时调用 `setDocumentTitle(SHELL_DOCUMENT_TITLE)`；书源调试挂载时设书源调试标题、卸载时恢复壳标题；
+  - 仍然只有 `utils/documentTitle.js` 给 `document.title` 赋值。
+- 浏览器 `scripts/smoke/document-title-contract.mjs` 补上第 8.2 节第 1 步与第 11 步，即新增 `shell` 流程：
+  - `/`、打开再关闭 `/?overlay=sources`、`/search` 都是壳标题，侧栏品牌文字等于壳标题；
+  - 无 token 时打开 `/login` 是壳标题，`<h1>` 等于壳标题；
+  - `/source-debug`、`/bookSourceDebug/`、`/sources?action=debug` 是 `<壳标题>书源编辑器`；
+  - 1440×900 下从首页点“调试书源”，新标签页是书源调试标题，原标签页仍是壳标题。
+
+  移动视口的侧栏需要先展开，这一步只在桌面检查，其余在三个视口都检查。
+
+状态 **contract-only**（由下方记录取代）。
+
+### 14.1 记录（2026-11-13）
+
+提交：
+- 合同 `cb2c545`；
+- 红测 `7b181ca`：单元 4 项中 3 项失败（`<title>` 仍为 `OpenReader`、壳标题常量、挂载接线），技术名对照通过；浏览器 `shell` 流程在 1440×900 因侧栏品牌为 `阅读` 失败；
+- 实现 `52cec1e`。实现中另把侧栏单字徽标 `阅` 改为 `闲`，与新名一致。
+
+验证：
+- 前端 886/886（原 882 加新增 4 项），build 通过；
+- 真实 Go 服务提供生产构建：
+  - `document-title-contract.mjs` 全部四个流程（navigation、auth、remote、shell）在 1440×900、390×844、360×800 通过，壳标题为 `闲读`；
+  - `openreader-smoke.mjs` 三视口、`reader-reauthentication-contract.mjs` 四视口、`source-debug-contract.mjs` 通过；
+  - `registration-limits-contract.mjs` 三视口 6 项检查通过；
+- 后端与依赖未改，Go 测试与公告门留给推送前检查和 CI。
+
+状态 **implementation-complete / regression-validated**；分支 `claude/display-name-xiandu` 已推送，未合入 main，镜像未发布，生产未访问。

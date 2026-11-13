@@ -1,6 +1,7 @@
 import { computed, getCurrentScope, onScopeDispose, ref } from 'vue'
 import { isDirectImportableLocalPath, isEPUBLocalPath } from '../utils/localBookToc.js'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
+import { bookLimitMessage } from '../utils/bookLimit.js'
 
 const maxDirectImportFiles = 64
 
@@ -240,7 +241,7 @@ export function useStorageImportWorkflow(options) {
       if (!operations.canCommit(operation)) return { ok: false, aborted: true }
       const result = findImportResult(response?.imported || [], row)
       if (!result?.book) {
-        row.lastError = result?.error || '导入失败'
+        row.lastError = bookLimitMessage(result?.error) || result?.error || '导入失败'
         options.onError?.(row.lastError)
         return { ok: false, error: row.lastError }
       }
@@ -249,7 +250,7 @@ export function useStorageImportWorkflow(options) {
       return { ok: true, book: result.book }
     } catch (error) {
       if (!operations.canCommit(operation)) return { ok: false, aborted: true }
-      row.lastError = safeError(error, '导入失败')
+      row.lastError = bookLimitMessage(error) || safeError(error, '导入失败')
       options.onError?.(row.lastError)
       return { ok: false, error: row.lastError }
     }

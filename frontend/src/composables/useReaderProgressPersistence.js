@@ -3,6 +3,7 @@ import {
   readerProgressSaveKey,
   readerProgressThrottleDelay,
 } from '../utils/readerProgressPersistence.js'
+import { readAuthToken } from '../utils/authToken.js'
 
 export function useReaderProgressPersistence(options) {
   const minimumInterval = Math.max(0, Number(options.minimumInterval) || 1200)
@@ -71,7 +72,7 @@ export function useReaderProgressPersistence(options) {
 
   function sendKeepAlive(payload) {
     if (typeof window === 'undefined' || typeof fetch !== 'function') return false
-    const token = window.localStorage?.getItem('openreader_token')
+    const token = readAuthToken()
     if (!token) return false
     const progress = options.getStoredProgress?.(payload.bookId)
     const payloadKey = key(payload)
