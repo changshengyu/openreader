@@ -6,6 +6,7 @@
 [音频与 TTS 合同](reader-audio-tts-fixed-baseline-p0-contract.md)第 2 节“栏位结构”写的也是“语速、语调、定时”。OpenReader 的 `ReaderTTSBar.vue`
 把这一行标成 `音调`，步进器的无障碍名称也写成“音调”。合同第 8 节判 must-fix（文案），把标签改为 `语调`，三个无障碍名称同步改，
 数值范围、存储与朗读参数都不变。状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `a06b6f08`、红测 `6f8aff8a`、实现 `b650eede`（`ReaderTTSBar.vue` 的标签和三个无障碍名称改为“语调”）。`a06b6f08` 上两条新单元失败（实际行标签 `语速`、`音调`、`定时`），修复后通过；`reader-tts-contract` 在 1440×900、390×844、360×800 修复前都失败（`["语音库","语速","音调","定时"]`），修复后都通过；前端 935/935 与 build。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P0 Reader 桌面面板打开时进度块的上一章/下一章
 
@@ -13,6 +14,7 @@
 第 5 节第 8 行在 `0962dca` 上实测为“执行，面板不关”并判 must-fix，第 10 节第 1 条留待并入。新增第 13 节写成实施合同 P7、P8。核对发现
 `da438bc7`（2026-11-03）已把进度块改为经 `handleDesktopToolAction`，共享工具派发对非面板工具先 `closePrimaryPanels()`，所以 main 已满足 P7，
 但没有合同条目，也没有测试锁住。本切片补合同、单元与浏览器 C5，红灯取在 `da438bc7` 之前的 `5c087084`，产品代码不改。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：合同 `6055387c`、测试 `726d4696`；产品改动来自 `da438bc7`，本次只补合同和测试。`5c087084`（`da438bc7` 之前，同一份 `node_modules` 构建）上两条单元失败（`@previous` 绑定 `goChapter(currentIndex - 1)`，派发不关面板），C5 12/12 只在“面板关闭”上失败；HEAD 上单元通过、C5 12/12，桌面面板全量 120/120。状态 **implementation-complete / regression-validated**（实现即 `da438bc7`）；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P0 Reader 运行标题加载中与失败时的章节名（实施）
 
@@ -22,6 +24,7 @@
 新书的目标章。按[运行标题合同](reader-running-title-load-failure-fixed-baseline-second-audit-p0-contract.md)第 7 节 R1–R7 实施；第 11 节补充：
 与标签页标题、错误页共用 `readerCatalogRow`，R5 由“目录行属于当前书”和“换书的那次路由变化不按旧目录加载章节”两层保证，单元与浏览器
 的记录粒度，以及两处既有断言的改写。状态 **contract-only**（实施补充）。
+记录（2026-11-12，取代上段的状态）：合同 `11a067ec`、红测 `314300c1`、实现 `c2445c54`。单元在 `b33eb7a5` 的产品代码上 931 条中 13 条红（全部是新增或改写的断言），修复后 933/933（含切片 3 两条），四个切片完成后 935/935 与 build；`reader-running-title-load-contract` 红测基线 24/24 FAIL（S1 `第 2 章 第一章 起点`、S2 `第 5 章 第二章 延迟`、T1 `第 6 章 第一章 起点`、B1 `第 4 章 甲三 当前` 并提前请求新书正文、F1 `第 1 章`），修复后 24/24；EPUB 内链从记录到 `第 3 章 第一章（下）` 到三视口通过；连续合同加固前后都通过；浏览器 M3（去掉路由同步一层）让 B 的 6 例失败；单元变异 M1–M5 都被抓到；错误面 48/48、标签页标题、文字模式、重新认证、移动端、音频、openreader-smoke、桌面面板 120/120 回归通过，服务日志没有 5xx 和 panic。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P0 Reader 正文加载失败错误页 R1–R6、R8（实施）
 
