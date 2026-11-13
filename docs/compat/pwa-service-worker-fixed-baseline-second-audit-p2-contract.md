@@ -507,3 +507,19 @@ contract-only / user-decided（决定见第 10 节）。合同提交 `b3ed696`�
   GitHub Actions 中运行）。
 
 状态 **implementation-complete / regression-validated**。分支已推送，未合入 main；镜像未发布；生产未访问。
+
+## 12. 发布（2026-11-13）
+
+main 由 `6aaab1d` 快进到 `2f19133`（ls-remote 核验，未强推），内容是本分支（`ee0dc4f` 合入 main、`d06f0a2` 记录、`3375555` 合入发布记录）加协调会话的 `2f19133`。
+
+`2f19133` 是测试适配：E7 原先等版本点击后的第一个 `framenavigated`，再等 `domcontentloaded`。每次文档加载会发出三个主框架 `framenavigated`（提交、vue-router 在脚本执行时的 `replaceState`、加载后的 `replaceState`），提交刚发生时 `waitForLoadState` 仍按旧文档的状态返回，随后读取 `sessionStorage` 的 `evaluate` 偶尔落在正被替换的上下文里，报 “Execution context was destroyed”（协调会话 4 次中 2 次失败，诊断日志确认只有一次跨文档重载）。现在等重载后文档的 `load` 事件，并新增“版本点击恰好重载一次”的断言；原有断言都没改，修复后连续 6 次通过。
+
+推送前在发布树上：后端 `go test ./...` 31 个包与 vet、race api/db/services 与根包通过（只有改动的根包与 engine 重跑，其余包输入未变、沿用缓存结果；PWA 会话在 `ee0dc4f` 上跑过完整 race 27 个包，1119 秒）；前端 997/997 与 build（`sw.js` 构建号 `f8dc2e29333d4b83`，预缓存 64 个文件，不含 `/api`）；公告门自测 114/114，现场 Go 与前端扫描 0 个发现；compose 配置、浏览器 smoke 接线 10/10；secdb main 与 11-10 快照一致。真实 Go 服务、全新数据目录下浏览器合同通过：PWA E1–E7（修复后连续 6 次）、openreader-smoke、标签页标题四个流程、首页设置入口与工作台、记住登录信息、重新认证、书籍上限、注册限制、错误页 48 例、桌面面板正文控件 120/120、D4 9/9、移动（含 iPad）、TTS 两个视口、首页会话隔离、会话生命周期、文本模式、EPUB、书源调试；服务日志没有 panic，唯一的 5xx 是注册限制合同关页时被取消的 `PUT /api/settings/reader`（原有行为，已另起任务）。
+
+可信 Actions run `43407882444` 43/43 步成功（10:16–10:41 UTC）：两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现，卷门与平台核验通过。
+
+镜像：`ghcr.io/changshengyu/openreader:2f19133` 与 `latest` 指向 OCI index `sha256:85c8d8f4cf55699ba609b65b98c980d5649509bca1704ea129ec7f04dd4a6c7a`；linux/amd64 `sha256:c1eef4e46d51897fdfb89b3ff1364e263788f0a16c612063245d9808e61483f8`，linux/arm64 `sha256:dd063c4558972a0d3ecd56dec2b8c5b1ac44be843abfbf5df1b6dfb5848212da`，另有两个 attestation。两平台 revision 标签均为 `2f19133c35ddfb0bc66731f57c1ed1617b431896`；两平台 `/app/openreader` 均由 go1.26.11 构建，`/app/public/index.html` 标题为 `闲读`，`/app/public/sw.js` 的构建号为 `f8dc2e29333d4b83`，与本地构建相同（逐层校验 sha256 后读取）。
+
+W19（manifest 的 `display`/`orientation`）仍待用户决定，本次发布保持 `standalone` + `portrait`。
+
+状态 **released / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知。

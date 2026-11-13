@@ -36,6 +36,7 @@ T4 取消，本切片不触碰 `stores/user.js`。实施顺序为 T0 缓存头 �
 `?nopwa` 注销并只删 `openreader-` 缓存；共享 smoke 运行时默认阻止 SW）、T3 `abc22c6`（版本号先提示构建信息再强制更新）、T5 `93a684b`；E6 测试修正 `4cddead`；
 `ee0dc4f` 合入 main `f8786abe`。验证：Go 全量 31 包、vet、race（根、api、db、services 共 27 包）；前端 997/997 与 build；PWA 合同 E1–E7、openreader-smoke、标签页标题、记住登录信息与书籍上限
 合同三视口通过；公告门自测 114/114。详见合同第 11 节。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：main 由 `6aaab1d` 快进到 `2f19133`（含协调会话的 E7 测试适配 `2f19133`）；run `43407882444` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`2f19133`/`latest` = index `85c8d8f4…a6c7a`（amd64 `c1eef4e4…`、arm64 `dd063c45…`），revision 为完整提交，镜像内含 `sw.js`。W19 仍待用户决定。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P0 Reader/首页 产品显示名“闲读”（D1 决定）
 
