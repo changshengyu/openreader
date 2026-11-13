@@ -1,5 +1,11 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-13 P2 Index manifest 显示方式按上游 `fullscreen`（W19 用户决定）
+
+见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。
+PWA 合同把 W19 交给显示名切片。上游实际发布的 `manifest.json` 是 `display: fullscreen`、没有 `orientation`；OpenReader 是 `standalone` + `portrait`。用户选择按上游：M1 `display` 改为 `fullscreen`、M2 删除 `orientation`（must-fix）；名称、颜色、图标与 iOS 头部标签不变。
+计划测试：单元 `manifestDisplayContract.test.mjs`（红：display 与 orientation；对照：名称、start_url、scope、manifest 链接）。状态 **contract-only**。
+
 ## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
 
 上游 fa22f27 在生产构建中注册 Workbox 4.3.1 生成的 `service-worker.js`（`vue.config.js#pwa`、`public/sw.js`、

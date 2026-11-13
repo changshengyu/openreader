@@ -1,5 +1,10 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-13 当前切片：manifest 显示方式按上游 `fullscreen`、不锁方向（W19，P2）
+
+见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。
+用户 2026-11-13 选择按上游构建产物：`display` 由 `standalone` 改为 `fullscreen`，删除 `orientation: portrait`。名称“闲读”、颜色、图标、`apple-mobile-web-app-*` 不变。状态 **contract-only**。
+
 ## 2026-11-12 当前切片：PWA Service Worker 与离线外壳盘点（P2，W1–W21）
 
 见[`pwa-service-worker-fixed-baseline-second-audit-p2-contract.md`](pwa-service-worker-fixed-baseline-second-audit-p2-contract.md)。基于 main `f82e0f5a`，只写文档。

@@ -601,3 +601,29 @@ revision 标签保持。生产未访问，实际运行版本未知。
 镜像：`ghcr.io/changshengyu/openreader:f8786ab` 与 `latest` 指向 OCI index `sha256:0066943b9fb879041a503391723bf9bc4b31ee19aee06d273073b6ac4142890f`；linux/amd64 `sha256:6944f67944131f2d90e15ccd83e56d6b808ec3cbb4a4f8474d808f15fa064d13`，linux/arm64 `sha256:2537a5de7dc67046ee4449db329c77d0028ab03d291cfe142b290ec4c0bfa729`，另有两个 attestation。两平台 revision 标签均为 `f8786abe2679ca34b76b6aaa6017558225662ecd`；两平台 `/app/openreader` 均由 go1.26.11 构建，`/app/public/index.html` 标题为 `闲读`（逐层校验 sha256 后读取）。
 
 状态 **released / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知。
+
+## 16. W19 决定：manifest 按上游 `fullscreen`、不锁方向（2026-11-13）
+
+来源：PWA 合同（`pwa-service-worker-fixed-baseline-second-audit-p2-contract.md`）把 W19（manifest 的 `display` 与 `orientation`）交给本合同判断。用户 2026-11-13 选择“按上游 fullscreen”。基于 main `684c849`。
+
+上游（fa22f27 的实际构建产物，见 PWA 合同 2.9）：发布的 `manifest.json` 中 `display` 为 `fullscreen`，没有 `orientation`。fork 提交 `0556c7b` 的 `public/manifest.json`（`standalone` + `portrait`）被构建插件忽略，没有进入产物。
+
+| 编号 | 项 | 当前 | 目标 | 分类 |
+| --- | --- | --- | --- | --- |
+| M1 | `display` | `standalone` | `fullscreen` | must-fix（用户决定，对齐上游构建产物） |
+| M2 | `orientation` | `portrait` | 删除该键，不锁方向 | must-fix（同上） |
+| M3 | `name`、`short_name`、颜色、图标、`start_url`、`scope`、`lang` | 现值 | 不变 | 不在本切片：名称是 D1 的“闲读”；上游的白色 `theme_color`、黑色 `background_color` 与 android-chrome 图标不在这次的选择里 |
+| M4 | `index.html` 的 `theme-color`、`apple-mobile-web-app-*` 与 manifest 链接 | 现值 | 不变 | iOS 主屏幕网页不读 manifest 的 `display`，由 `apple-mobile-web-app-capable` 决定 |
+
+行为：
+- 支持 `fullscreen` 的浏览器（如 Android Chrome）从主屏幕打开时隐藏系统状态栏；不支持的浏览器依次回退到 `standalone`、`minimal-ui`、`browser`。
+- 去掉方向锁后，手机和平板可以横屏。首页、搜索、发现与工作台已有的 `orientationchange` 处理照常重排。
+
+测试计划：
+- 单元 `frontend/tests/manifestDisplayContract.test.mjs`：
+  - 红：`display === 'fullscreen'`，没有 `orientation` 键；
+  - 对照（绿）：`name`、`short_name` 为“闲读”，`start_url`、`scope` 为 `/`，`index.html` 仍有 manifest 链接与 `apple-mobile-web-app-capable`。
+- 回归：前端全量与 build（manifest 在 SW 预缓存清单中，构建号会变）；PWA 合同、标签页标题合同、openreader-smoke、移动端合同。
+
+状态 **contract-only**。
+

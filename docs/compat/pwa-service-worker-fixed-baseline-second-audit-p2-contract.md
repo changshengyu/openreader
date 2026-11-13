@@ -264,7 +264,7 @@ R1 发出的 `fetch`，都可能在 1 天内直接命中 HTTP 缓存。这是上
 | W16 | 数据缓存走 localforage（2.7） | IndexedDB 按账号作用域 | **aligned / 不重开** | SW 不重复缓存书架、书源、目录和正文 |
 | W17 | 只有带非空值的 `?nopwa=1` 生效，且不注销已有 SW | — | **acceptable-change**（扩展） | 接受 `?nopwa=1`（大小写不敏感），裸 `?nopwa` 也生效；同时注销已有注册并删除 `openreader-` 前缀缓存，作为故障逃生口 |
 | W18 | SW 就绪时 RSS 图片直连（2.4） | 始终直连 | Q1 选 A/B：**aligned**（Referer 剥离与 opaque 缓存按 W9 不复制）；选 C/D：**unknown**，与上游无 SW 时的服务端代理不一致，另立切片 | 可另行给 RSS 图片加 `referrerpolicy="no-referrer"`，不属本切片 |
-| W19 | 实际发布的 manifest 为 `fullscreen`、无 orientation（2.9） | `standalone` + `portrait` | **unknown / 不在本切片** | 交显示名切片判断；本切片不改 manifest 与头部标签 |
+| W19 | 实际发布的 manifest 为 `fullscreen`、无 orientation（2.9） | `standalone` + `portrait` | **用户决定（2026-11-13）：按上游 `fullscreen`、不锁方向** | 由显示名合同第 16 节实施；本切片不改 manifest 与头部标签 |
 | W20 | 非安全上下文没有 SW，版本号点击无反应（2.1、2.5） | — | **aligned 约束** | 文档写明离线外壳只在 HTTPS 或 localhost 下可用；普通 HTTP 局域网部署的行为不变 |
 | W21 | 有 SW 时，旧页面懒加载的旧分块来自旧预缓存，不受发布影响（2.2） | 发布后旧分块 404，动态导入失败（第 3 节第 2 项） | **must-fix**（随 W2） | 预缓存覆盖全部懒加载分块；非 SW 环境可选在 `vite:preloadError` 时只刷新一次（acceptable-change） |
 
