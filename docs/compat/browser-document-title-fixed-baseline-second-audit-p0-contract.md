@@ -571,4 +571,21 @@ revision 标签保持。生产未访问，实际运行版本未知。
 
   移动视口的侧栏需要先展开，这一步只在桌面检查，其余在三个视口都检查。
 
-状态 **contract-only**。
+状态 **contract-only**（由下方记录取代）。
+
+### 14.1 记录（2026-11-13）
+
+提交：
+- 合同 `cb2c545`；
+- 红测 `7b181ca`：单元 4 项中 3 项失败（`<title>` 仍为 `OpenReader`、壳标题常量、挂载接线），技术名对照通过；浏览器 `shell` 流程在 1440×900 因侧栏品牌为 `阅读` 失败；
+- 实现 `52cec1e`。实现中另把侧栏单字徽标 `阅` 改为 `闲`，与新名一致。
+
+验证：
+- 前端 886/886（原 882 加新增 4 项），build 通过；
+- 真实 Go 服务提供生产构建：
+  - `document-title-contract.mjs` 全部四个流程（navigation、auth、remote、shell）在 1440×900、390×844、360×800 通过，壳标题为 `闲读`；
+  - `openreader-smoke.mjs` 三视口、`reader-reauthentication-contract.mjs` 四视口、`source-debug-contract.mjs` 通过；
+  - `registration-limits-contract.mjs` 三视口 6 项检查通过；
+- 后端与依赖未改，Go 测试与公告门留给推送前检查和 CI。
+
+状态 **implementation-complete / regression-validated**；分支 `claude/display-name-xiandu` 已推送，未合入 main，镜像未发布，生产未访问。

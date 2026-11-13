@@ -6,6 +6,7 @@
 用户把 D1 定为 C“闲读”。壳标题 S1、首页与登录挂载 S2/S3、书源调试标题 T1（`闲读书源编辑器`）为 must-fix（原先 contract-only 等 D1）；
 侧栏品牌、登录页 `<h1>`、manifest `name`/`short_name`、`apple-mobile-web-app-title`、图标 `aria-label` 改为“闲读”是用户要求的差异；
 仓库、镜像、`OPENREADER_*`、存储 key、字体族与导出前缀不改。计划测试：单元 `displayNameContract.test.mjs`，浏览器 `document-title-contract.mjs` 新增 `shell` 流程。状态 contract-only。
+记录（2026-11-13，取代上段的状态）：合同 `cb2c545`、红测 `7b181ca`（单元 3 红、技术名对照绿；浏览器 `shell` 流程在 1440×900 侧栏品牌为 `阅读`）、实现 `52cec1e`（另把侧栏徽标 `阅` 改为 `闲`）。前端 886/886 与 build；标签页标题合同四个流程三视口（壳标题 `闲读`）、openreader-smoke、重新认证四视口、书源调试与注册限制合同通过。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
