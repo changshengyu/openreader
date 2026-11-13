@@ -637,3 +637,14 @@ revision 标签保持。生产未访问，实际运行版本未知。
 
 状态 **implementation-complete / regression-validated**；分支 `claude/manifest-fullscreen-w19`，未合入 main，镜像未发布，生产未访问。
 
+### 16.2 发布（2026-11-13）
+
+本节内容（第 16 节的 W19 manifest）随本次合并发布：合并提交 `12ead30`（W19 manifest）与 `73158ab`（书籍上限默认不限），另含 `bd9b03e`（README_CN 补上邀请码与用户数上限的说明）。main 由 `684c849` 快进到 `bd9b03e`（ls-remote 核验，未强推）。
+
+推送前在合并树上：后端 `go test ./...` 31 个包（api 等 6 个包重跑，api 130.3 秒）与 vet，race api/config/db/services 与根包 28 个包（api 1091.6 秒）无数据竞争；前端 999/999 与 build（SW `e5c767f8429a3a17`，预缓存 64 个文件）；公告门自测 114/114，现场 Go 与前端扫描 0 个发现；compose 配置、浏览器 smoke 接线 10/10；secdb main 与 11-10 快照一致。真实 Go 服务、全新数据目录下：书籍上限合同在 `OPENREADER_USER_BOOK_LIMIT=2` 时三视口仍然限制，不设变量时三视口第 201 本经 API 被接受、第 202 本经导入对话框成功且不出现提示；openreader-smoke、注册限制、记住登录信息、标签页标题、移动端（含 iPad）、PWA E1–E7、存储 HTTP 合同通过。服务日志没有 panic；唯一的 5xx 是注册限制合同关页时被取消的设置写入（原有行为，已另起任务）。
+
+可信 Actions run `43438877834` 43/43 步成功（14:01–14:24 UTC）：两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现，卷门与平台核验通过。
+
+镜像：`ghcr.io/changshengyu/openreader:bd9b03e` 与 `latest` 指向 OCI index `sha256:0f2301d1398217d2edcf9617f9b4ea819f6d16d6028cb7a59dd62947bb1b771d`；linux/amd64 `sha256:fc872080dd4cef6c56f4fa70f94284225b800a10858021dc5e900d114ddec994`，linux/arm64 `sha256:063cc6b767db6890ced468a559f1523dee01b17fead5efb292439bdb0d3cb46f`，另有两个 attestation。两平台 revision 标签均为 `bd9b03e21c10c5b594b6eea2882872f89199cf5f`；两平台 `/app/openreader` 均由 go1.26.11 构建，页面标题为 `闲读`；`/app/public/manifest.webmanifest` 为 `display: fullscreen`、没有 `orientation`，`sw.js` 构建号 `e5c767f8429a3a17` 与本地构建相同（逐层校验 sha256 后读取）。
+
+状态 **released / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知。

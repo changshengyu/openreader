@@ -6,6 +6,7 @@
 PWA 合同把 W19 交给显示名切片。上游实际发布的 `manifest.json` 是 `display: fullscreen`、没有 `orientation`；OpenReader 是 `standalone` + `portrait`。用户选择按上游：M1 `display` 改为 `fullscreen`、M2 删除 `orientation`（must-fix）；名称、颜色、图标与 iOS 头部标签不变。
 计划测试：单元 `manifestDisplayContract.test.mjs`（红：display 与 orientation；对照：名称、start_url、scope、manifest 链接）。状态 **contract-only**。
 记录（2026-11-13）：合同 `508fa5a`、红测 `61598ac`、实现 `47375c8`。前端 999/999 与 build（SW 构建号 `e5c767f8429a3a17`）；PWA E1–E7、openreader-smoke、标签页标题、移动端合同通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+发布（2026-11-13）：与 W19 manifest、书籍上限默认不限一起合入，main 由 `684c849` 快进到 `bd9b03e`（ls-remote 核验，未强推）；run `43438877834` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`bd9b03e`/`latest` = index `0f2301d1…b771d`（amd64 `fc872080…`、arm64 `063cc6b7…`），revision 为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-13 P2 账号 每用户书籍上限改为默认不限（用户决定）
 
@@ -19,6 +20,7 @@ PWA 合同把 W19 交给显示名切片。上游实际发布的 `manifest.json` 
 浏览器不限模式停在第 201 本 403。实现后转绿。后端全量 31 个包与 vet、race api/config/services 26 个包（api 1101.2 s）通过，无数据竞争；前端 997/997 与 build；`OPENREADER_USER_BOOK_LIMIT=2`
 时书籍上限合同三视口仍限制，不设变量时不限模式三视口通过（第 201 本 API 201、第 202 本界面导入成功），openreader-smoke 三视口通过。状态 implementation-complete /
 regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+发布（2026-11-13）：与 W19 manifest、书籍上限默认不限一起合入，main 由 `684c849` 快进到 `bd9b03e`（ls-remote 核验，未强推）；run `43438877834` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`bd9b03e`/`latest` = index `0f2301d1…b771d`（amd64 `fc872080…`、arm64 `063cc6b7…`），revision 为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
 
