@@ -1,5 +1,10 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-12 P0 Reader/首页 产品显示名“闲读”（D1 决定）
+
+标签页标题合同的 D1（产品名用 `阅读` 还是 `OpenReader`）自 2026-10-16 起一直待定。用户 2026-11-12 选了第三个名字“闲读”。因此壳标题（`index.html` `<title>` 与 `SHELL_DOCUMENT_TITLE`）、首页工作区与 `/login` 挂载时设置壳标题、书源调试独立标题 `闲读书源编辑器`（上游 `Reader书源编辑器` 的格式）转为 must-fix。侧栏品牌（原按上游为 `阅读`）、登录页标题、主屏幕应用名与图标无障碍名同步改为“闲读”，记为用户要求的差异；技术名（仓库、镜像、环境变量、存储 key）不变。合同见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 14 节。状态 **contract-only**。
+记录（2026-11-13，取代上段的状态）：合同 `cb2c545`、红测 `7b181ca`、实现 `52cec1e`。前端 886/886 与 build；真实 Go 服务下标签页标题合同（含新增的首页、登录与书源调试流程）三视口通过，壳标题为 `闲读`，openreader-smoke、重新认证、书源调试、注册限制合同对照通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。

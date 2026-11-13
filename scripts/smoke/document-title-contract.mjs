@@ -4,7 +4,7 @@ import { openSmokeBrowser } from './playwright-runtime.mjs'
 import { readShellDocumentTitle, waitForDocumentTitle } from './document-title.mjs'
 
 // Contract: docs/compat/browser-document-title-fixed-baseline-second-audit-p0-contract.md 8.2(1), Reader steps
-// 2-10 and 12. Steps 1 and 11 (home overlays, login and source-debug titles) wait for the product-name decision D1.
+// 2-10 and 12; steps 1 and 11 (home overlays, login and source-debug titles) follow the D1 product name 闲读 (section 14).
 
 const targetUrl = (process.env.TARGET_URL || 'http://127.0.0.1:5173').replace(/\/$/, '')
 const shellTitle = readShellDocumentTitle()
@@ -236,7 +236,7 @@ async function installApiMocks(page, state) {
   })
 }
 
-async function openContext(browser, viewport) {
+async function openContext(browser, viewport, { signedIn = true } = {}) {
   const state = {
     initialToken: tokenFor('initial'),
     renewedToken: tokenFor('renewed'),
@@ -245,7 +245,7 @@ async function openContext(browser, viewport) {
     rejectContent: null,
   }
   const context = await browser.newContext({ viewport })
-  await context.addInitScript(token => localStorage.setItem('openreader_token', token), state.initialToken)
+  if (signedIn) await context.addInitScript(token => localStorage.setItem('openreader_token', token), state.initialToken)
   await context.addInitScript(installTitleLog)
   const page = await context.newPage()
   const failures = []
@@ -476,10 +476,71 @@ async function runRemoteReader(browser, viewport) {
   }
 }
 
+// Steps 1 and 11: the shell title is the product name everywhere outside the Reader, and source debug is
+// <shell>书源编辑器 (reader-dev's Reader书源编辑器 format).
+async function runShellAndSourceDebug(browser, viewport) {
+  const label = `${viewport.width}x${viewport.height}`
+  const sourceDebugTitle = `${shellTitle}书源编辑器`
+  const signedOut = await openContext(browser, viewport, { signedIn: false })
+  try {
+    await signedOut.page.goto(`${targetUrl}/login`, { waitUntil: 'networkidle' })
+    await waitForDocumentTitle(signedOut.page, shellTitle, `${label} step 11 login page`)
+    const heading = (await signedOut.page.locator('h1.auth-title').textContent())?.trim()
+    assert(heading === shellTitle, `${label} step 11: login heading ${JSON.stringify(heading)} should be the product name ${JSON.stringify(shellTitle)}`)
+    assert(signedOut.failures.length === 0, `${label}: ${signedOut.failures.join('\n')}`)
+  } finally {
+    await signedOut.context.close()
+  }
+
+  const { context, failures, page, state } = await openContext(browser, viewport)
+  // Pages opened from the workspace (调试书源 uses window.open) get the same API mocks.
+  await installApiMocks(context, state)
+  try {
+    await page.goto(`${targetUrl}/`, { waitUntil: 'networkidle' })
+    await waitForDocumentTitle(page, shellTitle, `${label} step 1 home`)
+    const brand = (await page.locator('.app-brand-title').first().textContent())?.trim()
+    assert(brand === shellTitle, `${label} step 1: sidebar brand ${JSON.stringify(brand)} should be the product name ${JSON.stringify(shellTitle)}`)
+    for (const path of ['/?overlay=sources', '/', '/search']) {
+      await page.goto(`${targetUrl}${path}`, { waitUntil: 'networkidle' })
+      await waitForDocumentTitle(page, shellTitle, `${label} step 1 ${path}`)
+    }
+
+    for (const path of ['/source-debug', '/bookSourceDebug/', '/sources?action=debug']) {
+      await page.goto(`${targetUrl}${path}`, { waitUntil: 'networkidle' })
+      await waitForDocumentTitle(page, sourceDebugTitle, `${label} step 11 ${path}`)
+    }
+    // Leaving source debug inside the same tab (client-side navigation) restores the shell title.
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await waitForDocumentTitle(page, shellTitle, `${label} step 11 leave source debug in the same tab`)
+
+    if (viewport.width >= 1024) {
+      // The sidebar entry opens source debug in a new tab; the workspace tab keeps the shell title.
+      await page.goto(`${targetUrl}/`, { waitUntil: 'networkidle' })
+      await waitForDocumentTitle(page, shellTitle, `${label} step 11 home before 调试书源`)
+      const [popup] = await Promise.all([
+        context.waitForEvent('page'),
+        page.getByText('调试书源', { exact: true }).first().click(),
+      ])
+      await popup.waitForLoadState('domcontentloaded')
+      await waitForDocumentTitle(popup, sourceDebugTitle, `${label} step 11 调试书源 new tab`)
+      const homeTitle = await page.evaluate(() => document.title)
+      assert(homeTitle === shellTitle, `${label} step 11: the workspace tab became ${JSON.stringify(homeTitle)} after opening 调试书源`)
+      await popup.close()
+    }
+    assert(failures.length === 0, `${label}: ${failures.join('\n')}`)
+  } finally {
+    await context.close()
+  }
+}
+
 const flows = {
   navigation: runReaderNavigation,
   auth: runAuthenticationBlock,
   remote: runRemoteReader,
+  shell: runShellAndSourceDebug,
 }
 
 function selectedFlows() {
