@@ -117,4 +117,41 @@
 
 ## 7. 状态
 
-**contract-only**。
+**contract-only**（由第 8 节记录取代）。
+
+## 8. 记录（2026-11-12）
+
+提交：合同 `d27661a`；红测 `a4f4737`；实现 `9c9b1b8`。
+
+红测在 `d27661a` 上：
+- 前端 10 个用例在断言处失败：
+  - `authToken.js` 不存在（T1 四个）；
+  - store 没有 `rememberLogin`，初始 token 不读会话存储（T2）；
+  - 不记住的 token 不进 `Authorization`（T3）；
+  - 11 个文件直接读写 token，表单没有复选框（T4）；
+  - 重新认证接线的正则（T5）。
+- 过期 401 的对照，以及其余 5 个接线检查通过。
+- 浏览器合同停在 desktop：`/login` 没有“记住登录信息”。
+- 实现后，同一组断言全部转绿。
+
+验证：
+- 前端：900/900（原 890 加新增 10 个），build 通过。
+- 后端未改动，沿用书籍上限切片在同一份后端代码上的 Go 全量、vet 与 race 结果。
+- 浏览器：真实 Go 服务，全新数据目录，Chromium。
+  - `remember-login-contract.mjs` 在三个视口都通过：
+    - 默认勾选：只写 `localStorage`，刷新和新标签页保持登录，注销后两处都清空；
+    - 不勾选：只写 `sessionStorage`；服务端撤销后，重新认证对话框保持未勾选，重新登录的新 token 仍只在 `sessionStorage`；
+    - 刷新和应用 `window.open` 打开的窗口保持登录；独立的新标签页、带 `storageState` 重开的浏览器回到 `/login`，新加载的页面默认勾选；
+    - 复选框在 `/login` 与对话框中都位于密码和提交按钮之间，并在视口之内。
+  - 同一服务上，`reader-reauthentication-contract.mjs` 四个视口、`openreader-smoke.mjs` 三个视口通过。
+  - 另一全新服务（`OPENREADER_INVITE_CODE=smoke-invite`、`OPENREADER_USER_LIMIT=3`）上，`registration-limits-contract.mjs` 三个视口通过。
+  - 另一全新服务（`OPENREADER_USER_BOOK_LIMIT=2`）上，`user-book-limit-contract.mjs` 在最终构建上三个视口仍通过。
+  - 服务日志只有一个 500：注册限制合同在注册成功后立即关闭页面，首次加载的 `PUT /api/settings/shelf` 因请求取消（`context canceled`）失败，
+    `settings.go` 把它记为 500。这是原有行为，与本切片无关，已报告协调会话。
+- 浏览器合同脚本在定稿前修正过两处：
+  - 最初在刷新之后检查重新认证对话框，此时页面生命周期已经重置，复选框按上游恢复勾选。改为先在不刷新的页面上撤销并重新认证，再检查刷新，并补充“新加载默认勾选”的断言。
+  - 等首页请求结束后再撤销 token，避免页面自身的请求先触发重新认证。
+  - 定稿的脚本在 `d27661a` 的构建上同样停在缺少复选框处。
+- 没有跑公告门与存储合同：不改依赖、构建工具或存储格式。
+
+状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像未发布，生产未访问。

@@ -6,6 +6,10 @@
 `claude/account-book-limit-remember-login-a2fb9c`。上游 `App.vue` 默认勾选，只在勾选时把 token 存入 localStorage。M1 复选框、M2 不勾选时只存本标签页 sessionStorage
 为 must-fix；A1 sessionStorage 代替服务端内存会话、A2 独立新标签页需重新登录、A3 不勾选时清除旧的 localStorage token 为 acceptable-change。
 计划测试 T1–T5，加三视口浏览器合同。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `d27661a`、红测 `a4f4737`、实现 `9c9b1b8`。红测在合同提交上前端 10 个失败（`authToken.js` 不存在、store 无 `rememberLogin`、
+不记住的 token 不进请求头、11 个文件直接读写、表单无复选框、接线正则），对照通过；浏览器停在缺少复选框处。实现后同一组断言转绿。前端 900/900 与 build；后端未改动。
+真实 Go 服务全新数据目录下 `remember-login-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、重新认证四视口、openreader-smoke 三视口、
+`user-book-limit-contract.mjs` 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 当前切片：每用户书籍上限（P2，B1–B3、A1–A5）
 

@@ -10,6 +10,10 @@ M1/M2 must-fix：加复选框（默认勾选）；不勾选时 token 只放在�
 A1–A3 acceptable-change：用 sessionStorage 代替服务端内存会话（JWT 没有 cookie 会话）、按标签页隔离、修正上游不勾选后仍保留旧 token 的缺口。合同见
 [`remember-login-fixed-baseline-second-audit-p2-contract.md`](remember-login-fixed-baseline-second-audit-p2-contract.md)。
 状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `d27661a`、红测 `a4f4737`、实现 `9c9b1b8`。红测在合同提交上前端 10 个失败（`authToken.js` 不存在、store 无 `rememberLogin`、
+不记住的 token 不进请求头、11 个文件直接读写、表单无复选框、接线正则），对照通过；浏览器停在缺少复选框处。实现后同一组断言转绿。前端 900/900 与 build；后端未改动。
+真实 Go 服务全新数据目录下 `remember-login-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、重新认证四视口、openreader-smoke 三视口、
+`user-book-limit-contract.mjs` 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P2 账号 每用户书籍上限
 
