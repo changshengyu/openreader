@@ -22,10 +22,23 @@ export async function loadSmokePlaywright() {
   }
 }
 
+// Production builds register the offline-shell service worker on 127.0.0.1, a secure
+// context. The existing contracts predate it and hold or mock /assets and /api requests
+// with page.route, which a controlling worker would bypass, so new contexts block
+// service workers unless a contract opts in with serviceWorkers: 'allow'
+// (scripts/smoke/pwa-service-worker-contract.mjs).
+function blockServiceWorkersByDefault(browser) {
+  const newContext = browser.newContext.bind(browser)
+  const newPage = browser.newPage.bind(browser)
+  browser.newContext = (options = {}) => newContext({ serviceWorkers: 'block', ...options })
+  browser.newPage = (options = {}) => newPage({ serviceWorkers: 'block', ...options })
+  return browser
+}
+
 export async function openSmokeBrowser(launchOptions = {}) {
   const playwright = await loadSmokePlaywright()
   if (process.env.CDP_URL) {
-    return playwright.chromium.connectOverCDP(process.env.CDP_URL)
+    return blockServiceWorkersByDefault(await playwright.chromium.connectOverCDP(process.env.CDP_URL))
   }
 
   const options = {
@@ -35,7 +48,7 @@ export async function openSmokeBrowser(launchOptions = {}) {
   if (process.env.CHROME_PATH) options.executablePath = process.env.CHROME_PATH
 
   try {
-    return await playwright.chromium.launch(options)
+    return blockServiceWorkersByDefault(await playwright.chromium.launch(options))
   } catch (error) {
     const detail = String(error?.message || error)
     if (detail.includes('Executable doesn\'t exist')) {

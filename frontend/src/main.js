@@ -9,6 +9,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 import App from './App.vue'
 import router from './router'
+import { setupServiceWorker } from './utils/serviceWorker'
 import './styles/global.css'
 import './styles/reader-iconfont.css'
 
@@ -21,3 +22,6 @@ app.use(router)
 app.use(ElementPlus, { locale: zhCn })
 
 app.mount('#app')
+
+// Offline shell (PWA contract W1): production builds in secure contexts only.
+void setupServiceWorker({ isProduction: import.meta.env.PROD })
