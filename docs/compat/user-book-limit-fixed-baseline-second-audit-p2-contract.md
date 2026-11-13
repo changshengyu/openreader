@@ -52,12 +52,12 @@
 | 编号 | 差异 | 分类 | 目标 |
 | --- | --- | --- | --- |
 | B1 | P1–P5 新增书籍没有数量上限 | `must-fix` | 第 4 节 |
-| B2 | 没有实例级上限配置 | `must-fix` | `OPENREADER_USER_BOOK_LIMIT`，默认 200（第 5 节） |
+| B2 | 没有实例级上限配置 | `must-fix` | `OPENREADER_USER_BOOK_LIMIT`；未设置时不限（第 5 节，2026-11-13 用户决定，原为默认 200） |
 | B3 | 达到上限时前端没有上游文案 | `must-fix` | 显示“超过用户书籍数上限”（第 6 节） |
-| A1 | 每用户上限：`BookLimit > 0` 覆盖实例值，`0` 跟随实例值 | `acceptable-change`（OpenReader 已有字段，只能由管理员 API 设置；相当于上游 `doc.md` 的“新用户默认书籍上限”） | — |
+| A1 | 每用户上限：`BookLimit > 0` 覆盖实例值（实例不限时同样生效），`0` 跟随实例值 | `acceptable-change`（OpenReader 已有字段，只能由管理员 API 设置；相当于上游 `doc.md` 的“新用户默认书籍上限”） | — |
 | A2 | 用 HTTP `403 {"error":"book limit reached"}`，而不是 200 加 `isSuccess=false` | `acceptable-change`（REST 适配，与 `user limit reached` 一致） | — |
 | A3 | “已在书架上”沿用 OpenReader 的去重规则（远程按 `url`，本地按恢复占位行），不是上游的书名加作者 | `acceptable-change`（去重规则不在本切片重开） | OpenReader 会新建一行的地方都受上限约束 |
-| A4 | `OPENREADER_USER_BOOK_LIMIT` 未设置、不是整数或 ≤ 0 时按 200；上游不校验，0 在上游表示什么都不能加 | `acceptable-change` | — |
+| A4 | `OPENREADER_USER_BOOK_LIMIT` 未设置、为空、不是整数或 ≤ 0 时不限制；上游默认 200，也不校验（0 在上游表示什么都不能加） | `acceptable-change`（用户要求的差异，2026-11-13 决定；第 5 节、第 12 节） | — |
 | A5 | 批量导入逐项报告上限错误，前端在该项显示上游文案 | `acceptable-change`（现有逐项结果界面） | — |
 | C1 | 本地导入的预览与解析不检查，只在确认导入时检查 | 一致（上游上传和预览也不检查） | 不变 |
 | C2 | 恢复不受上限约束 | 一致 | 不变 |
@@ -65,8 +65,8 @@
 ## 4. 目标行为（B1）
 
 - 有效上限：
-  - 用户 `BookLimit > 0` 时就是该值；
-  - 否则是实例值 `OPENREADER_USER_BOOK_LIMIT`；
+  - 用户 `BookLimit > 0` 时就是该值，实例不限时同样生效；
+  - 否则是实例值 `OPENREADER_USER_BOOK_LIMIT`；实例值未设置时不限（2026-11-13 起，第 5 节）；
   - 管理员同样适用。管理员行受保护、改不了 `BookLimit`，所以管理员按实例值。
 - 计数：该用户在 `books` 表中的行数，包括恢复出来、还没挂文件的本地占位行，与上游 `bookshelf.size()` 一致。
 - 只有“将要新建一行”时才检查：计数 ≥ 上限时拒绝。拒绝时：
@@ -87,18 +87,20 @@
 
 ## 5. 配置与默认值（B2、A4）
 
-- `OPENREADER_USER_BOOK_LIMIT`，对应上游 `READER_APP_USERBOOKLIMIT`：
-  - 正整数时取该值；
-  - 未设置、为空、不是整数或 ≤ 0 时取默认 200。
-  - 没有上限值；要实际取消上限，设一个很大的数。
-- `config.Config.UserBookLimit` 为 0（不经 `Load` 构造的配置）时也按 200，与 `EffectiveUserLimit` 一样。
-- 默认取 200 的理由，以及它对现有部署的影响：
-  - 上游行为是产品合同，用户数上限已按同样理由取了上游默认 50；
-  - OpenReader 以前没有上限。升级后，书架已有 200 本或以上的用户保留全部书籍，仍可阅读和更新，但不能再新增；
-  - 运营者可以调高 `OPENREADER_USER_BOOK_LIMIT`，管理员也可以用 `PUT /api/admin/users/:id` 的 `bookLimit` 给个别用户放宽；
-  - 不新增“0 表示不限”。上游没有这个值；用户层面的 0 已经表示“跟随实例值”，再给 0 一个含义容易混淆。
-  - 如果用户要求升级后默认不限，在实施前修改本节。
-- `README.md` 的环境变量表和 `docker-compose.yml` 写明变量、默认值、与上游的对应关系，以及管理员按用户设置的方式。compose 中默认为空，即 200。
+2026-11-13 用户决定改为默认不限，取代 2026-11-12 的默认 200；变更记录见第 12 节。
+
+- `OPENREADER_USER_BOOK_LIMIT`，与上游 `READER_APP_USERBOOKLIMIT` 同义：
+  - 正整数时作为实例上限；
+  - 未设置、为空、不是整数或 ≤ 0 时不限制。
+  - 上游默认 200。这里不取上游默认值，属于用户要求的差异（2026-11-13）。
+- 用户 `BookLimit > 0` 仍然覆盖实例值，实例不限时同样生效；`BookLimit` 为 0 时跟随实例值，实例不限即不限。
+- 不经 `config.Load` 构造、`UserBookLimit` 为 0 的配置也是不限。
+- 理由与对现有部署的影响：
+  - 用户要求升级不能挡住已有用户：升级后，书架已有 200 本或以上的用户可以照常新增；
+  - 2026-11-12 版本（镜像 `f8786ab`）按默认 200 发布过。升级到本版本后，未设置变量的部署恢复为不限；
+  - 需要限制的运营者设置正整数，管理员也可以用 `PUT /api/admin/users/:id` 的 `bookLimit` 给个别用户设上限；
+  - 实例值的 0 表示“没有设置”，即不限；用户 `bookLimit` 的 0 表示“没有自己的值”，即跟随实例值。两者都是“没有设置”的意思，不再有“0 表示什么都不能加”。
+- `README.md`、`README_CN.md` 的环境变量说明和 `docker-compose.yml` 的注释写明：默认不限、与上游变量同义但上游默认 200，以及管理员按用户设置的方式。compose 中默认为空，即不限。
 
 ## 6. 前端文案（B3、A5）
 
@@ -118,7 +120,7 @@
 - L6 每用户上限：实例值 1、用户 `BookLimit` 为 3 时可以加到 3 本；`BookLimit` 为 0 时按实例值。
 - L7 并发：上限 3 时并发 8 个 `POST /api/books`，最终正好 3 行，其余 403。
 - L8 恢复：上限 2 的用户恢复含 3 本书的 Legado 备份，3 本都恢复；之后新增返回 403（恢复部分为对照）。
-- L9 配置：默认 200；`abc`、`0`、`-5` 按 200；`5` 为 5；零值 `Config` 为 200。
+- L9 配置：`5` 为 5，` 7 ` 为 7（2026-11-13 起：未设置、`abc`、`0`、`-5` 与零值 `Config` 都不限，见第 12 节）。
 - L10 已超过上限的书架：5 本、上限 2 时，`PUT /api/books/:id` 与已有 `url` 的远程加入都成功，新增返回 403，没有删除任何书。
 
 前端（`node --test`）：
@@ -142,7 +144,7 @@
 
 ## 9. 状态
 
-**contract-only**（由第 10 节记录取代）。
+**contract-only**（由第 10 节记录取代；默认值的变更见第 12 节）。
 
 ## 10. 记录（2026-11-12）
 
@@ -183,3 +185,24 @@
 镜像：`ghcr.io/changshengyu/openreader:f8786ab` 与 `latest` 指向 OCI index `sha256:0066943b9fb879041a503391723bf9bc4b31ee19aee06d273073b6ac4142890f`；linux/amd64 `sha256:6944f67944131f2d90e15ccd83e56d6b808ec3cbb4a4f8474d808f15fa064d13`，linux/arm64 `sha256:2537a5de7dc67046ee4449db329c77d0028ab03d291cfe142b290ec4c0bfa729`，另有两个 attestation。两平台 revision 标签均为 `f8786abe2679ca34b76b6aaa6017558225662ecd`；两平台 `/app/openreader` 均由 go1.26.11 构建，`/app/public/index.html` 标题为 `闲读`（逐层校验 sha256 后读取）。
 
 状态 **released / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知。
+
+## 12. 2026-11-13 用户决定：默认不限
+
+用户决定把每用户书籍上限改为默认不限，取代第 5 节原先的默认 200。分支 `claude/user-book-limit-default-unlimited`，基于 main `2f19133c`（已含本切片的首个版本，以及“记住登录信息”与 PWA）。
+
+- 改动范围：
+  - 只改实例默认值：第 3 节的 B2、A1、A4，第 4 节的有效上限和第 5 节；
+  - 计数时机、事务、403 响应体、批量逐项报告、前端文案“超过用户书籍数上限”、不受限的路径（已有书、占位行挂接、恢复）都不变。
+- 测试（先红后绿）：
+  - 新增 L11：不设变量时，已有 200 本的用户还能通过 API 新增；零值 `Config` 同样不限。
+  - 新增 L12：实例不限、用户 `bookLimit` 为 2 时，第 3 本返回 403（对照）；`bookLimit` 改回 0 后跟随实例值，书架补到 200 本仍能新增。
+  - 改写 L9 `TestBookLimitEnvironmentParsing`：原来断言未设置、`abc`、`0`、`-5` 与零值 `Config` 按 200 限制，与新合同冲突；改为这五种情况都能加到 201 本以上，`5` 与 ` 7 ` 仍按该值限制（对照）。
+  - L1–L8、L10 都设置了正整数上限，不受影响，不改。
+  - 前端测试不改：文案和接口不变。
+- 浏览器：
+  - `OPENREADER_USER_BOOK_LIMIT=2` 的服务上，`user-book-limit-contract.mjs` 三个视口仍应限制；
+  - 不设变量的服务上，用同一脚本的 `USER_BOOK_LIMIT=unlimited` 模式：先经 API 放入 200 本，第 201 本经 API 返回 201，再在界面导入一本成功、没有“超过用户书籍数上限”，三个视口；
+  - `openreader-smoke.mjs` 三个视口。
+- 文档：`README.md`、`README_CN.md`、`docker-compose.yml` 注释与 `api-contract.md` 同步为默认不限。
+
+状态 **contract-only**。

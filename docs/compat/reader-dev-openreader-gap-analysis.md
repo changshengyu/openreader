@@ -1,5 +1,14 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-13 P2 账号 每用户书籍上限改为默认不限（用户决定）
+
+用户决定（2026-11-13）：每用户书籍上限改为默认不限，取代 2026-11-12 起按上游取的默认 200（已随 `f8786ab` 发布）。`OPENREADER_USER_BOOK_LIMIT`
+未设置、为空、不是整数或 ≤ 0 时不限；为正整数时作为实例上限。用户 `bookLimit > 0` 仍覆盖实例值（实例不限时同样生效），`0` 跟随实例值；
+不经 `config.Load` 构造的配置也不限。上游 `READER_APP_USERBOOKLIMIT` 默认 200，这里列为用户要求的差异。计数时机、403 响应、批量逐项报告、
+前端文案“超过用户书籍数上限”和不受限的路径都不变。改写 L9（原断言默认 200），新增 L11/L12；README、README_CN、compose 与 api-contract 同步。合同第 5、12 节见
+[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+
 ## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
 
 上游 fa22f27 在生产构建中注册 Workbox 4.3.1 生成的 `service-worker.js`（`vue.config.js#pwa`、`public/sw.js`、

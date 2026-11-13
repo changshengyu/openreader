@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-13 当前切片：每用户书籍上限默认不限（P2，用户决定）
+
+见[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)第 5、12 节。基于 main `2f19133c`，分支
+`claude/user-book-limit-default-unlimited`。用户 2026-11-13 决定：`OPENREADER_USER_BOOK_LIMIT` 未设置或非正整数时不限，取代默认 200；用户 `bookLimit > 0` 仍覆盖，
+`0` 跟随实例值。上游默认 200，列为用户要求的差异。计划：改写 L9，新增 L11（未设置时 200 本后仍能新增）、L12（实例不限时按用户 `bookLimit` 限制），
+浏览器在 `OPENREADER_USER_BOOK_LIMIT=2` 与不设变量的服务上各跑一遍。状态 contract-only。
+
 ## 2026-11-12 当前切片：PWA Service Worker 与离线外壳盘点（P2，W1–W21）
 
 见[`pwa-service-worker-fixed-baseline-second-audit-p2-contract.md`](pwa-service-worker-fixed-baseline-second-audit-p2-contract.md)。基于 main `f82e0f5a`，只写文档。

@@ -141,6 +141,7 @@ OpenReader 不自带书源，可以任选一种方式开始：
 
 - 管理员在「用户空间 → 管理用户空间」里可以新增用户、重置密码、批量删除用户，并单独控制每个用户能否编辑书源、使用书仓和 WebDAV。
 - 每个人的书架、进度、书签、书源和 WebDAV 文件都相互隔离。
+- 书架默认不限书籍数量。设置 `OPENREADER_USER_BOOK_LIMIT` 后，书架满了再加书会提示「超过用户书籍数上限」；已在书架上的书照常保留和更新。
 
 ## 备份与迁移
 
@@ -310,6 +311,7 @@ OpenReader 不会读取容器里的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`�
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `OPENREADER_JWT_SECRET` | 不设置：自动生成并保存在 `data/instance-secret` | 用于签名登录状态和资源链接，可不设置，见[在公网上使用](#在公网上使用) |
+| `OPENREADER_USER_BOOK_LIMIT` | 空（不限） | 每个用户书架的书籍数上限。为空、0 或不是正整数时不限。超过上限时，新加入、导入或保存新书会提示「超过用户书籍数上限」；已在书架上的书照常保留和更新，恢复备份不受限制。管理员可以用 `PUT /api/admin/users/:id` 的 `bookLimit` 给个别用户设上限，变量为空时也有效（`0` 表示跟随本变量）。与 reader 的 `READER_APP_USERBOOKLIMIT` 含义相同，但 reader 默认为 200 |
 | `OPENREADER_TRUSTED_PROXIES` | 空 | 反向代理自己的 IP 或网段，多个用英文逗号分隔；直接访问时留空 |
 | `OPENREADER_SOURCE_NETWORK_ALLOWLIST` | 空 | 允许书源访问的局域网主机名、IP 或网段，多个用英文逗号分隔 |
 | `OPENREADER_CHECK_INTERVAL` | `30m` | 定时检查书架更新的间隔 |

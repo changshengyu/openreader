@@ -726,7 +726,8 @@ persisted book summary. Initial/focus/WebSocket shelf reloads do not invoke this
 `POST /api/books`, `POST /api/books/remote`, `POST /api/imports/books` (and `/api/imports/txt`), `POST /api/local-store/import`
 and `POST /api/webdav/import` refuse a new shelf row once the caller's shelf holds its limit, as reader-dev
 `BookController.kt#saveBook` does with 超过用户书籍数上限. The limit is the user's positive `bookLimit` (administrator
-API), otherwise `OPENREADER_USER_BOOK_LIMIT` (default 200). A refused add is `403 {"error":"book limit reached"}`; the two
+API), otherwise a positive `OPENREADER_USER_BOOK_LIMIT`; with neither there is no limit (since 2026-11-13, a user-requested
+difference from reader-dev's default of 200). A refused add is `403 {"error":"book limit reached"}`; the two
 storage imports report the same string on the refused item inside their `200 {imported}` envelope. The count and the
 insert share one transaction; a new remote book is refused before any fetch and a local import before its archive is
 written, and the staged `importToken` stays reusable. A remote book whose `url` is already on the shelf, a reattached
