@@ -1,7 +1,8 @@
 # PWA Service Worker 与离线外壳：固定基准第二轮盘点（P2）
 
-审查日期：2026-11-12。基于 main `f82e0f5a`。状态：**contract-only / user-decided**（2026-11-12：Q1、Q2、Q3 均选 A，
-见第 10 节，第 10 节优先于第 4–8 节中与之冲突的内容）。
+审查日期：2026-11-12。基于 main `f82e0f5a`。状态：**implementation-complete / regression-validated**（2026-11-13，
+实施与验证见第 11 节）。2026-11-12 用户对 Q1、Q2、Q3 均选 A，见第 10 节；第 10 节优先于第 4–8 节中与之冲突的内容，
+第 11 节记录实施中确定的细节。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。
 
@@ -417,6 +418,9 @@ W19（manifest）由显示名切片处理；W18 只在 Q1 选 C 或 D 时需要�
 contract-only / user-decided（决定见第 10 节）。合同提交 `b3ed696`，只修改 `docs/`：没有改应用代码，没有构建或发布镜像，
 生产未访问。下一步是按第 10 节的顺序先提交红测。
 
+更新（2026-11-13，取代上段）：**implementation-complete / regression-validated**，提交与验证见第 11 节。分支
+`claude/pwa-service-worker-inventory-7825e5` 未合入 main，镜像未发布，生产未访问。
+
 ## 10. 用户决定（2026-11-12）
 
 用户的选择：
@@ -446,3 +450,60 @@ contract-only / user-decided（决定见第 10 节）。合同提交 `b3ed696`�
   先单独提交红测，再实现。
 - 实施会修改 `backend/main.go`、`frontend/vite.config.js`、`frontend/src/main.js` 和 `frontend/src/layouts/AppLayout.vue`。
   若显示名切片也改 `AppLayout.vue` 的标题区，须先协调提交顺序；manifest 与 `index.html` 仍归显示名切片。
+
+## 11. 实施记录（2026-11-13）
+
+分支 `claude/pwa-service-worker-inventory-7825e5`，按第 10 节的顺序分阶段提交：
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `8df254a` | 红测 | Go `backend/frontend_static_cache_header_contract_test.go`（4 例）；前端 `pwaServiceWorkerBuild`（4）、`pwaServiceWorkerRuntime`（8）、`pwaServiceWorkerRegistration`（10）、`pwaServiceWorkerWiring`（4）；浏览器 `scripts/smoke/pwa-service-worker-contract.mjs`（E1–E7）。在 `f82e0f5a` 上 Go 3 例因缺 `Cache-Control` 失败（对照 1 例通过），前端 26/26 因缺模块与接线失败，浏览器合同停在缺少 `frontend/dist/sw.js` |
+| `5d76463` | T0 | `backend/main.go#serveFrontendFile`：`assets/` 下的哈希文件发 `public, max-age=31536000, immutable`；`index.html`（含 SPA 历史路由回退）、`sw.js` 与其他公开文件发 `no-cache`；路由错误与接口响应头不变（W15） |
+| `86fbda2` | T1 | `npm run build` 在 `vite build` 之后运行 `frontend/pwa/build-service-worker.mjs`，由模板 `frontend/pwa/service-worker.js` 生成 `dist/sw.js`（W1–W5、W9–W14、W21） |
+| `ca82607` | T2 | `frontend/src/utils/serviceWorker.js` 与 `main.js`：生产构建、安全上下文、支持 SW 且没有 `nopwa` 时，才在 `load` 之后注册 `/sw.js`（scope `/`，`updateViaCache: 'none'`）；带任意 `nopwa` 参数时注销全部注册，只删 `openreader-` 前缀缓存（W1、W17、S8）。共享 smoke 运行时对新 context 默认 `serviceWorkers: 'block'` |
+| `abc22c6` | T3 | 版本号点击先显示 `/api/health` 的构建信息，再调用 `forceServiceWorkerUpdate()`（W7，Q2-A）；后端状态点击不变，仍只检查 `/api/health` |
+| `4cddead` | 测试修正 | E6 改为在 127.0.0.1 上用 init 脚本复现非安全上下文（见下） |
+| `93a684b` | T5 | README / README_CN 离线 FAQ；`docs/regression-smoke.md` 新增 Service worker 一节 |
+| `ee0dc4f` | 合并 | 合入 main `f8786abe`（闲读显示名、每用户书籍上限、记住登录信息、Reader 错误页 / 运行标题 / 进度块 / 语调、桌面翻页两项修复）。冲突：两份总账顶部都保留；`AppLayout.vue` 保留“闲读”品牌标题和 `updateAppVersion`，同时引入 `forceServiceWorkerUpdate` 与 `restoreShellDocumentTitle` |
+
+实施中确定、与第 4、6、7 节字面不同的地方（都在第 10 节的决定范围内）：
+
+- **生成方式**：没有写 Vite 插件，也没有改 `frontend/vite.config.js`；构建后脚本读取 `dist` 生成 SW，不新增依赖。预缓存
+  清单是 `dist` 下除 `sw.js`、`.map` 与点文件之外的全部文件（本次 64 个，含全部懒加载分块和外壳用到的公开文件）。
+  构建 id 取各文件 `路径\0sha256(内容)` 列表的 sha256 前 16 位，任一文件变化都会改变 SW 的字节。
+- **离线外壳**：W2、F4 原写预缓存不含 `index.html`；实际预缓存 `index.html`（安装时以 `cache: 'no-cache'` 取得），它就是离线
+  外壳。导航始终网络优先，网络错误或 502/503/504（反向代理在后端停止时的典型响应）时才回退到同一构建预缓存的
+  `index.html`。W3、W13、F3 原写“只缓存 200 的 basic HTML”，现在更严格：安装之后 SW 不再写入任何缓存，导航响应从不进
+  缓存（S1）。
+- **不处理的请求**：非 GET、跨源、`/api`、`/ws`、`/webdav`、`/reader3`、`/uploads`，以及带 `Authorization` 或 `Range` 的请求都
+  交给浏览器；带查询串或不在清单内的同源文件也不处理（W9–W12）。
+- **强制更新**：W7、F7 原写“清导航缓存”；本方案没有导航缓存，所以 `forceServiceWorkerUpdate` 只调用 `update()`。有等待中的
+  worker 时向 `registration.waiting` 发 `SKIP_WAITING`，在 `controllerchange` 后刷新一次（30 秒后兜底刷新一次）；没有新
+  版本时直接刷新一次；没有注册时（含非安全上下文）什么都不做，只保留构建信息提示（Q2-A、Q3-A）。
+- **E3 与 E7**：E3 断言服务器换成构建 B 后，A 页面仍能从 SW-A 取到服务器已返回 404 的 Reader 分块（W21）；B 的 SW 进入
+  等待；联网刷新取到 B 的文档；B 没有自行接管（Q3-A）。“所有页面关闭后 B 接管”属于浏览器的标准生命周期，没有单独实测；
+  接管由 E7 的版本号点击驱动，点击后 Cache Storage 只剩 B 的外壳缓存。
+- **E6**：原计划用 `--host-resolver-rules` 把 `*.test` 指向 127.0.0.1，但本环境的出口代理在请求到达回环地址前就对该名称返回
+  503（加 `--no-proxy-server` 也一样，`curl --resolve` 直连为 200）。E6 改为在 127.0.0.1 上用 init 脚本复现 Chromium 在纯 HTTP
+  局域网地址上暴露的 API 面（`isSecureContext` 为 false，没有 `navigator.serviceWorker` 和 `caches`），断言页面不请求 `sw.js`、
+  版本号点击只提示不刷新。真实局域网 HTTP 地址没有实测。
+- **其他浏览器合同**：既有合同用 `page.route` 拦截或挂起 `/assets` 与 `/api` 请求，受控页面的 SW 会绕过这些拦截，因此共享
+  运行时 `scripts/smoke/playwright-runtime.mjs` 对新 context 默认 `serviceWorkers: 'block'`，只有 PWA 合同显式传 `allow`。
+  Playwright 拦截注册时只打一条 console warning，现有合同只在 console error 时失败。
+- W19（manifest 的 `display` / `orientation`）未动，仍待用户决定；`name` / `short_name` 为显示名切片的“闲读”。
+
+验证（合并 main 之后，HEAD `ee0dc4f`）：
+
+- Go（go1.26.11）：`go test ./...` 31 个包通过（另有 8 个包没有测试），`go vet ./...` 通过；`go test -race . ./api ./db ./services/...` 27 个包通过（另有 5 个包没有测试），没有数据竞争（api 用时 1090 s）。
+- 前端：`npm test` 997/997（合并前 908/908）；`npm run build` 通过，SW 构建 `f8dc2e29333d4b83`，预缓存 64 个文件，没有 `/api` 条目。
+- 真实 Go 服务的响应头：`/` 为 `no-cache`；`/sw.js` 为 `no-cache` 与 `text/javascript; charset=utf-8`；`/assets/*.js` 为
+  `public, max-age=31536000, immutable`。
+- 浏览器（1440×900、390×844、360×800）：`pwa-service-worker-contract.mjs` E1–E7 通过；`openreader-smoke.mjs` 通过；与本次合并
+  重叠的 `document-title-contract.mjs`（四个流程，壳标题“闲读”）、`remember-login-contract.mjs` 和 `user-book-limit-contract.mjs`
+  （上限 2）通过。
+- 公告门自测 114/114；`release-browser-smoke.test.mjs` 10/10。
+- 未运行：现场公告扫描（本切片的依赖文件只改了 `frontend/package.json` 的 `build` 脚本，没有依赖变化，发布 run 照常会跑）；
+  `docker compose config` 与 `store-read-list-lifecycle-contract.mjs`（未改 Compose 与存储）；卷与备份门、镜像构建（只在
+  GitHub Actions 中运行）。
+
+状态 **implementation-complete / regression-validated**。分支已推送，未合入 main；镜像未发布；生产未访问。

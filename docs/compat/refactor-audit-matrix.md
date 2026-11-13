@@ -11,6 +11,10 @@ intentional-redesign；W6、W10、W12–W15、W17 为 acceptable-change；W7、W
 决定（2026-11-12，取代上段的状态）：合同 `b3ed696`；用户选 Q1-A（最小离线外壳 + 缓存头，不缓存封面）、Q2-A（提示后强制更新）、
 Q3-A（新 SW 等待）。W7 改为 must-fix，W8 改为 intentional-redesign，W18 对齐，T4 取消。下一步按 T0→T1→T2→T3→T5 先提交红测。
 状态 contract-only / user-decided；未改应用代码，镜像未构建，生产未动。
+记录（2026-11-13，取代上段的状态）：红测 `8df254a`（Go 3 红、1 例对照绿；前端 26/26 红；浏览器合同停在缺少 `dist/sw.js`），T0 缓存头 `5d76463`、T1 构建后生成 `dist/sw.js` `86fbda2`、T2 注册与 `?nopwa` `ca82607`、T3 版本号强制更新 `abc22c6`、
+E6 改为 127.0.0.1 上复现非安全上下文 `4cddead`、T5 文档 `93a684b`；`ee0dc4f` 合入 main `f8786abe`。预缓存含 `index.html` 作离线外壳，安装后不再写缓存，导航响应不进缓存；
+没有改 `vite.config.js`。Go 全量 31 包与 vet、race（根、api、db、services 共 27 包）；前端 997/997 与 build（SW `f8dc2e29333d4b83`，64 个文件）；PWA 合同 E1–E7、openreader-smoke、
+标签页标题、记住登录信息与书籍上限合同三视口通过。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 当前切片：产品显示名“闲读”（D1，P0 标签页标题收尾）
 

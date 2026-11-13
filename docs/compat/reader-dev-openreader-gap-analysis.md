@@ -30,6 +30,12 @@ SW 缓存不计入已签收的本地缓存范围。合同见
 先提示构建信息再强制更新）、Q3-A（新 SW 等待，不自动刷新）。W7 改为 must-fix，W8 改为 intentional-redesign，W18 对齐；
 T4 取消，本切片不触碰 `stores/user.js`。实施顺序为 T0 缓存头 → T1 SW → T2 注册 → T3 版本号 → T5 文档，每步先红测。
 状态 **contract-only / user-decided**。
+记录（2026-11-13，取代上段的状态）：红测 `8df254a`（Go 3 红、1 例对照绿；前端 26/26 红；浏览器合同停在缺少 `dist/sw.js`）；实现 T0 `5d76463`（`index.html`、SPA 路由、
+`sw.js` 与公开文件 `no-cache`，`/assets` 哈希文件 `immutable`）、T1 `86fbda2`（构建后脚本生成同源 `dist/sw.js`，不用 Workbox 和 CDN；预缓存含 `index.html` 作离线外壳；
+导航网络优先，网络错误或 502/503/504 回退外壳；接口、鉴权、Range、非 GET 与跨源请求一律不处理，安装后不再写缓存）、T2 `ca82607`（生产构建 + 安全上下文才注册，
+`?nopwa` 注销并只删 `openreader-` 缓存；共享 smoke 运行时默认阻止 SW）、T3 `abc22c6`（版本号先提示构建信息再强制更新）、T5 `93a684b`；E6 测试修正 `4cddead`；
+`ee0dc4f` 合入 main `f8786abe`。验证：Go 全量 31 包、vet、race（根、api、db、services 共 27 包）；前端 997/997 与 build；PWA 合同 E1–E7、openreader-smoke、标签页标题、记住登录信息与书籍上限
+合同三视口通过；公告门自测 114/114。详见合同第 11 节。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未动。
 
 ## 2026-11-12 P0 Reader/首页 产品显示名“闲读”（D1 决定）
 
