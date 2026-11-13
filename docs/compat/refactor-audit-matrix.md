@@ -302,6 +302,25 @@ computed style，日间前后一致。状态 contract-only。
 另起）通过。状态 implementation-complete / regression-validated，待可信 Actions。
 发布（2026-11-02）：main 快进到 `0ce2bff`（ls-remote 核验，未强推），run `41450840714` 全部成功；`0ce2bff`/`latest` = index `4e17ce2b…821a`（amd64 `d9309c69…`、arm64 `237abbf5…`，revision 标签核验）。状态 aligned / Docker-published / awaiting-device-verification；生产未动。
 
+## 2026-10-30 当前切片：Reader 桌面端不再改写账号的“左右滑动”（D4，P1）
+
+见[`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
+晚到设置合同观察 1、2：桌面 setup 与 mini→桌面切换时 `setMode('page')` 把账号的 `flip` 写成 `page`，iPad 手机模式往返丢失左右滑动，
+本设备的 `page` 还会随下一次保存写回。上游只派生 `isSlideRead`，从不改写 `readMethod`。D4-1–D4-4 must-fix（不再转换原始设置；
+界面模式 `readerInterfaceMode` 替代“桌面原始设置不是 flip”的不变量，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar`
+改读它；桌面翻页方式随上游无高亮），D4-6 acceptable-change。计划红测：单元 U1–U9 与两条与上游冲突的旧断言改写，新浏览器合同
+A1–A4（设置先到的桌面打开、iPad 手机模式往返、手机对照、桌面改字号）。状态 contract-only。
+记录（2026-11-02，取代上段的状态）：合同 5026d6b、红测 fcfd19e（单元 11 条、浏览器 8/9 失败，对照通过）、实现 c2c7789。单元 857/857 与 build，新合同 9/9 ×2、晚到设置 7/7、面板正文控件 108/108 ×3，TTS、settings-position、text-modes、mobile、error-surface、continuous、smoke 通过，Go advisory 通过。前端 advisory 门因 follow-redirects 1.16.1（GHSA-mrwp-f3q8-3g9p）失败，阻塞任何发布，需单独的依赖切片。状态 implementation-complete / regression-validated；含未合入 main 的晚到设置切片，合入由协调方决定。
+
+## 2026-10-30 当前切片：Reader 桌面端晚到的“左右滑动”设置（P0）
+
+见[`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。
+面板正文控件合同 `C1 flip` 的偶发超时来自 Reader 竞态：账号设置 GET 晚于 Reader setup 时桌面停在 flip 布局，`加载下一章` 不挂载；WebSocket
+与本设备套用 flip 方案时必然发生。D1/D2 must-fix（有效模式按上游 `isSlideRead` 在桌面把 flip 当作 page；原始设置只在本设备转回 page，不写回账号），
+D3 acceptable-change，D4（setup 时的转换写回账号）为观察。计划红测：`readerEffectiveMode`/`useReaderMode`/store 单元合同，新浏览器合同 L1–L3
+（定序的晚到 GET、同步连接的 `settings_update`、手机对照）。状态 contract-only。
+记录（2026-10-30，取代上段的状态）：合同 `098a662`、红测 `0a73689`（单元 3/5、浏览器 6/7 失败，对照通过）、实现 `8cb15dc`。单元 5/5、前端 841/841 与 build、新浏览器合同 7/7、面板正文控件合同连续 5 次全量 108/108；TTS（含三个桌面视口）、设置位置、文字模式、移动、错误面、连续与 openreader-smoke 通过；状态 implementation-complete / regression-validated，未推送、未发布。
+
 ## 2026-10-30 当前切片：Reader 夜间目录/书架/换源列表文字（P1，L1–L16）
 
 见[`reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md`](reader-night-list-typography-fixed-baseline-second-audit-p1-contract.md)。

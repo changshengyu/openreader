@@ -391,6 +391,7 @@ import { useReaderNavigation } from '../composables/useReaderNavigation'
 import {
   readerAutoReadingSupported,
   readerEffectiveMode,
+  readerInterfaceMode,
   readerTTSSupported,
   useReaderMode,
 } from '../composables/useReaderMode'
@@ -668,6 +669,7 @@ const sliderLineHeight = ref(2.12)
 const pageHeight = ref(600)
 const pageWidth = ref(600)
 const windowWidth = ref(currentViewportWidth())
+const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const restoringPosition = ref(false)
 let pendingReaderChapterLoad = null
 const chapterContentCache = createMultiBookChapterMemoryCache(3)
@@ -911,6 +913,8 @@ const ttsReadBarLayoutActive = computed(() => (
     && !isAudioChapter.value
     && !isOrdinaryImageComicChapter.value
 ))
+// The raw setting keeps the account's choice; this is what this interface lays out.
+const interfaceReaderMode = computed(() => readerInterfaceMode(reader.mode, !isMobileReader.value))
 const effectiveReaderMode = computed(() => (
   readerEffectiveMode(
     reader.mode,
@@ -919,6 +923,7 @@ const effectiveReaderMode = computed(() => (
     ttsReadBarLayoutActive.value,
     isOrdinaryImageComicChapter.value,
     autoReading.value,
+    !isMobileReader.value,
   )
 ))
 const effectiveReaderState = {
@@ -1024,6 +1029,7 @@ const {
   getCurrentPayload: currentAudioProgressPayload,
   getCurrentOffset: currentOffset,
   getCurrentPercent: currentChapterPercent,
+  getMode: () => interfaceReaderMode.value,
   mergeBook: mergeShelfBook,
   isTemporaryReader: isTemporaryRemoteReader,
 })
@@ -1036,7 +1042,7 @@ const {
   showFailedChapter: showFailedContinuousChapter,
   syncCurrentChapter: updateCurrentChapterFromScroll,
 } = useReaderChapterWindow({
-  reader,
+  getMode: () => interfaceReaderMode.value,
   contentEl: scrollViewport,
   contentBody,
   chapters,
@@ -1222,7 +1228,7 @@ onBeforeUnmount(cancelPageAnimation)
 const {
   restore: restoreReadingPosition,
 } = useReaderPositionRestore({
-  reader,
+  getMode: () => interfaceReaderMode.value,
   contentEl: scrollViewport,
   contentBody,
   currentIndex,
@@ -1501,7 +1507,6 @@ const runningChapterLabel = computed(() => runningChapterLabelFor({
   index: currentIndex.value,
 }))
 const showRunningChapterHeader = computed(() => !isAudioChapter.value && !isCBZBook(book.value))
-const isMobileReader = computed(() => shouldUseMiniInterface(reader.pageMode, windowWidth.value))
 const desktopWorkspacePanel = computed(() => {
   if (isMobileReader.value) return ''
   if (showShelfDrawer.value) return 'shelf'
@@ -1805,7 +1810,7 @@ const {
   getPayload: () => chapter.value ? currentProgressPayload() : null,
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
   applyLocal: applyLocalProgressSnapshot,
-  saveRemote: payload => reader.saveProgress(payload),
+  saveRemote: payload => reader.saveProgress({ ...payload, mode: interfaceReaderMode.value }),
   onSaved: progress => upsertReaderBookProgress(progress, { replace: true }),
   getMode: () => effectiveReaderMode.value,
   getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
@@ -2045,7 +2050,7 @@ function closeTTSBar() {
     await nextTick()
     updateFlipLayout()
     await nextFrame()
-    if (reader.mode !== 'flip' || !activeParagraph?.isConnected) return
+    if (interfaceReaderMode.value !== 'flip' || !activeParagraph?.isConnected) return
     updateFlipLayout()
     await nextFrame()
     jumpToParagraph(activeParagraph, { save: false, flash: false })

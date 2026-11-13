@@ -52,6 +52,7 @@ function createController(overrides = {}) {
     nextFrame: async () => calls.push(['frame']),
     formatError: error => `加载失败：${error.message}`,
     getScopeKey: () => scopeKey.value,
+    getMode: () => reader.mode,
     ...overrides,
   })
   return {
@@ -153,6 +154,27 @@ test('appends one chapter and removes read scroll2 chapters in one anchored tran
     ['capture'],
     ['restore', { index: 2, offset: 30 }],
   ])
+})
+
+// docs/compat/reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md U7.
+test('builds the chapter window for the mode it is given rather than the raw setting', async () => {
+  const fixture = createController({
+    getMode: () => 'scroll2',
+    visibleProgressSnapshot: () => ({
+      chapterIndex: 3,
+      chapter: { id: 4, title: '第四章' },
+    }),
+  })
+  fixture.reader.mode = 'scroll'
+  fixture.chapterBlocks.value = [2, 3].map(index => ({
+    index,
+    id: index + 1,
+    title: `第 ${index + 1} 章`,
+    content: `正文 ${index}`,
+  }))
+  fixture.controller.syncCurrentChapter()
+  await fixture.controller.appendNext()
+  assert.deepEqual(fixture.chapterBlocks.value.map(block => block.index), [3, 4])
 })
 
 test('renders adjacent chapter failures and can retry them without losing current content', async () => {

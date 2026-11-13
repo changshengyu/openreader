@@ -384,6 +384,32 @@ build、后端全量/vet、公告门、16 个模拟浏览器合同、真实 Go �
 失败，另起）通过。状态 **implementation-complete / regression-validated**，待可信 Actions。
 2026-11-02 发布：main 快进到 `0ce2bff`（ls-remote 核验，未强推）；可信 Actions run `41450840714` 全部成功（13:11–13:35Z）。`ghcr.io/changshengyu/openreader:0ce2bff` 与 `latest` 为 OCI index `sha256:4e17ce2b55ce3e3c999df31ddfa9571a6cc3f9331f325feaa5d5e7f27e43821a`（linux/amd64 `sha256:d9309c69…`、linux/arm64 `sha256:237abbf5…`），两平台 `org.opencontainers.image.revision` 均为 `0ce2bffd082b117059ed6fd292df4e5b110b933e`。状态 **aligned / Docker-published / awaiting-device-verification**；生产未访问。
 
+## 2026-10-30 P1 Reader 桌面端把账号的“左右滑动”改写成“上下滑动”（D4）
+
+晚到设置合同第 10 节观察 1、2。桌面 Reader setup 时与 mini→桌面切换时，`useReaderMode.js:166–174` 的 immediate watcher 调用
+`setMode('page')`：刷新设置时间戳、改写当前方案并 `PUT` `page`。手机选了“左右滑动”后在电脑或横屏 iPad 打开 Reader，账号就变成
+“上下滑动”；iPad 手机模式→自适应→手机模式之后不再左右滑动；晚到 `flip` 只改本设备的 `page` 也会随桌面下一次保存写回账号。上游
+`isSlideRead = miniInterface && readMethod === "左右滑动"`（`vuex.js` L451–453）是派生，界面切换只改 `miniInterface`，`readMethod`
+只由用户选择与配置恢复改变；桌面翻页方式隐藏“左右滑动”，账号为“左右滑动”时没有高亮项。盘点修正了晚到设置合同第 3.1 节：
+布局、键盘、指针拿到的是只暴露有效模式的 `effectiveReaderState`，真正读原始设置的是位置恢复、章节窗口、本地进度、store 的
+`saveProgress`、`closeTTSBar` 与设置面板高亮。D4-1–D4-4 **`must-fix`**：删除两个转换 watcher，原始设置只由明确选择改变；新增界面模式
+`readerInterfaceMode`（桌面 `flip` 为 `page`），原始设置读者改读它（`getMode`、`saveProgress` 的 `payload.mode`），行为不变；D4-6（缺
+`mode` 的旧本地进度回退值）`acceptable-change`。完整合同见
+[`reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md`](reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md)。
+状态 **contract-only**。
+2026-11-02 记录（合同第 9 节）：合同 `5026d6b`；红测 `fcfd19e`（单元 11 条失败；新浏览器合同 8/9 失败，A3 手机对照与 A1 的位置、进度守卫通过）；实现 `c2c7789`（导出 `readerInterfaceMode`，删除两个转换 watcher，位置恢复、章节窗口、本地进度、`saveProgress`、`closeTTSBar` 改读界面模式）。单元 857/857 与 build；新合同 9/9（两次）、晚到设置合同 7/7、面板正文控件合同连续 3 次 108/108，TTS 四个视口、settings-position、text-modes、mobile、error-surface 30/30、continuous、openreader-smoke 通过；Go advisory 门通过。前端 advisory 门因 follow-redirects 1.16.1（GHSA-mrwp-f3q8-3g9p）失败，与本切片无关但阻塞任何发布。状态 **implementation-complete / regression-validated**；分支包含未合入 main 的晚到设置切片，未合入 main。
+
+## 2026-10-30 P0 Reader 桌面端晚到的“左右滑动”设置仍进入翻页布局
+
+面板正文控件浏览器合同的 `C1 flip` 每次有 2–6/12 组在等 `加载下一章` 时超时，查明是 Reader 的竞态而不是 harness：桌面把 `flip` 转成
+`page` 的 watcher（`useReaderMode.js:162–170`）只在 Reader setup 与界面切换时运行；账号设置 GET 晚于 Reader setup 到达时，
+`applyReaderSettings` 把 `mode` 设回 `flip`，桌面停在 `.reader-shell.flip`，章末按钮永不挂载。WebSocket `settings_update`、冲突响应、
+备份恢复和本设备套用 flip 方案时每次都会这样。上游 `isSlideRead = miniInterface && readMethod === "左右滑动"` 是实时派生，桌面从不滑动，也不改写
+设置。D1/D2 **`must-fix`**：有效模式在桌面把 `flip` 当作 `page`（不跑位置事务），原始设置在同一轮更新里只在本设备转回 `page`
+（`setMode('page', { deviceLocal: true })`，不写回账号，避免把其他设备刚选的“左右滑动”撤销）；setup 时已有转换写回账号（D4）记为观察，不在本切片。
+完整合同见 [`reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md`](reader-desktop-flip-late-settings-fixed-baseline-second-audit-p0-contract.md)。状态 **contract-only**。
+2026-10-30 记录（合同第 11 节，面板正文控件合同第 15 节）：合同 `098a662`；红测 `0a73689`（单元 3/5 失败，浏览器 L1、L2 共 6 组失败，对照通过）；实现 `8cb15dc`（`readerEffectiveMode` 加 `isDesktop`，`useReaderMode` 的原始设置 watcher，store `setMode` 的 `deviceLocal`）。只加 watcher 的原型在 L2 丢阅读位置（滚动 → 54），所以有效模式也要按上游派生。单元 5/5、前端 841/841 与 build；新浏览器合同 7/7；面板正文控件合同连续 5 次全量 108/108（`C1 flip` 60/60）；TTS（手机与三个桌面视口）、设置位置、文字模式、移动、错误面 30/30、连续与 openreader-smoke 通过。状态 **implementation-complete / regression-validated**；本地分支未推送，镜像未构建，生产未访问。
+
 ## 2026-10-30 P1 Reader 夜间目录/书架/换源列表文字
 
 夜间配色切片（`24511c0`）之后，三块列表面板仍是 4.5:1 替换出的纯白文字：目录分隔线日夜都是 `#f0f0f0`，移动目录当前章是 `#409eff`

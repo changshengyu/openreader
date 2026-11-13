@@ -158,10 +158,14 @@ test('keeps audio chapters out of text block rebuilds when modes change', async 
   scope.stop()
 })
 
-test('forces flip mode back to page on desktop', async () => {
+// reader-dev derives isSlideRead from the interface and never rewrites readMethod
+// (docs/compat/reader-desktop-flip-account-fixed-baseline-second-audit-p1-contract.md).
+test('keeps a flip setting on desktop and renders it as page', async () => {
+  const calls = []
   const reader = reactive({
     mode: 'flip',
     setMode(mode) {
+      calls.push(['set-mode', mode])
       this.mode = mode
     },
   })
@@ -170,6 +174,7 @@ test('forces flip mode back to page on desktop', async () => {
     reader,
     isMobileReader: ref(false),
     isContinuousScrollRead: ref(false),
+    getEffectiveMode: () => readerEffectiveMode(reader.mode, false, false, false, false, false, true),
     page: ref(0),
     chapterLoading: ref(false),
     chapterBlocks: ref([]),
@@ -184,7 +189,9 @@ test('forces flip mode back to page on desktop', async () => {
     saveProgress: () => {},
   }))
   await flushModeChange()
-  assert.equal(reader.mode, 'page')
+  assert.equal(reader.mode, 'flip')
+  assert.equal(readerEffectiveMode(reader.mode, false, false, false, false, false, true), 'page')
+  assert.deepEqual(calls, [])
   scope.stop()
 })
 

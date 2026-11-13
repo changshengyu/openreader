@@ -198,9 +198,9 @@ export const useReaderStore = defineStore('reader', {
       })
       this.ensureClientId()
     },
-    setMode(mode) {
+    setMode(mode, options = {}) {
       this.mode = ['scroll', 'scroll2', 'flip', 'page'].includes(mode) ? mode : 'page'
-      this.markSettingsDirty()
+      this.markSettingsDirty({ localOnly: options.deviceLocal === true })
     },
     setCustomConfig(name) {
       const config = (Array.isArray(this.customConfigList) ? this.customConfigList : []).find(item => item?.name === name)
@@ -731,7 +731,7 @@ export const useReaderStore = defineStore('reader', {
       const currentProgress = this.progressByBook[payload.bookId]
       const optimistic = {
         ...payload,
-        mode: this.mode,
+        mode: payload.mode || this.mode,
         updatedAt: new Date().toISOString(),
         pendingSync: true,
         baseUpdatedAt: payload.baseUpdatedAt || progressServerBaseUpdatedAt(currentProgress),
@@ -739,7 +739,7 @@ export const useReaderStore = defineStore('reader', {
       this.applyProgress(optimistic)
       const response = await api.put('/progress', {
         ...payload,
-        mode: this.mode,
+        mode: optimistic.mode,
         baseUpdatedAt: optimistic.baseUpdatedAt,
         clientUpdatedAt: optimistic.updatedAt,
         clientId: this.ensureClientId(),
