@@ -4,6 +4,7 @@
 
 见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。
 用户 2026-11-13 选择按上游构建产物：`display` 由 `standalone` 改为 `fullscreen`，删除 `orientation: portrait`。名称“闲读”、颜色、图标、`apple-mobile-web-app-*` 不变。状态 **contract-only**。
+记录（2026-11-13）：合同 `508fa5a`、红测 `61598ac`（M1/M2 红、M3/M4 绿）、实现 `47375c8`。前端 999/999 与 build；PWA、smoke、标签页标题、移动端合同通过。状态 implementation-complete / regression-validated；未合入 main。
 
 ## 2026-11-12 当前切片：PWA Service Worker 与离线外壳盘点（P2，W1–W21）
 

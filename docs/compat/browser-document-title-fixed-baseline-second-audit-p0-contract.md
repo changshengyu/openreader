@@ -625,5 +625,15 @@ revision 标签保持。生产未访问，实际运行版本未知。
   - 对照（绿）：`name`、`short_name` 为“闲读”，`start_url`、`scope` 为 `/`，`index.html` 仍有 manifest 链接与 `apple-mobile-web-app-capable`。
 - 回归：前端全量与 build（manifest 在 SW 预缓存清单中，构建号会变）；PWA 合同、标签页标题合同、openreader-smoke、移动端合同。
 
-状态 **contract-only**。
+状态 **contract-only**（由下方记录取代）。
+
+### 16.1 记录（2026-11-13）
+
+提交：合同 `508fa5a`；红测 `61598ac`（M1/M2 在 `display: standalone` 处失败，M3/M4 对照通过）；实现 `47375c8`（`display` 改为 `fullscreen`，删除 `orientation`）。
+
+验证：
+- 前端 999/999（新增 2 项），build 通过；SW 构建号变为 `e5c767f8429a3a17`，仍预缓存 64 个文件；产物 manifest 为 `fullscreen`、无 `orientation`、名称“闲读”。
+- 真实 Go 服务（后端与 `2f19133` 相同）：PWA 合同 E1–E7、openreader-smoke 三视口、标签页标题合同四个流程、移动端合同（含 iPad）通过，服务日志无 5xx。
+
+状态 **implementation-complete / regression-validated**；分支 `claude/manifest-fullscreen-w19`，未合入 main，镜像未发布，生产未访问。
 

@@ -5,6 +5,7 @@
 见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。
 PWA 合同把 W19 交给显示名切片。上游实际发布的 `manifest.json` 是 `display: fullscreen`、没有 `orientation`；OpenReader 是 `standalone` + `portrait`。用户选择按上游：M1 `display` 改为 `fullscreen`、M2 删除 `orientation`（must-fix）；名称、颜色、图标与 iOS 头部标签不变。
 计划测试：单元 `manifestDisplayContract.test.mjs`（红：display 与 orientation；对照：名称、start_url、scope、manifest 链接）。状态 **contract-only**。
+记录（2026-11-13）：合同 `508fa5a`、红测 `61598ac`、实现 `47375c8`。前端 999/999 与 build（SW 构建号 `e5c767f8429a3a17`）；PWA E1–E7、openreader-smoke、标签页标题、移动端合同通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-12 P2 Index PWA Service Worker 与离线外壳
 
