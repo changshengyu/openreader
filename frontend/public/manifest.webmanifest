@@ -1,6 +1,6 @@
 {
-  "name": "OpenReader",
-  "short_name": "OpenReader",
+  "name": "闲读",
+  "short_name": "闲读",
   "description": "A self-hosted web reader",
   "lang": "zh-CN",
   "start_url": "/",

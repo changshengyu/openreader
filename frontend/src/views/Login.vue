@@ -1,7 +1,7 @@
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <h1 class="auth-title">OpenReader</h1>
+      <h1 class="auth-title">闲读</h1>
       <p class="auth-sub">继续阅读</p>
       <AuthForm :reason="String(route.query.reason || '')" @success="handleSuccess" />
     </div>
@@ -9,14 +9,19 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthForm from '../components/AuthForm.vue'
 import { useUserStore } from '../stores/user'
 import { safeReturnTo } from '../utils/authNavigation'
+import { restoreShellDocumentTitle } from '../utils/documentTitle'
 
 const router = useRouter()
 const route = useRoute()
 const user = useUserStore()
+
+// The login page shows the shell title (S3), whichever view the tab came from.
+onMounted(restoreShellDocumentTitle)
 
 async function handleSuccess(result = {}) {
   if (result.previousScope && !result.sameAuthenticatedScope) {
