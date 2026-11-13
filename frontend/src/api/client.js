@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { discardAuthToken, readAuthToken } from '../utils/authToken.js'
 
 function notifyAuthRequired(detail) {
   if (typeof window === 'undefined') return
@@ -8,7 +9,7 @@ function notifyAuthRequired(detail) {
 
 function addAuthInterceptors(client) {
   client.interceptors.request.use((config) => {
-    const token = localStorage.getItem('openreader_token')
+    const token = readAuthToken()
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -24,10 +25,10 @@ function addAuthInterceptors(client) {
       const authorization = String(error?.config?.headers?.Authorization || '')
       const rejectedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
       if (status === 401 && rejectedToken && !isAuthRequest) {
-        if (localStorage.getItem('openreader_token') !== rejectedToken) {
+        if (readAuthToken() !== rejectedToken) {
           return Promise.reject(error)
         }
-        localStorage.removeItem('openreader_token')
+        discardAuthToken(rejectedToken)
         notifyAuthRequired({ reason: 'session', rejectedToken })
       }
       return Promise.reject(error)

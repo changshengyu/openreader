@@ -25,6 +25,10 @@
       <el-form-item v-if="mode === 'register'" label="邀请码(没有则不填)">
         <el-input v-model="inviteCode" autocomplete="off" />
       </el-form-item>
+      <!-- reader-dev App.vue: checked by default; unchecked keeps the login in this tab only. -->
+      <el-form-item class="auth-remember">
+        <el-checkbox v-model="user.rememberLogin">记住登录信息</el-checkbox>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="loading" native-type="submit" class="auth-btn">
           {{ mode === 'login' ? '登录' : '注册' }}

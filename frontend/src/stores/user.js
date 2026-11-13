@@ -3,6 +3,7 @@ import { getMe, loginUser, logoutUser } from '../api/user'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation'
 import { authRequestPayload } from '../utils/authRequest'
 import { currentUserScope } from '../utils/authScope'
+import { clearAuthToken, readAuthToken, writeAuthToken } from '../utils/authToken'
 import { useBookshelfStore } from './bookshelf'
 import { useOverlayStore } from './overlay'
 import { usePreferencesStore } from './preferences'
@@ -14,7 +15,10 @@ const profileOperations = createAuthenticatedOperationGuard()
 
 export const useUserStore = defineStore('user', {
   state: () => ({
-    token: localStorage.getItem('openreader_token') || '',
+    token: readAuthToken(),
+    // reader-dev App.vue data.remember: checked on every page load, and the
+    // last choice kept until the page reloads. Never persisted.
+    rememberLogin: true,
     profile: null,
     authDialogVisible: false,
     authReason: '',
@@ -31,7 +35,7 @@ export const useUserStore = defineStore('user', {
       this.profile = data.user
       this.authDialogVisible = false
       this.authReason = ''
-      localStorage.setItem('openreader_token', data.token)
+      writeAuthToken(data.token, { remember: this.rememberLogin !== false })
       const currentScope = currentUserScope()
       const sameAuthenticatedScope = Boolean(previousScope && previousScope === currentScope)
       const workspace = useIndexWorkspaceStore()
@@ -96,7 +100,7 @@ export const useUserStore = defineStore('user', {
       cancelAllBookManagementCacheJobs()
       this.token = ''
       this.profile = null
-      localStorage.removeItem('openreader_token')
+      clearAuthToken()
       useOverlayStore().resetSessionState()
       useBookshelfStore().resetShelfState()
       usePreferencesStore().resetPreferenceState()

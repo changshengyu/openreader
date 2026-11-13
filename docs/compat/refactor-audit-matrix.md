@@ -8,6 +8,29 @@
 仓库、镜像、`OPENREADER_*`、存储 key、字体族与导出前缀不改。计划测试：单元 `displayNameContract.test.mjs`，浏览器 `document-title-contract.mjs` 新增 `shell` 流程。状态 contract-only。
 记录（2026-11-13，取代上段的状态）：合同 `cb2c545`、红测 `7b181ca`（单元 3 红、技术名对照绿；浏览器 `shell` 流程在 1440×900 侧栏品牌为 `阅读`）、实现 `52cec1e`（另把侧栏徽标 `阅` 改为 `闲`）。前端 886/886 与 build；标签页标题合同四个流程三视口（壳标题 `闲读`）、openreader-smoke、重新认证四视口、书源调试与注册限制合同通过。状态 implementation-complete / regression-validated；未合入 main，镜像未发布，生产未动。
 
+## 2026-11-12 当前切片：登录框“记住登录信息”（P2，M1–M2、A1–A3）
+
+见[`remember-login-fixed-baseline-second-audit-p2-contract.md`](remember-login-fixed-baseline-second-audit-p2-contract.md)。接在书籍上限切片之后，同一分支
+`claude/account-book-limit-remember-login-a2fb9c`。上游 `App.vue` 默认勾选，只在勾选时把 token 存入 localStorage。M1 复选框、M2 不勾选时只存本标签页 sessionStorage
+为 must-fix；A1 sessionStorage 代替服务端内存会话、A2 独立新标签页需重新登录、A3 不勾选时清除旧的 localStorage token 为 acceptable-change。
+计划测试 T1–T5，加三视口浏览器合同。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `d27661a`、红测 `a4f4737`、实现 `9c9b1b8`。红测在合同提交上前端 10 个失败（`authToken.js` 不存在、store 无 `rememberLogin`、
+不记住的 token 不进请求头、11 个文件直接读写、表单无复选框、接线正则），对照通过；浏览器停在缺少复选框处。实现后同一组断言转绿。前端 900/900 与 build；后端未改动。
+真实 Go 服务全新数据目录下 `remember-login-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、重新认证四视口、openreader-smoke 三视口、
+`user-book-limit-contract.mjs` 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 当前切片：每用户书籍上限（P2，B1–B3、A1–A5）
+
+见[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。基于 main `f82e0f5a`，分支
+`claude/account-book-limit-remember-login-a2fb9c`。上游 `userBookLimit` 默认 200，只阻止新增（`BookController.kt#saveBook`），恢复不受限。
+B1 五条加书路径计数（事务内，远程在抓取前、本地在写归档前先查）、B2 `OPENREADER_USER_BOOK_LIMIT`（默认 200）、B3 前端“超过用户书籍数上限”为 must-fix；
+A1 用户 `BookLimit > 0` 覆盖实例值、A2 HTTP 403、A3 沿用现有去重规则、A4 非法值按 200、A5 批量逐项报告为 acceptable-change。
+计划测试 L1–L10、F1–F4，加三视口浏览器合同。状态 contract-only。
+记录（2026-11-12，取代上段的状态）：合同 `523f104`、红测 `e34ad5b`、实现 `1e18d6a`（后端）/`dac67c3`（前端）/`87e239a`（文档）。红测在合同提交上：后端 9 个失败（403 处为 201，
+并发 8 个全部建成，解析 7 种情况不限），占位挂接等对照通过；前端 7 个失败；浏览器停在 desktop（第三本导入 201、无提示）。实现后同一组断言转绿。后端全量 31 个包与 vet、
+race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
+重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-12 当前切片：发布门 Go 1.26.11（GO-2026-6859，P1，发布阻塞）
 
 见[`dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md)。基于 main `e8f3214`。现场 Go 门

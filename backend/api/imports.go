@@ -10,6 +10,7 @@ import (
 
 	"openreader/backend/engine"
 	"openreader/backend/middleware"
+	"openreader/backend/services/booklimit"
 	"openreader/backend/services/importstage"
 	"openreader/backend/services/localbook"
 )
@@ -142,6 +143,11 @@ func (s *Server) importTXT(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		// The staged token is not consumed, so it can be retried later.
+		if errors.Is(err, booklimit.ErrReached) {
+			writeBookLimitReached(c)
+			return
+		}
 		if errors.Is(err, localbook.ErrUnsupportedFormat) ||
 			errors.Is(err, localbook.ErrParseFailed) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -170,6 +176,9 @@ func writeLocalBookImportCancellation(c *gin.Context, err error, token string) b
 }
 
 func storageBookImportError(err error) string {
+	if errors.Is(err, booklimit.ErrReached) {
+		return booklimit.ErrReached.Error()
+	}
 	if errors.Is(err, errInvalidLocalImportToken) || errors.Is(err, importstage.ErrPreparedWrite) ||
 		errors.Is(err, localbook.ErrUnsupportedFormat) || errors.Is(err, localbook.ErrParseFailed) {
 		return err.Error()

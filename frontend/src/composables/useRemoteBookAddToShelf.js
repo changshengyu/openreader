@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { createAuthenticatedOperationGuard } from '../utils/authenticatedOperation.js'
+import { bookLimitDisplayError } from '../utils/bookLimit.js'
 
 export function useRemoteBookAddToShelf(options) {
   const addingBookKey = ref('')
@@ -41,7 +42,7 @@ export function useRemoteBookAddToShelf(options) {
       return data
     } catch (error) {
       if (operations.canCommit(operation)) {
-        options.onError(error, '加入书架失败')
+        options.onError(bookLimitDisplayError(error), '加入书架失败')
       }
       return null
     } finally {

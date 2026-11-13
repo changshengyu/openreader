@@ -5,6 +5,38 @@
 标签页标题合同的 D1（产品名用 `阅读` 还是 `OpenReader`）自 2026-10-16 起一直待定。用户 2026-11-12 选了第三个名字“闲读”。因此壳标题（`index.html` `<title>` 与 `SHELL_DOCUMENT_TITLE`）、首页工作区与 `/login` 挂载时设置壳标题、书源调试独立标题 `闲读书源编辑器`（上游 `Reader书源编辑器` 的格式）转为 must-fix。侧栏品牌（原按上游为 `阅读`）、登录页标题、主屏幕应用名与图标无障碍名同步改为“闲读”，记为用户要求的差异；技术名（仓库、镜像、环境变量、存储 key）不变。合同见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 14 节。状态 **contract-only**。
 记录（2026-11-13，取代上段的状态）：合同 `cb2c545`、红测 `7b181ca`、实现 `52cec1e`。前端 886/886 与 build；真实 Go 服务下标签页标题合同（含新增的首页、登录与书源调试流程）三视口通过，壳标题为 `闲读`，openreader-smoke、重新认证、书源调试、注册限制合同对照通过。状态 **implementation-complete / regression-validated**；未合入 main，镜像未发布，生产未访问。
 
+## 2026-11-12 P2 账号 登录框“记住登录信息”
+
+上游 `App.vue` 登录框在用户名、密码（注册模式还有邀请码）之后显示“记住登录信息”，默认勾选，登录与注册都有。只有勾选时 `setToken` 才把
+`accessToken` 写入 `localStorage.api_token`；不勾选时浏览器不保存长期 token，登录只靠服务端内存会话（`reader.session`，7 天无访问或服务重启即失效）。
+OpenReader 没有这个复选框，`AuthForm` 总是把 JWT 写入 `localStorage.openreader_token`，并且 11 个文件直接读写它。
+M1/M2 must-fix：加复选框（默认勾选）；不勾选时 token 只放在本标签页的 `sessionStorage`（刷新和应用打开的窗口保留，独立新标签页和重开浏览器需重新登录），
+同时删除 `localStorage` 中旧的 token；`utils/authToken.js` 成为唯一读写点，401 门禁、会话失效与重新认证流程不变。
+A1–A3 acceptable-change：用 sessionStorage 代替服务端内存会话（JWT 没有 cookie 会话）、按标签页隔离、修正上游不勾选后仍保留旧 token 的缺口。合同见
+[`remember-login-fixed-baseline-second-audit-p2-contract.md`](remember-login-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `d27661a`、红测 `a4f4737`、实现 `9c9b1b8`。红测在合同提交上前端 10 个失败（`authToken.js` 不存在、store 无 `rememberLogin`、
+不记住的 token 不进请求头、11 个文件直接读写、表单无复选框、接线正则），对照通过；浏览器停在缺少复选框处。实现后同一组断言转绿。前端 900/900 与 build；后端未改动。
+真实 Go 服务全新数据目录下 `remember-login-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、重新认证四视口、openreader-smoke 三视口、
+`user-book-limit-contract.mjs` 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
+## 2026-11-12 P2 账号 每用户书籍上限
+
+上游 `reader.app.userBookLimit`（默认 200，`READER_APP_USERBOOKLIMIT`）只在 `BookController.kt#saveBook` 检查：书名加作者不在书架上、
+并且书架已有 ≥ 上限本时返回“超过用户书籍数上限”，检查在移动本地文件和远程抓取之前；已在书架上的书照常更新；恢复备份（`syncFromWebdav`）
+直接覆盖书架，不检查。OpenReader 的 `users.book_limit` 只能由管理员 API 设置，没有任何代码读取；五条加书路径（`POST /api/books`、
+`/books/remote`、`/imports/books`、`/local-store/import`、`/webdav/import`）都不检查数量。
+B1–B3 must-fix：新增 `OPENREADER_USER_BOOK_LIMIT`（默认 200，未设置、非整数或 ≤ 0 时按 200），用户 `BookLimit > 0` 时覆盖实例值；只在将要新建一行时计数，
+计数与插入在同一个事务里；远程加入在抓取前、本地导入在写归档前先查一次；达到上限返回 `403 {"error":"book limit reached"}`，批量导入逐项报告；
+前端显示“超过用户书籍数上限”。已在书架上的书、恢复占位行的挂接和备份恢复不受限，已超过上限的书架不改动。默认 200 会让升级前已有 200 本以上的用户
+不能再新增，理由与调整方式写在合同第 5 节。合同见
+[`user-book-limit-fixed-baseline-second-audit-p2-contract.md`](user-book-limit-fixed-baseline-second-audit-p2-contract.md)。
+状态 **contract-only**。
+记录（2026-11-12，取代上段的状态）：合同 `523f104`、红测 `e34ad5b`、实现 `1e18d6a`（后端）/`dac67c3`（前端）/`87e239a`（文档）。红测在合同提交上：后端 9 个失败（403 处为 201，
+并发 8 个全部建成，解析 7 种情况不限），占位挂接等对照通过；前端 7 个失败；浏览器停在 desktop（第三本导入 201、无提示）。实现后同一组断言转绿。后端全量 31 个包与 vet、
+race api/config/booklimit/localbook（api 1102.0 s）通过，无数据竞争；前端 890/890 与 build；真实 Go 服务全新数据目录下 `user-book-limit-contract.mjs` 三视口、`registration-limits-contract.mjs` 三视口、
+重新认证四视口、openreader-smoke 三视口通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像未发布，生产未动。
+
 ## 2026-11-12 P1 发布门：Go 1.26.11（GO-2026-6859，`net/http` MaxBytesReader）
 
 2026-11-12 现场 Go 公告门在 `e8f3214`（Go 1.26.10）上失败关闭：`advisory findings block release: GO-2026-6859`（47 个发现，45 个符号级）。
