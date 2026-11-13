@@ -5,8 +5,7 @@
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",
-  "display": "standalone",
-  "orientation": "portrait",
+  "display": "fullscreen",
   "background_color": "#f6f1e5",
   "theme_color": "#2f6f6d",
   "icons": [
