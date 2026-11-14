@@ -1,5 +1,16 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-14 P0 Reader 失败态进度载荷
+
+见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，只写文档。
+上游：服务端 `getBookContent` 在抓正文之前就把书架进度写成目标章（`BookController.kt` L489–496），离开 Reader 时 `deactivated` 再写一次，所以当前章失败后“读到哪一章”就是失败章；`this.error` 只挡住客户端章节内位置与连续模式的跨章切换。这纠正了错误面合同“上游在失败状态下不保存进度”的说法。
+当前（真实 Go 服务实测，3 视口 × 4 模式）：分页（page、flip，含桌面 flip→page）失败后与任一模式加载中的保存写出“目标序号 + 上一章 id/标题”，服务端以 400 拒绝（59 次），进度停在上一次成功位置；scroll、scroll2 写失败章目录行 `@0`；首次加载即失败不写。失败中从 Reader 书架换书因保存被拒而不发生；在 Reader 内换到目录失败的书时，新书的本地快照与书架卡片变成上一本书的章节，360×800 刷新后打开到错误位置；目录面板点当前失败章不重试。
+分类：F1 载荷身份、F9 换书后目录失败、F10 书架换书被阻断为 must-fix（P0）；F11 目录点当前失败章重试、F12 未处理的 Promise 拒绝为 must-fix；F4 失败章写章首为 acceptable-change；F7、F8、F13 aligned；F6（连续模式失败后滚进后一章）已签收，不重开。待用户决定：D1 失败章是否成为已存进度（建议按上游），D2 是否重开 R6 第 13 节第 7 条（建议不重开）。
+观察：keepalive 保存会清掉本地 pending 标记，与阅读进度 P2“本地 pending 快照必须保留”不符，另行盘点。
+状态 **contract-only / awaiting-user-decision**；未改应用代码，镜像未构建，生产未访问。
+决定（2026-11-14，盘点提交 `feeb256` 之后）：用户对 D1 选 A，按上游把进度改到失败章；F2、F3、F5 改判 must-fix，目标与测试只保留 A（合同第 12 节）。D2 仍待定。状态 contract-only / awaiting-user-decision（D2）。
+决定（2026-11-14，取代上段的状态）：用户对 D2 选 (a)，不重开 R6 第 13 节第 7 条，F6 维持已签收。决定已齐，状态 **contract-only**，下一步红测；未改应用代码，镜像未构建，生产未访问。
+
 ## 2026-11-13 P2 设置 写入请求被客户端取消时不再返回或记录 500
 
 见[`user-setting-write-request-cancellation-p2-contract.md`](user-setting-write-request-cancellation-p2-contract.md)。基于 main `9602dc4`，分支 `claude/settings-write-client-cancel`。
