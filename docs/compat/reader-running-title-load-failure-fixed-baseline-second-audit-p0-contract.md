@@ -391,6 +391,8 @@ R7. 不变：连续滚动跨章和已加载窗口内跳转的切换时机，加�
    `Reader.vue:1722`），可能写出“新序号 + 旧章 id/标题”。上游 `saveBookProgress` 只传序号，标题由服务端按目录行取
    （`BookController.kt` L390–429，L424–426）。本次探针没有观察到失败状态下的进度写入，也没有核对后端是否校验 id 与序号的
    对应关系，这是读代码推断，需要另行盘点进度持久化。
+   2026-11-14 补记：[失败态进度载荷盘点](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)第 4 节在真实服务上
+   证实了这个载荷，服务端按 `ErrChapterIdentity` 以 400 拒绝；分类与目标见该文第 5、7 节。
 
 ## 11. 实施补充（2026-11-12，实施前）
 

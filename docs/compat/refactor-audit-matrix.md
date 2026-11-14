@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-14 当前切片：Reader 失败态进度载荷盘点（P0）
+
+见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，只写文档。
+上游当前章失败时进度就是失败章（服务端在请求时与离开 Reader 时各写一次），只有章节内位置不更新。OpenReader 分页失败与加载中写出“目标序号 + 上一章 id/标题”，被服务端 400 拒绝；连续模式写失败章 `@0`；首次加载失败不写。另有三处：书架换书被阻断、Reader 内换书后目录失败污染新书本地进度、目录点当前失败章不重试。
+must-fix：F1、F9、F10（P0）与 F11、F12。待用户决定：D1（失败章是否成为进度，建议按上游）、D2（是否重开 R6 第 13 节第 7 条，建议不重开）。计划单元 7 项、真实服务浏览器合同 E1–E7。
+状态 contract-only / awaiting-user-decision；未改应用代码，镜像未构建，生产未动。
+
 ## 2026-11-13 当前切片：manifest 显示方式按上游 `fullscreen`、不锁方向（W19，P2）
 
 见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。
