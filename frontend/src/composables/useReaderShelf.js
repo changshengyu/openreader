@@ -1,6 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, ref, unref } from 'vue'
-import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder'
-import { readerRouteQueryFromBook } from '../utils/readerRoute'
+import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder.js'
+import { readerRouteQueryFromBook } from '../utils/readerRoute.js'
 
 export function useReaderShelf(options) {
   const visible = ref(false)
