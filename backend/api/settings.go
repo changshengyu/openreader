@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -81,6 +82,9 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		}
 		defer unlockAssets()
 	}
+	if ctx.Err() != nil {
+		return
+	}
 	database := s.db.WithContext(ctx)
 
 	now := time.Now()
@@ -99,6 +103,9 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 		return
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}
@@ -114,10 +121,18 @@ func (s *Server) updateUserSetting(c *gin.Context) {
 			"updated_at": setting.UpdatedAt,
 		}),
 	}).Create(&setting).Error; err != nil {
+		// A failed upsert never committed: database/sql does not commit once
+		// the context has ended, and a failed COMMIT rolls back.
+		if ctx.Err() != nil || isRequestContextError(err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}
-	if err := database.Where("user_id = ? AND key = ?", userID, key).First(&setting).Error; err != nil {
+	// The write is durable from here on, so reading it back and notifying the
+	// user's other clients must not stop when this client goes away.
+	committed := s.db.WithContext(context.WithoutCancel(ctx))
+	if err := committed.Where("user_id = ? AND key = ?", userID, key).First(&setting).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
 		return
 	}

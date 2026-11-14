@@ -12,7 +12,6 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	gormlogger "gorm.io/gorm/logger"
 
 	"openreader/backend/config"
 	"openreader/backend/models"
@@ -39,7 +38,7 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 	}
 
 	database, err := gorm.Open(sqlite.Open(sqliteDSN(cfg.DatabasePath)), &gorm.Config{
-		Logger: databaseLogger(log.New(os.Stdout, "\r\n", log.LstdFlags)),
+		Logger: NewLogger(log.New(os.Stdout, "\r\n", log.LstdFlags)),
 	})
 	if err != nil {
 		return nil, err
@@ -76,16 +75,6 @@ func sqliteDSN(path string) string {
 		separator = "&"
 	}
 	return path + separator + "_txlock=immediate"
-}
-
-func databaseLogger(writer gormlogger.Writer) gormlogger.Interface {
-	return gormlogger.New(writer, gormlogger.Config{
-		SlowThreshold:             200 * time.Millisecond,
-		LogLevel:                  gormlogger.Warn,
-		IgnoreRecordNotFoundError: false,
-		Colorful:                  true,
-		ParameterizedQueries:      true,
-	})
 }
 
 func AutoMigrate(database *gorm.DB) error {

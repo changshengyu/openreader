@@ -210,6 +210,14 @@ server event names and existing business payloads remain stable.
   semantics remain unchanged. `c2bc736` passed focused/full/race/vet, frontend 740/740, production build and real
   declared/chunked HTTP; it shipped in the locally built multi-architecture `231aa9e` image after fresh/historical
   volume gates. Status is `implementation-complete / regression-validated / Docker-published`.
+- A `PUT /api/settings/:key` whose request context ends is not a `500`
+  ([`user-setting-write-request-cancellation-p2-contract.md`](user-setting-write-request-cancellation-p2-contract.md)).
+  Before the upsert commits, the handler writes no row, sends no event and returns without a body, like the other
+  cancellation-aware handlers. After the commit, it reads the row back on `context.WithoutCancel`, broadcasts
+  `settings_update` once and writes the normal `200`. Other database failures keep the flat
+  `500 {"error":"failed to save setting"}`. The production GORM logger (`db.NewLogger`) does not print a statement
+  that failed because its own context ended (`context.Canceled`, `context.DeadlineExceeded` or GORM's joined
+  `sql.ErrTxDone`); every other line keeps GORM's format, parameterized SQL and the calling `file:line`.
 - The five JSON-writing `/api/admin/users*` mutations are closed under the fixed-baseline contract in
   [`admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md`](admin-user-write-boundary-fixed-baseline-second-audit-p2-contract.md).
   They authenticate first, accept one actual-read-bounded 16 KiB JSON value, cap batch actions at 2,000 raw IDs,
