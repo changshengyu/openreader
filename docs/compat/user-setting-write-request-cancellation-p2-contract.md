@@ -193,3 +193,15 @@ GORM logger 换成写入缓冲区的生产 logger，从而断言日志：
   - 本分支：16 次全部通过，134 个设置 PUT 全为 200，没有 5xx，也没有取消日志。
   - 本地没有碰到 W4（`settings.go:120`）的时序，由 T3 覆盖。
 - 状态 implementation-complete / regression-validated。未合入 main，镜像未发布，生产未访问。
+
+## 10. 发布（2026-11-14）
+
+合并提交 `85c6ff3`（本切片）与 `b563af7`（同时合入 Reader 失败态进度盘点的合同文档，只改文档），main 由 `9602dc4` 快进到 `b563af7`（ls-remote 核验，未强推）。
+
+推送前在合并树上：后端 `go test ./...` 31 个包（api、db 等 10 个包重跑，api 127.2 秒）与 vet，race api/config/db/services 与根包 28 个包（api 1092.9 秒）无数据竞争；前端未改，999/999 与 build；公告门自测 114/114，现场 Go 与前端扫描 0 个发现；compose 配置、浏览器 smoke 接线 10/10；secdb main 与上次检查一致。真实 Go 服务、全新数据目录下：注册限制合同连续 4 次，服务日志 0 条 5xx、0 条 `context canceled`（同一合同在 11-13 的三次发布回归中每次有 1–4 条）；openreader-smoke、阅读设置位置、首页设置入口、记住登录信息、重新认证、标签页标题、会话生命周期、首页会话隔离、书籍上限默认不限、移动端（含 iPad）与存储 HTTP 合同通过。48 次设置写入中仅有的 2 个非 200 是会话生命周期合同有意制造的 401。
+
+可信 Actions run `43555099584` 43/43 步成功（04:08–04:25 UTC）：两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现，卷门与平台核验通过。
+
+镜像：`ghcr.io/changshengyu/openreader:b563af7` 与 `latest` 指向 OCI index `sha256:6b24081cdd41f54d140ea964d13b6e5e02906eecd7399acf6c3c117976b83dc4`；linux/amd64 `sha256:6709687950f7987fc96b858d15b5d38100a1b49a868990ea61b1520ea3fb918a`，linux/arm64 `sha256:a46feac68c294e0bec6adf0c19aad734c148e44d7f78530c4b5f9d57acc79f4e`，另有两个 attestation。两平台 revision 标签均为 `b563af724f8400a50163c2fbacbe8eef691ce7ca`；两平台 `/app/openreader` 均由 go1.26.11 构建，页面标题为 `闲读`（逐层校验 sha256 后读取）。
+
+状态 **released / Docker-published / awaiting-device-verification**；生产未访问，实际运行版本未知。
