@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { ref } from 'vue'
+import { useReaderShelf } from '../src/composables/useReaderShelf.js'
 import { sortByShelfOrder } from '../src/utils/bookOrder.js'
 import { readerRouteQueryFromBook } from '../src/utils/readerRoute.js'
 
@@ -39,4 +41,26 @@ test('builds a reader resume route from shelf progress', () => {
     offset: 120,
     percent: 0.35,
   })
+})
+
+// docs/compat/reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md P5: reader-dev's changeBook does
+// not wait for any progress save; the save before an OpenReader shelf switch is best effort.
+test('a rejected progress save does not stop a reader shelf book switch (P5)', async () => {
+  for (const failure of [
+    Object.assign(new Error('Request failed with status code 400'), { response: { status: 400 } }),
+    new Error('Network Error'),
+  ]) {
+    const pushed = []
+    const shelf = useReaderShelf({
+      bookshelf: { books: [{ id: 1, title: '甲' }, { id: 2, title: '乙', chapterCount: 3 }] },
+      reader: { progressByBook: {} },
+      currentBookId: ref(1),
+      currentChapterCount: () => 8,
+      router: { push: async location => pushed.push(location) },
+      saveProgress: () => Promise.reject(failure),
+    })
+    await assert.doesNotReject(shelf.select({ id: 2, title: '乙', chapterCount: 3 }), `${failure.message} must not abort the switch`)
+    assert.equal(pushed.length, 1, `${failure.message}: the switch must still navigate`)
+    assert.deepEqual(pushed[0]?.params, { id: 2 })
+  }
 })

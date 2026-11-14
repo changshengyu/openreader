@@ -308,3 +308,26 @@ test('uses the upstream h3 text sequence when jumping to a loaded chapter positi
   assert.equal(fixture.options.currentIndex.value, 2)
   assert.deepEqual(fixture.navigated, [])
 })
+
+// docs/compat/reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md P7: reader-dev's
+// saveBookProgress swallows every error; a rejected progress save must never surface as an unhandled rejection.
+test('a rejected progress save never becomes an unhandled rejection (P7)', async () => {
+  const unhandled = []
+  const listener = reason => unhandled.push(String(reason?.message || reason))
+  process.on('unhandledRejection', listener)
+  try {
+    const { navigation, options } = createNavigation({
+      saveProgress: () => Promise.reject(new Error('invalid progress payload')),
+    })
+    await navigation.previousPage()
+    await navigation.nextPage()
+    navigation.scrollToTop()
+    navigation.scrollToBottom()
+    navigation.jumpWithinCurrentChapter(0)
+    assert.equal(options.page.value, 0)
+    for (let round = 0; round < 3; round += 1) await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(unhandled, [], 'every rejected save must be handled')
+  } finally {
+    process.off('unhandledRejection', listener)
+  }
+})
