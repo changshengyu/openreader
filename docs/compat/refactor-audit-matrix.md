@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-14 当前切片：发布门依赖 x/crypto 换成标签版本 v0.59.0（P1，2026-12-16 前的发布阻塞）
+
+见[`dependency-advisory-x-crypto-tagged-release-p1-contract.md`](dependency-advisory-x-crypto-tagged-release-p1-contract.md)。基于 main `0584ae7`，分支 `claude/go-advisory-x-crypto-tagged-release`，
+只改 `backend/go.mod`、`backend/go.sum`、Go 公告门脚本与测试和文档。x/crypto `v0.59.0`（2026-11-11）包含 GO-2026-5932 修复（无 `openpgp/`），取代 2026-12-16 到期的修复伪版本。
+must-fix：X1 换成标签版本、X2 删除门里的固定项特例；acceptable-change：X3 x/sys `v0.50.0`、x/text `v0.44.0` 连带升级。不重开：D2 任何 finding 阻止发布、D3 OpenPGP 无条件禁止、
+DB 时效、Go 工具链与构建镜像 pin。计划红测：门合同测试 3 项（R1–R3）。状态 contract-only；镜像未构建，生产未动。
+
 ## 2026-11-14 当前切片：Reader 失败态进度载荷盘点（P0）
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，只写文档。

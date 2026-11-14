@@ -1,5 +1,15 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-14 P1 发布门依赖：x/crypto 换成包含 GO-2026-5932 修复的标签版本 v0.59.0
+
+见[`dependency-advisory-x-crypto-tagged-release-p1-contract.md`](dependency-advisory-x-crypto-tagged-release-p1-contract.md)。基于 main `0584ae7`，分支 `claude/go-advisory-x-crypto-tagged-release`。
+main 的 x/crypto 是 GO-2026-5932 修复伪版本 `v0.58.1-0.20261009181718-2f1f834330b2`，Go 公告门只接受到 2026-12-16，到期后所有发布都会失败关闭。
+查证（proxy.golang.org、vuln.go.dev、sum.golang.org）：`v0.59.0`（2026-11-11，`6c966a75`）是第一个包含该修复的标签版本，zip 里没有 `openpgp/`，按 SEMVER 在 GO-2026-5932 范围之外，
+h1 与校验和库一致。它声明 `go 1.26.0`，最小版本选择连带 x/sys `v0.50.0`、x/text `v0.44.0`（都是 `@latest`，本项目路径上只有加固），x/net 不变；三张依赖图 361/360/359
+与 main 逐字节相同，bcrypt/blowfish/sha3 逐字节相同。草稿副本上的现场门 0 个发现。X1（伪版本到期）、X2（门里的固定项特例）为 must-fix，X3（x/sys、x/text 连带升级）为 acceptable-change。
+目标：`go.mod` 3 行、`go.sum` 6+/6-；删除 `cryptoPin`/`cryptoPinReviewUntil`，x/crypto 只能是标签版本，摘要去掉 `pinReviewUntil`；D2（任何 finding 阻止发布）、D3（OpenPGP 无条件禁止）与其它判定不变。
+计划红测 3 项（R1–R3）。状态 **contract-only**；镜像未构建，生产未访问。
+
 ## 2026-11-14 P0 Reader 失败态进度载荷
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，只写文档。
