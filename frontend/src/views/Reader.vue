@@ -699,6 +699,10 @@ const {
   runRefreshing: runTocRefreshing,
 } = useReaderToc({
   chapters,
+  currentIndex,
+  // A failed book load has no catalog rows to press; its retry is the book reload below.
+  isCurrentChapterFailed: () => Boolean(chapterLoadError.value) && !readerCatalogLoadFailed.value,
+  reloadCurrentChapter: index => loadChapter(index, 0, { refresh: true, saveAfterLoad: true }),
   isRemoteBook,
   isTemporaryReader: isTemporaryRemoteReader,
   onUnavailable: temporaryReaderUnavailable,
