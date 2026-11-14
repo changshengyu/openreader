@@ -1811,7 +1811,9 @@ const {
 } = useReaderProgressPersistence({
   minimumInterval: 1200,
   isBlocked: () => continuousWindowBusy.value || readerBookDeleted.value,
-  getPayload: () => chapter.value ? currentProgressPayload() : null,
+  // The payload names a catalog row even before any chapter loaded, so a failed first load is saved on leave
+  // (failure progress contract P2); without a row of this book there is nothing to save.
+  getPayload: () => currentProgressPayload(),
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
   applyLocal: applyLocalProgressSnapshot,
   saveRemote: payload => reader.saveProgress({ ...payload, mode: interfaceReaderMode.value }),

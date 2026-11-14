@@ -66,7 +66,8 @@ export function useReaderLocalProgress(options) {
   }
 
   function apply(payload = currentPayload(), applyOptions = {}) {
-    if (!payload?.bookId || !unref(options.chapter)) return
+    // currentPayload() is null without a catalog row of this book, so a loaded chapter is no longer required.
+    if (!payload?.bookId) return
     const nextPayload = {
       ...payload,
       baseUpdatedAt: payload.baseUpdatedAt

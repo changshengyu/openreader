@@ -140,12 +140,24 @@ export function useReaderChapterLoader(options) {
       options.page.value = 0
       // In a continuous window the failed target stays as its own inline error block and the next chapter
       // still loads (R6).
+      let failedWindow = null
       if (unref(options.isContinuousScrollRead) && options.showFailedChapterWindow) {
-        Promise.resolve(options.showFailedChapterWindow(targetIndex, error)).catch(() => {})
+        failedWindow = Promise.resolve(options.showFailedChapterWindow(targetIndex, error)).catch(() => {})
       }
       options.notifyError?.(error)
       await nextTick()
       if (isCurrent()) options.updateLayout()
+      // reader-dev saves the requested chapter on the server before it fetches the content, so a navigation that
+      // fails still moves the progress there (failure progress contract P2, D1-A). A continuous window blocks
+      // progress until its transaction settles, so the save waits for the failed window.
+      if (loadOptions.saveAfterLoad) {
+        const saveFailedTarget = () => {
+          if (!isCurrent()) return undefined
+          return Promise.resolve(options.saveProgress({ force: true })).catch(() => {})
+        }
+        if (failedWindow) failedWindow.then(saveFailedTarget)
+        else await saveFailedTarget()
+      }
       return false
     } finally {
       if (isCurrent()) {
