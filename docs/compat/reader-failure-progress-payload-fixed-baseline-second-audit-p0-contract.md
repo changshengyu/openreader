@@ -1,8 +1,9 @@
 # Reader 失败态进度载荷盘点（P0）
 
-状态：**contract-only**（只写文档，不改应用代码）；用户决定已齐（2026-11-14，第 8、12 节）：D1 选 A，按上游把进度改到失败章；
-D2 选 (a)，不重开 R6 第 13 节第 7 条。基线 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，盘点提交 `feeb256`。
-第 4 节的真实浏览器实测用的是会话 scratchpad 里的临时探针，没有入库。
+状态：P1–P7 **implementation-complete / regression-validated**（2026-11-14，第 13、14 节；红测 `2f25981`，实现 `9d3bc11`、`8f7d14a`、
+`614745a`、`cf73ae5`，分支 `claude/reader-failure-progress-inventory`，未合入 main）。用户决定（第 8、12 节）：D1 选 A，按上游把进度改到
+失败章；D2 选 (a)，不重开 R6 第 13 节第 7 条。盘点基线 main `9602dc4`，盘点提交 `feeb256`。第 4 节的真实浏览器实测用的是会话
+scratchpad 里的临时探针，没有入库；实施阶段的浏览器合同入库为 `scripts/smoke/reader-failure-progress-contract.mjs`。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径 `/private/tmp/changshengyu-reader-dev`
 已被系统清理，本次从本机持久克隆 `git archive fa22f27` 出 `web/src` 与 `BookController.kt` 到 scratchpad 阅读。
@@ -339,3 +340,99 @@ backend、全新数据目录、真实注册与 TXT 导入），`page.route` 只�
   `must-fix`，P2、P3 只保留 A，第 9 节去掉 B 的分支（单元第 1、3 项，浏览器 E1–E3，变异 M6）。F1、F4、F6–F13 与其余目标不变。
 - 2026-11-14（D1 记录提交 `227df0a` 之后）：用户对 D2 选 (a)，不重开 R6 第 13 节第 7 条，保持现状。F6 维持“已签收、不重开”，
   目标与测试计划不变。决定已齐，下一步是第 10 节第 3 步的红测；实施由协调会话排期。
+
+## 13. 实施补充（2026-11-14）
+
+协调会话要求在本分支先写红测、再按第 10 节分四个提交实现。实施中确定或调整的细节如下，第 7 节的目标不变。
+
+1. **P1、P3、P4 的落点**。`readerProgressPayload` 增加 `chapters` 与 `getStoredProgress` 两个输入。给了目录时，载荷必须指向这本书的
+   一行（行的 `bookId` 等于载荷的 `bookId`，沿用 `readerCatalogRow` 的规则）：有可见快照时取快照那一行；否则取 `currentIndex` 那一行。
+   `chapter` 就是这一行的正文（序号相同，两边都有 id 时 id 也相同）时，位置照旧取视口；不是（加载中，或在另一章之后失败）时写这一行
+   的章首。没有这本书的目录行时返回 null，不保存。不给目录的旧调用方行为不变。
+2. **P2、P3 的位置补充**。没有正文的目标章，如果已存进度（`reader.cachedProgress`）就是这一行，沿用它的 offset 与本章比例，否则写章首。
+   上游失败期间不改章节内位置（W5），这一条让“续读的那一章加载失败、随后离开”不会把原来的位置覆盖成章首；第 5 节 F4“写章首”只对
+   新跳到的章成立。
+3. **音频**。`currentAudioProgressPayload` 用的是 `chapter` 与 `currentIndex`，失败或加载中会错配。`useReaderLocalProgress` 只在这个
+   现成载荷指向它序号那一行时采用（`readerProgressNamesCatalogRow`），否则按第 1 条处理。
+4. **P2 的时机**。加载器在 `saveAfterLoad: true` 的导航失败后保存一次（错误页量好之后）；连续模式等失败窗口的事务结束再保存，
+   因为事务进行中 `isBlocked` 会挡住保存。首次加载失败不立即保存：Reader 的 `getPayload` 与本地 `apply` 不再要求已有加载过的 `chapter`，
+   隐藏、离开、卸载时按第 1 条写目标行。初始加载、外部进度同步、“重新载入章节”、被中止或取代的加载失败时都不保存。
+5. **P6**。目录面板点当前章且当前章失败（`chapterLoadError` 非空、不是书籍加载失败）时调用
+   `loadChapter(index, 0, { refresh: true, saveAfterLoad: true })`：与其他目录跳转一样成功后保存，不弹“章节已重新载入”（上游目录点击成功
+   不提示；工具栏重试的提示不变）。书籍加载失败时目录为空，它的重试仍是 R5 的整本重载。
+6. **P7 的范围**。Reader 里所有不等待结果的保存调用改走 `saveProgressQuietly`；`useReaderNavigation` 自己吞掉拒绝（单元覆盖）。实施时
+   另发现：加载成功后 `saveAfterLoad` 的保存若被拒绝，异常会落进加载器的失败分支，把刚加载成功的章节显示成错误页。这同样属于“进度保存
+   失败不得影响阅读”，在 P7 的提交里一并修正并加了单元用例。
+7. **测试调整（不是弱化）**：
+   - `readerLocalProgress.test.mjs` 的夹具目录行原来是空对象，没有 `id`、`bookId`、`index`；改成与 `/books/:id/chapters` 同形的行，断言不变。
+   - 9.1 第 7 项（换书后目录失败）由 `readerFailureProgressPayload.test.mjs` 的换书用例覆盖：P4 的校验在载荷里，不在书籍加载里。
+   - 9.2 的 E6 并入 E1（失败时目录点一次只请求一次，源恢复后再点显示第六章）；新增 E5b（`PUT /api/progress` 返回 500 时仍能换书）。
+   - 9.2 的 E7 没有实现：失败的相邻章总是窗口的最后一块、很短，滚到文档底部也不能让它成为顶部可见块（错误面合同第 4.5 节同样只能
+     把按钮放到 y=285/406）。F7 由读代码与快照单元用例覆盖。
+8. **模拟接口合同**。8 个模拟合同的目录行不带 `bookId`（mobile、settings-position、text-modes、tts、deep-page、inline-cache、
+   source-switch、audio），在新规则下这些页面不再产生进度载荷。逐一核对过，它们都不断言进度写入（只桩接 `PUT /progress`）；真实接口的
+   目录行一定带 `bookId`，错误页 R1 标题与标签页标题早已依赖这一点。记录进度写入的 continuous 合同目录行带 `bookId: 1`，照常覆盖。
+
+## 14. 实施与验证（2026-11-14）
+
+| 提交 | 阶段 | 内容 |
+| --- | --- | --- |
+| `825fe0e` | 测试前置 | `useReaderShelf.js` 的两个工具模块导入补 `.js` 后缀，让 `node --test` 能加载它；Vite 行为不变（构建产物与 `9602dc4` 相同，SW 构建号同为 `e5c767f8429a3a17`）。 |
+| `2f25981` | 红测 | 9.1 的单元用例（新增 16 条，13 条红、3 条对照）与 `scripts/smoke/reader-failure-progress-contract.mjs`（E1–E5b，33 例）。 |
+| `9d3bc11` | 实现 | P1、P3、P4、P7：载荷只指向这本书的一行；没有正文的章写章首或沿用同一行的已存位置；音频载荷校验；不等待结果的保存吞掉拒绝；加载成功后的保存失败不再变成错误页。 |
+| `8f7d14a` | 实现 | P5：书架换书前的保存失败不阻止换书。 |
+| `614745a` | 实现 | P6：目录点当前失败章重新加载它。 |
+| `cf73ae5` | 实现 | P2（D1-A）：导航失败后保存目标行一次，连续模式等失败窗口结束；首次加载失败在离开时写目标行。 |
+| `86d9974`、`abfa7a5` | 合并 | origin/main `b563af7`（设置写入取消修复与本合同）与 `0584ae7`（其发布记录）。两次都无冲突；`git diff origin/main -- backend Dockerfile` 与依赖锁文件为空。 |
+
+**单元**（`node --test`，沙箱外）：
+
+| 代码 | 结果 |
+| --- | --- |
+| `2f25981` | 1015 条中 1002 通过、13 条失败，全部是新增红测：载荷纯函数 3 条（P1/P3 错配、已存位置、P4 他书目录行与空目录），Reader 载荷 4 条（目标行、音频覆盖、换书、续读位置），加载器 3 条（P2 两条、P7 成功后保存被拒），书架 1 条（P5），目录 1 条（P6），导航 1 条（P7，node 以 `unhandledRejection` 报出，指向 `useReaderNavigation.js:214`）。对照：P2 的初始加载/重载/中止/取代不保存、载荷快照与已加载章不变、目录对健康章与他章照常跳转，均通过。 |
+| `cf73ae5` | 1015/1015。`npm run build` 通过（SW 构建号 `52e01a9cbbce4076`、64 个预缓存文件），只有既有的 chunk 大小提示。 |
+
+**浏览器**：本 worktree 的 go1.26.11 二进制（合并 main 后重新构建）加 `vite build` 生产前端，全新的 data/cache/library 目录与随机 JWT secret
+（未输出），红测基线监听 `127.0.0.1:18621`（`2f25981` 的前端），修复后监听 `:18631`。Playwright 1.61.1，chromium-headless-shell 1228，
+Node v26.4.0，服务与浏览器都在沙箱外。
+
+`reader-failure-progress-contract.mjs`（真实服务，33 例）：
+
+| 用例 | 红测基线 | 修复后 |
+| --- | --- | --- |
+| E1 page、flip × 3 视口 | 全部 FAIL：失败后服务端仍是第 4 行；隐藏、目录点击、离开写出 `5:<第4行id>:第五章 前邻@0` 全部 400，并有 pageerror；目录点失败章 0 次请求，源恢复后再点也不显示第六章 | 全部 PASS：失败后服务端即为 `5:<第5行>`；所有写入 2xx 且带第 5 行 id；目录点击重试一次，源恢复后显示第六章；离开后服务端为第 5 行；无 pageerror |
+| E1 scroll、scroll2 × 3 视口 | 全部 FAIL：失败后服务端仍是第 4 行（没有立即保存）；目录点失败章不重试 | 全部 PASS |
+| E2 page、scroll × 3 视口 | 全部 FAIL：首次加载失败后离开，服务端没有进度行 | 全部 PASS：`5:<第5行>@0` |
+| E3 page、scroll × 3 视口 | 全部 FAIL：加载中隐藏写出 `5:<第4行id>@0`（1440）或 `@1597`（手机），400 | 全部 PASS：`5:<第5行>@0`，2xx |
+| E4 page × 3 视口 | 全部 FAIL：为新书写出上一本书的章节（400），新书本地快照与书架卡片变成 `4:第五章 前邻`；390×844 目录恢复后刷新打开到第 2 行 scrollTop 2041 | 全部 PASS：没有任何新书写入，快照与卡片干净，刷新后停在新书第 0 行 |
+| E5、E5b page × 3 视口 | 全部 FAIL：换书停在 `?chapter=5`，控制台 `AxiosError`（400；E5b 为 500） | 全部 PASS：换到目标书 |
+
+合计：红测基线 0/33，修复后 33/33。红测基线上 390×844 page 有一次离开时页面上下文丢失，加了容错与主框架导航记录后重跑手机 8 例，
+失败点只剩断言，记录到的都是 SPA 路由变化。
+
+回归（修复后，同一服务 `:18631`）：错误页合同 48/48、运行标题 24/24、连续阅读、桌面面板正文控件 120/120、移动端（桌面、手机、自适应
+与强制移动 iPad、夜间元素）、TTS 五个视口（1440×900、390×844、360×800、1024×1366、1366×1024）、openreader-smoke 三视口、文本模式、
+书架刷新进度三视口、标签页标题（三视口 × navigation/auth/remote/shell）、EPUB（真实服务，三视口）、音频、重新认证四视口
+（`oldProgressWrites=0`）、桌面 flip 账号设置 9/9 与晚到设置 7/7、`reader-progress-multiclient-contract`（自建真实服务：三视口双客户端 CAS、
+WebSocket 收敛、冷恢复、WebDAV 镜像，加三视口 ingress）全部通过。服务日志 11645 行：10077 个 200、51 个 201，691 个 401 全部是模拟
+上下文的 `/ws/sync`（假 token），没有 400，没有 5xx，没有 panic。
+
+**临时变异**（只改工作区，跑对应单元后立即 `git checkout` 还原，未提交，还原后工作树干净）：
+
+| 变异 | 改动 | 结果 |
+| --- | --- | --- |
+| M1 | 载荷忽略目录（退回“`chapter` + `currentIndex`”） | 载荷用例 7 条失败，对照通过 |
+| M2 | 书架换书等待保存并抛错 | P5 失败 |
+| M3 | 目录点当前失败章改回章内跳转 | P6 失败 |
+| M4 | 接受他书的目录行 | P4 两条失败 |
+| M5a / M5b | 导航不吞拒绝 / 加载器成功后保存被拒时重新抛出 | P7 导航用例 / P7 加载器用例失败 |
+| M6 | 导航失败后不保存 | P2 两条失败 |
+
+浏览器层面的变异没有单独构建：红测基线本身就是 M1–M6 的组合，修复后的 33 例与其一一对应。
+
+**其余门**：Go `test`/`vet`/`race` 跳过：本分支没有改后端，合并后的后端与 main（`0584ae7`）逐字节相同，后端门由 main 的发布 run 负责。
+依赖 advisory、Compose 与卷门跳过：依赖、Dockerfile、数据格式都没有改，卷门只在 Actions 上运行。实现提交改了 `frontend/**`，合入 main
+会触发镜像发布，由协调会话统一决定。
+
+**状态**：P1–P7 **implementation-complete / regression-validated**。Git：分支 `claude/reader-failure-progress-inventory`，未合入 main。镜像：
+未构建，未推送。生产：未访问，未操作。
