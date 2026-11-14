@@ -8,6 +8,7 @@
 分类：F1 载荷身份、F9 换书后目录失败、F10 书架换书被阻断为 must-fix（P0）；F11 目录点当前失败章重试、F12 未处理的 Promise 拒绝为 must-fix；F4 失败章写章首为 acceptable-change；F7、F8、F13 aligned；F6（连续模式失败后滚进后一章）已签收，不重开。待用户决定：D1 失败章是否成为已存进度（建议按上游），D2 是否重开 R6 第 13 节第 7 条（建议不重开）。
 观察：keepalive 保存会清掉本地 pending 标记，与阅读进度 P2“本地 pending 快照必须保留”不符，另行盘点。
 状态 **contract-only / awaiting-user-decision**；未改应用代码，镜像未构建，生产未访问。
+决定（2026-11-14，盘点提交 `feeb256` 之后）：用户对 D1 选 A，按上游把进度改到失败章；F2、F3、F5 改判 must-fix，目标与测试只保留 A（合同第 12 节）。D2 仍待定。状态 contract-only / awaiting-user-decision（D2）。
 
 ## 2026-11-13 P2 Index manifest 显示方式按上游 `fullscreen`（W19 用户决定）
 

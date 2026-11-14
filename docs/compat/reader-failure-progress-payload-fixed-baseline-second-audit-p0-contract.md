@@ -1,7 +1,8 @@
 # Reader 失败态进度载荷盘点（P0）
 
-状态：**contract-only / awaiting-user-decision**（只写文档，不改应用代码）。基线 main `9602dc4`，分支
-`claude/reader-failure-progress-inventory`。第 4 节的真实浏览器实测用的是会话 scratchpad 里的临时探针，没有入库。
+状态：**contract-only**（只写文档，不改应用代码）。D1 已由用户决定为 A，按上游把进度改到失败章（2026-11-14，第 8、12 节）；
+D2 待用户决定。基线 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，盘点提交 `feeb256`。第 4 节的真实浏览器实测
+用的是会话 scratchpad 里的临时探针，没有入库。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径 `/private/tmp/changshengyu-reader-dev`
 已被系统清理，本次从本机持久克隆 `git archive fa22f27` 出 `web/src` 与 `BookController.kt` 到 scratchpad 阅读。
@@ -179,12 +180,12 @@
 | # | 场景 | 上游 | 当前 | 判定 |
 | --- | --- | --- | --- | --- |
 | F1 | 载荷身份：分页失败（O1）与任一模式加载中（O8） | 进度只有目录 index，标题由服务端按目录行取，不会错配 | `目标序号 + 上一章 id/标题`（offset 甚至按上一章正文算），服务端 400；本地快照和书架投影在离开 Reader 前显示“目标序号 + 上一章标题”（A1、A2、A9） | **`must-fix`（P0）**，与 D1 无关 |
-| F2 | 失败章是否成为已存进度 | 是：W1 在请求时写目标章，W4 离开时再写（U1） | 分页因 F1 被拒，服务端停在上一次成功位置（A1、A2）；连续模式写失败章 `@0`（A3） | **待用户决定 D1**。建议 A（按上游）：分页现状 `must-fix`，连续模式 `aligned` |
-| F3 | 首次加载即失败 | 目标章（W1） | 不写（A4） | 随 D1：A 下 `must-fix`（触发点写目标章）；B 下 `aligned` |
+| F2 | 失败章是否成为已存进度 | 是：W1 在请求时写目标章，W4 离开时再写（U1） | 分页因 F1 被拒，服务端停在上一次成功位置（A1、A2）；连续模式写失败章 `@0`（A3） | D1 已决定为 A（按上游）：分页现状 **`must-fix`**，连续模式 `aligned` |
+| F3 | 首次加载即失败 | 目标章（W1） | 不写（A4） | **`must-fix`**（D1-A）：在隐藏、离开、卸载等触发点写目标章 |
 | F4 | 失败章的章内位置 | 不更新 `bookChapterProgress@`，保留上一章的偏移，再打开时套在失败章上 | 写 offset 0、本章比例 0 | `acceptable-change`（运行时适配：OpenReader 按章在服务端存位置，失败章没有可定位的正文；不复现把上一章偏移套到另一章的上游缺陷） |
-| F5 | 写入时机 | 请求时（W1）与离开时（W4） | 失败本身不写，只在隐藏、离开、滚动同步等触发点写；手机连续模式的自动写入取决于错误块出现后的滚动事件（A3） | 随 D1：A 下 `must-fix`（路由导航失败后立即写一次，与成功导航的 `saveAfterLoad` 对称）；B 下不适用 |
+| F5 | 写入时机 | 请求时（W1）与离开时（W4） | 失败本身不写，只在隐藏、离开、滚动同步等触发点写；手机连续模式的自动写入取决于错误块出现后的滚动事件（A3） | **`must-fix`**（D1-A）：路由导航失败后立即写一次，与成功导航的 `saveAfterLoad` 对称 |
 | F6 | 连续模式目标章失败后滚进后一章 | 当前章与进度冻结在失败章，直到下一次成功加载（U2） | 切换到后一章并写后一章（O4） | 已签收（错误面合同第 13 节第 7 条，已发布），**不重开**；D2 列出供用户确认 |
-| F7 | 连续模式相邻章失败，滚进失败块 | 写失败章 + 块内段落偏移（U3） | 写失败章目录行 + 块内偏移（实际为 0） | `aligned`（D1 选 B 时同 F2 处理） |
+| F7 | 连续模式相邻章失败，滚进失败块 | 写失败章 + 块内段落偏移（U3） | 写失败章目录行 + 块内偏移（实际为 0） | `aligned` |
 | F8 | 首次挂载目录失败 | 不改进度（U4、U5） | 不写（O6） | `aligned` |
 | F9 | Reader 内换书后目录失败 | 新书进度不变（U6） | 为新书写上一本书的章节身份、序号与偏移（400）；新书本地快照与书架卡片变成上一本书的章节；目录恢复后刷新可能按它打开到错误位置（A7、A8） | **`must-fix`（P0）** |
 | F10 | 失败中从书架换书 | `changeBook` 不等任何保存 | `select` 等待普通保存，400 时抛出，换书没有发生（A5） | **`must-fix`（P0）**：保存是尽力而为，任何保存失败都不得阻止换书 |
@@ -211,14 +212,12 @@ P1. 载荷身份：进度载荷的 `chapterId`、`chapterIndex`、`chapterTitle`
   规则）。`currentIndex` 与最近一次成功加载的 `chapter` 不是同一章时（加载中、失败、Reader 内换书后目录未到），不得用 `chapter`
   的 id/标题配 `currentIndex`；offset 与比例只能来自同一章的正文，没有该章正文时为 0。
 
-P2. 失败章（按 D1 二选一，建议 A）：
-  - **A（按上游）**：当前章失败（主错误页，或连续模式当前块是错误块）时，载荷为 `currentIndex` 的目录行 + offset 0 + 本章比例 0
-    （整书比例 `currentIndex / 总章数`）。一次路由导航（`saveAfterLoad: true`）失败后立即保存一次；首次加载失败不立即保存，之后的
-    隐藏、离开、卸载等触发写同一载荷。离开后再打开停在失败章。
-  - **B（保留上一次成功位置）**：失败期间不保存，连续模式当前块是错误块时也不保存；离开后再打开回到上一次成功读到的位置。
-    作为用户要求的差异记录。
+P2. 失败章（D1 已决定为 A，按上游）：当前章失败（主错误页，或连续模式当前块是错误块）时，载荷为 `currentIndex` 的目录行
+  + offset 0 + 本章比例 0（整书比例 `currentIndex / 总章数`）。一次路由导航（`saveAfterLoad: true`）失败后立即保存一次；首次加载
+  失败不立即保存，之后的隐藏、离开、卸载等触发写同一载荷。离开后再打开停在失败章，书架显示失败章。（未选的 B“保留上一次成功
+  位置、失败期间不写”不实现。）
 
-P3. 加载中：正文返回前的任何保存，A 下写目标章目录行 + 0，B 下不写；两种都不得写出 P1 禁止的组合。
+P3. 加载中：正文返回前的任何保存都写目标章目录行 + offset 0 + 本章比例 0，不得写出 P1 禁止的组合。
 
 P4. 目录未知：当前书的目录行未知（目录失败，或 Reader 内换书后目录尚未到达）时不保存。任何保存都不得把另一本书的章节身份、
   序号或偏移写进当前书的服务端进度、本地 scoped 快照或书架投影。
@@ -236,12 +235,13 @@ P8. 不变：第 6 节各项；不新增 API、数据库字段、浏览器存储
 
 ## 8. 待用户决定
 
-- **D1（F2、F3、F5、P2、P3）**：当前章加载失败时，已存进度要不要改到失败章？
+- **D1（F2、F3、F5、P2、P3）（已决定，2026-11-14）**：当前章加载失败时，已存进度要不要改到失败章？
   - (A) **按上游（建议）**：改到失败章（目录行、章首）。书架显示失败章，离开后再打开停在失败章，可以直接重试；与运行标题、标签页
     标题一样以“目标章”为准。连续模式现状（A3）已经如此。
   - (B) 保留上一次成功读到的位置：失败与加载中都不写进度，再打开回到上一章原位置。与上游不同，需作为用户要求的差异记录；连续
     模式现状（A3）也要改成不写。
   - 无论选哪一个，F1、F9、F10、F11、F12 都要修。
+  - **用户选 (A)**：按上游改到失败章。F2、F3、F5 因此判 `must-fix`，P2、P3 只保留 A，第 9 节的测试按 A 写。
 - **D2（F6）**：连续模式目标章失败后滚进后一章，要不要重开已发布的 R6 第 13 节第 7 条，改成按上游在目标章仍失败时冻结当前章和
   进度？
   - (a) **不重开（建议）**：保持现状，当前章、运行标题、目录高亮和进度跟随实际正在读的章节。上游的冻结来自单个 `this.error` 标志
@@ -254,14 +254,13 @@ P8. 不变：第 6 节各项；不新增 API、数据库字段、浏览器存储
 
 1. `frontend/tests/readerProgressPersistence.test.mjs`（或新增 `readerFailureProgressPayload.test.mjs`）：载荷纯函数（例如
    `readerProgressPayload` 增加 `book`、`chapters` 输入，或新函数 `readerProgressIdentity`）：
-   - `chapter` 为第 4 行对象、`currentIndex` 为 5、没有快照：A 得到第 5 行的 id 与标题、offset 0、本章比例 0；B 得到 null。现状返回
-     第 4 行 id，**红**。
+   - `chapter` 为第 4 行对象、`currentIndex` 为 5、没有快照：得到第 5 行的 id 与标题、offset 0、本章比例 0。现状返回第 4 行 id，**红**。
    - 目录行属于另一本书（行的 `bookId` 不等于 `book.id`）：null（P4）。**红**。
    - 快照存在、`chapter` 与 `currentIndex` 同章：结果与现状相同（对照，绿）。
 2. `frontend/tests/readerLocalProgress.test.mjs`：`currentPayload()` 在上述两种错配输入下符合 P1/P4；载荷为 null 时 `apply()` 不调用
    `reader.applyProgress`、不改书架投影。**红**。
-3. `frontend/tests/readerChapterLoader.test.mjs`：`saveAfterLoad: true` 的加载失败后，A 调用一次 `saveProgress({ force: true })`
-   （**红**），B 不调用（绿，作对照）；`saveAfterLoad: false` 的失败不立即保存；`AbortError` 与被取代的加载不保存。
+3. `frontend/tests/readerChapterLoader.test.mjs`：`saveAfterLoad: true` 的加载失败后调用一次 `saveProgress({ force: true })`，载荷为
+   第 5 行目录行、offset 0（**红**）；`saveAfterLoad: false` 的失败不立即保存；`AbortError` 与被取代的加载不保存（对照，绿）。
 4. `frontend/tests/readerShelf.test.mjs`：`saveProgress` 拒绝（400 与网络错误两种）时 `select(item)` 仍调用一次 `router.push`，目标为
    所选书，且没有未处理拒绝。**红**。
 5. `frontend/tests/readerToc.test.mjs`（或 `readerNavigation.test.mjs`）：当前章处于失败状态时 `jump(currentIndex)` 走重新加载
@@ -280,10 +279,10 @@ backend、全新数据目录、真实注册与 TXT 导入），`page.route` 只�
 否则看不到 400（第 4.3 节）。视口 1440×900（鼠标）、390×844 与 360×800（`isMobile + hasTouch`），模式 page、flip、scroll、scroll2。
 
 - E1（P1、P2、P7）：第 4.1 节的步骤。断言：每一步都没有状态为 400 的 `PUT /api/progress`，没有 pageerror；每个
-  `chapterIndex: 5` 的载荷都带第 5 行 id（A）或失败期间没有写入（B）；离开后服务端为 A `5:<第5行>:第六章 失败@0`，B 为第 4 行的
-  基线位置。预期红点：page、flip 三视口的 400 与 pageerror（A1、A2）；A 下离开后的服务端仍是第 4 行。
-- E2（P2，只在 A 下）：首次打开 `?chapter=5` 即失败，离开后服务端为第 5 行 `@0`。预期红：现状不写（A4）。
-- E3（P3）：第 5 行正文挂起 12s，显示 `正在加载章节...` 时隐藏：A 写第 5 行目录行 `@0` 且为 2xx，B 不写。预期红：A9 的 400。
+  `chapterIndex: 5` 的载荷都带第 5 行 id；失败后（离开之前）服务端已是 `5:<第5行>:第六章 失败@0`，离开后仍是。预期红点：page、flip
+  三视口的 400 与 pageerror（A1、A2），离开后的服务端仍是第 4 行。
+- E2（P2）：首次打开 `?chapter=5` 即失败，离开后服务端为第 5 行 `@0`。预期红：现状不写（A4）。
+- E3（P3）：第 5 行正文挂起 12s，显示 `正在加载章节...` 时隐藏：写第 5 行目录行 `@0` 且为 2xx。预期红：A9 的 400。
 - E4（P4）：从书 A 第 4 行在 Reader 内换到目录 500 的书 B，再隐藏：没有任何 bookId 为 B 的写入；B 的本地快照与书架卡片不出现
   `第五章 前邻`；目录恢复后刷新，B 停在自己的位置（第 0 行，scrollTop 0）。预期红：A7 的 400 与快照污染，A8 在 360×800 打开到第 2 行。
 - E5（P5）：page 模式失败时从 Reader 书架换书，路由变为 `/books/<目标>/read`；再让 `PUT /api/progress` 返回 500（`page.route`）重复
@@ -299,18 +298,18 @@ backend、全新数据目录、真实注册与 TXT 导入），`page.route` 只�
   `bookshelf-refresh-progress-contract`、`openreader-smoke`。
 - 临时变异（只改工作区，验证后立即还原，不提交）：M1 载荷退回 `chapter` + `currentIndex` → E1、E3 红；M2 `select` 改回等待保存
   并抛错 → E5 红；M3 目录点当前失败章改回 `jumpWithinCurrentChapter` → E6 红；M4 去掉 P4 的目录行校验 → E4 红；M5 去掉不 `await`
-  调用的错误吞并 → E1 的 pageerror 断言红；A 下 M6 去掉“导航失败后立即保存一次” → E1 的离开前服务端断言红。
+  调用的错误吞并 → E1 的 pageerror 断言红；M6 去掉“导航失败后立即保存一次” → E1 的离开前服务端断言红。
 
 ## 10. 阶段
 
 1. **合同**：本文件、gap analysis 与 matrix，独立 `docs:` 提交（本切片）。
-2. **用户决定**：D1、D2。
+2. **用户决定**：D1 已决定为 A（2026-11-14）；D2 待定。
 3. **红测**：9.1 第 1–7 项、9.2 E1–E6，记录每个视口、模式的精确失败点，提交 `test: expose reader failure progress payload gaps`。
 4. **实现**（按风险拆提交，每个都让对应断言转绿）：
    - `fix: keep reader progress payloads on one catalog row`（P1、P3、P4、P7，P0）；
    - `fix: switch books from the reader shelf when the progress save fails`（P5）；
    - `fix: reload a failed current chapter from the reader catalog`（P6）；
-   - A 下另加 `fix: save the failed target chapter as reader-dev does`（P2）。
+   - `fix: save the failed target chapter as reader-dev does`（P2，D1-A）。
 5. **回归**：按 9.3 执行，包括临时变异。
 6. **记录**：提交号、各视口与模式的结果、变异结果和状态标签写回本文件、gap analysis 与 matrix。
 7. **发布**：实现提交改 `frontend/**`，命中 `docker-publish.yml` 的路径过滤，合入 main 会触发镜像发布；由协调会话统一决定。
@@ -332,3 +331,9 @@ backend、全新数据目录、真实注册与 TXT 导入），`page.route` 只�
    服务的合同里（9.2）。
 5. 错误面合同第 2.6 节与第 14 节末尾“上游在失败状态下不保存进度”的说法按本文第 2.4 节第 5 条纠正；运行标题合同第 10 节第 3 条
    的推断已由 A1、A2 证实：错配载荷确实发出，且被服务端以 400 拒绝。两处都补了指向本文的记录。
+
+## 12. 决定记录
+
+- 2026-11-14（盘点提交 `feeb256` 之后）：用户对 D1 选 (A)，按上游把进度改到失败章。由此 F2、F3、F5 由“待用户决定 / 随 D1”改判
+  `must-fix`，P2、P3 只保留 A，第 9 节去掉 B 的分支（单元第 1、3 项，浏览器 E1–E3，变异 M6）。F1、F4、F6–F13 与其余目标不变。
+- D2（是否重开 R6 第 13 节第 7 条）仍待用户决定，建议不重开。
