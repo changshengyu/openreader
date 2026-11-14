@@ -11,6 +11,19 @@
 决定（2026-11-14，盘点提交 `feeb256` 之后）：用户对 D1 选 A，按上游把进度改到失败章；F2、F3、F5 改判 must-fix，目标与测试只保留 A（合同第 12 节）。D2 仍待定。状态 contract-only / awaiting-user-decision（D2）。
 决定（2026-11-14，取代上段的状态）：用户对 D2 选 (a)，不重开 R6 第 13 节第 7 条，F6 维持已签收。决定已齐，状态 **contract-only**，下一步红测；未改应用代码，镜像未构建，生产未访问。
 
+## 2026-11-13 P2 设置 写入请求被客户端取消时不再返回或记录 500
+
+见[`user-setting-write-request-cancellation-p2-contract.md`](user-setting-write-request-cancellation-p2-contract.md)。基于 main `9602dc4`，分支 `claude/settings-write-client-cancel`。
+三次发布回归（run `43400193943`、`43407882444`、`43438877834`）里 `registration-limits-contract.mjs` 注册后立刻关页，
+首页首次加载的 `PUT /api/settings/{shelf,reader,search}` 被取消，访问日志记 `|500|`，GORM 打印 `settings.go:116 context canceled;
+sql: transaction has already been committed or rolled back` 与 `settings.go:120 context canceled`。根因：handler 把请求 context 的错误一律映射为 500；
+GORM 默认 logger 打印所有失败语句；提交后才取消时读回失败，已持久化的写入不广播 `settings_update`（违反既有设置写入合同 3.2）。
+上游把配置写进文件、没有取消路径，归为运行时适配和日志加固。D1 取消返回 500、D2 GORM 打印取消错误、D3 提交后丢事件为 must-fix；
+盘点出的同类写法 C2–C8（登录/注册发 token、登出、同步升级、管理员用户与书源操作、默认书源、单书源搜索 502、LocalStore 文件操作）
+只记录、留待后续；导入流程按各自合同固定的取消 500 不重开。计划：取消且未提交时不写响应、不写库、不广播；提交后取消时读回不随客户端取消、照常广播；
+GORM 不打印因语句自身 context 结束而失败的错误，保留 `文件:行号` 指向调用方。状态 **contract-only**。
+记录（2026-11-14）：合同 `b2d4a9e`、红测 `42a08c9`、实现 `65f85c5`。红测在 `9602dc4` 上：API 12 个子测试失败（T1 `settings.go:95`、T2 `settings.go:116` 含与发布回归逐字相同的拼接文本、T3 `settings.go:120` 且不广播），2 个对照通过；db `logger_contract_test.go` L1 三个子测试失败，L2 对照通过。实现后转绿。go1.26.11：`go test ./...` 31 个包与 `go vet` 通过；race `./api ./db ./services/...` 26 个包通过（api 1108.1 s），无数据竞争。本机真实服务交替跑 `registration-limits-contract.mjs`：`9602dc4` 12 次中 7 次出现设置 500（共 8 条）和 `settings.go:116` 取消日志，本分支 16 次全部通过、134 个设置 PUT 全为 200、无取消日志。前端未改。状态 implementation-complete / regression-validated；已推送分支，未合入 main，镜像未发布，生产未访问。
+
 ## 2026-11-13 P2 Index manifest 显示方式按上游 `fullscreen`（W19 用户决定）
 
 见[`browser-document-title-fixed-baseline-second-audit-p0-contract.md`](browser-document-title-fixed-baseline-second-audit-p0-contract.md)第 16 节。基于 main `684c849`。

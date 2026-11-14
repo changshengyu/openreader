@@ -21,7 +21,7 @@ import (
 func TestDatabaseLoggerNeverInterpolatesSessionIdentity(t *testing.T) {
 	var output bytes.Buffer
 	database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "logger.db")), &gorm.Config{
-		Logger: databaseLogger(log.New(&output, "", 0)),
+		Logger: NewLogger(log.New(&output, "", 0)),
 	})
 	if err != nil {
 		t.Fatal(err)
