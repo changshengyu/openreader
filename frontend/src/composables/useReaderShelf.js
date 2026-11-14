@@ -62,7 +62,13 @@ export function useReaderShelf(options) {
   async function select(item) {
     visible.value = false
     if (Number(item?.id) === Number(unref(options.currentBookId))) return
-    await options.saveProgress?.()
+    // reader-dev's changeBook waits for no save: saving the current position first is best effort and a rejected
+    // save must not stop the switch (failure progress contract P5).
+    try {
+      await options.saveProgress?.()
+    } catch {
+      // The local pending snapshot stays for the next sync.
+    }
     const progress = newestBookProgress(item, options.reader.progressByBook)
     const fallbackCount = Number(options.currentChapterCount?.() || 0)
     await options.router.push({
