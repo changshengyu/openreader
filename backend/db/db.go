@@ -12,7 +12,6 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	gormlogger "gorm.io/gorm/logger"
 
 	"openreader/backend/config"
 	"openreader/backend/models"
@@ -76,17 +75,6 @@ func sqliteDSN(path string) string {
 		separator = "&"
 	}
 	return path + separator + "_txlock=immediate"
-}
-
-// NewLogger returns the GORM logger Open installs, writing to writer.
-func NewLogger(writer gormlogger.Writer) gormlogger.Interface {
-	return gormlogger.New(writer, gormlogger.Config{
-		SlowThreshold:             200 * time.Millisecond,
-		LogLevel:                  gormlogger.Warn,
-		IgnoreRecordNotFoundError: false,
-		Colorful:                  true,
-		ParameterizedQueries:      true,
-	})
 }
 
 func AutoMigrate(database *gorm.DB) error {
