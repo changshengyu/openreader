@@ -23,6 +23,7 @@ GORM 默认 logger 打印所有失败语句；提交后才取消时读回失败�
 只记录、留待后续；导入流程按各自合同固定的取消 500 不重开。计划：取消且未提交时不写响应、不写库、不广播；提交后取消时读回不随客户端取消、照常广播；
 GORM 不打印因语句自身 context 结束而失败的错误，保留 `文件:行号` 指向调用方。状态 **contract-only**。
 记录（2026-11-14）：合同 `b2d4a9e`、红测 `42a08c9`、实现 `65f85c5`。红测在 `9602dc4` 上：API 12 个子测试失败（T1 `settings.go:95`、T2 `settings.go:116` 含与发布回归逐字相同的拼接文本、T3 `settings.go:120` 且不广播），2 个对照通过；db `logger_contract_test.go` L1 三个子测试失败，L2 对照通过。实现后转绿。go1.26.11：`go test ./...` 31 个包与 `go vet` 通过；race `./api ./db ./services/...` 26 个包通过（api 1108.1 s），无数据竞争。本机真实服务交替跑 `registration-limits-contract.mjs`：`9602dc4` 12 次中 7 次出现设置 500（共 8 条）和 `settings.go:116` 取消日志，本分支 16 次全部通过、134 个设置 PUT 全为 200、无取消日志。前端未改。状态 implementation-complete / regression-validated；已推送分支，未合入 main，镜像未发布，生产未访问。
+发布（2026-11-14）：main 由 `9602dc4` 快进到 `b563af7`（ls-remote 核验，未强推）；run `43555099584` 43/43 步成功，两平台 OS 门 `pass-with-unknown-origins`（16/16 包、110/109 个 APK 文件、74 组比较无待修复项，复审期限 2026-12-10），Go 公告门 go1.26.11 0 个发现（x/crypto pin 复审期限 2026-12-16），前端公告门 0 个发现；`b563af7`/`latest` = index `6b24081c…83dc4`（amd64 `67096879…`、arm64 `a46feac6…`），revision 为完整提交。状态 released / Docker-published / awaiting-device-verification；生产未访问。
 
 ## 2026-11-13 P2 Index manifest 显示方式按上游 `fullscreen`（W19 用户决定）
 
