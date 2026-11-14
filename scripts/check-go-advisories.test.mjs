@@ -5,7 +5,9 @@ import {evaluateSourceScan, parseMessages, runTool} from './check-go-advisories.
 
 const now = Date.parse('2026-10-16T03:00:00Z')
 // x/crypto 2f1f834330b2 is v0.58.0 with openpgp/ deleted; GO-2026-5932 names it as the fix since 2026-11-02.
+// v0.59.0 (2026-11-11) is the first tagged release with it; the gate no longer accepts the pseudo-version.
 const pin = 'v0.58.1-0.20261009181718-2f1f834330b2'
+const tagged = 'v0.59.0'
 const openpgpImports = ['', '/packet', '/armor', '/clearsign', '/errors', '/elgamal', '/s2k']
   .map(suffix => ({path:`golang.org/x/crypto/openpgp${suffix}`}))
 function fixture() {
@@ -49,24 +51,30 @@ test('no findings is valid, OSV record alone is not a finding',()=>{
   assert.equal(result.status,'pass')
   assert.equal(result.findings,0)
 })
-test('reviewed x/crypto fix pin passes clean, with no not-applicable items',()=>{
-  const result=check(withCrypto(pin))
+test('tagged x/crypto passes clean, with no pin review date or not-applicable items',()=>{
+  const result=check(withCrypto(tagged))
   assert.equal(result.status,'pass')
   assert.equal(result.findings,0)
-  assert.deepEqual(result.crypto,{version:pin,pinReviewUntil:'2026-12-16T00:00:00.000Z'})
+  assert.deepEqual(result.crypto,{version:tagged})
   assert.ok(!Object.hasOwn(result,'notApplicable'))
   assert.equal(result.goos,'darwin')
   assert.ok(result.limitations.includes('C/OS/Node/frontend not scanned'))
 })
-test('reviewed pin is accepted until 2026-12-16, then a tagged release is required',()=>{
+test('retired fix pin is rejected before and at its old 2026-12-16 deadline; the tagged release passes',()=>{
   const fresh=version=>f=>{withCrypto(version)(f);f.messages[0].config.db_last_modified='2026-12-15T00:00:00Z'}
-  assert.equal(check(fresh(pin),Date.parse('2026-12-15T23:59:59Z')).status,'pass')
-  assert.throws(()=>check(fresh(pin),Date.parse('2026-12-16T00:00:00Z')),/pin expired/)
-  assert.equal(check(fresh('v0.59.0'),Date.parse('2026-12-16T00:00:00Z')).status,'pass')
+  for(const at of ['2026-12-15T23:59:59Z','2026-12-16T00:00:00Z']) {
+    assert.throws(()=>check(fresh(pin),Date.parse(at)),/x\/crypto must be a tagged release/)
+    assert.equal(check(fresh(tagged),Date.parse(at)).status,'pass')
+  }
 })
-for(const version of [`${pin.slice(0,-1)}3`,'v0.58.1-0.20261010000000-2f1f834330b2','v0.59.0-rc.1',
+test('no dated x/crypto exception remains: the tagged release passes long after 2026-12-16',()=>{
+  const fresh=f=>{withCrypto(tagged)(f);f.messages[0].config.db_last_modified='2027-05-31T00:00:00Z'}
+  assert.equal(check(fresh,Date.parse('2027-06-01T00:00:00Z')).status,'pass')
+})
+for(const version of [pin,`${pin.slice(0,-1)}3`,'v0.58.1-0.20261010000000-2f1f834330b2','v0.59.0-rc.1',
   'v0.58.0+incompatible',`${pin}+incompatible`,'v0.58']) {
-  test(`x/crypto ${version} is neither a tagged release nor the reviewed pin`,()=>assert.throws(()=>check(withCrypto(version))))
+  test(`x/crypto ${version} is not a tagged release`,
+    ()=>assert.throws(()=>check(withCrypto(version)),/x\/crypto must be a tagged release/))
 }
 test('official repeated identical OSV is idempotent',()=>{
   assert.equal(check(f=>f.messages.push(structuredClone(f.messages[2]))).advisories,1)
