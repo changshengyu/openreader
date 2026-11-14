@@ -1,6 +1,6 @@
 # 用户配置写入的请求取消合同（P2）
 
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（2026-11-14，见第 9 节）。
 
 基于 main `9602dc4`，分支 `claude/settings-write-client-cancel`。固定上游
 `changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691` 的 `saveUserConfig` 把配置写进文件，
@@ -145,15 +145,17 @@ GORM logger 换成写入缓冲区的生产 logger，从而断言日志：
    `transaction has already been committed or rolled back`。
 3. T3（S3/W4）：`Create().After("gorm:commit_or_rollback_transaction")` 在提交后取消。三个 key 各一次：
    不是 500、行为新值、恰好一次 `settings_update` 且 `updatedAt` 与库中一致、响应为正常 200、日志无取消错误行。
-4. 对照（改前改后都通过）：不取消时 200 并广播一次；`Create().After("gorm:create")` 注入非 context 错误时
-   仍为 500 `failed to save setting`、行不变、无事件，且日志**有**这条错误（证明缓冲区确实接到生产 logger）。
+4. 对照（改前改后都通过）：不取消时 200 并广播一次；`Create().Before("gorm:commit_or_rollback_transaction")`
+   注入非 context 错误时仍为 500 `failed to save setting`、行不变、无事件，且日志**有**这条错误（证明缓冲区确实
+   接到生产 logger）。GORM 会把 `After("gorm:create")` 回调排到提交之后，所以注入点放在提交前。
 
-`backend/db/db_test.go`：
+`backend/db/logger_contract_test.go`（新增）：
 
 5. L1（红）：已取消 context 的查询、事务内 INSERT，以及直接传入的 `"context canceled; sql: transaction has already
    been committed or rolled back"` 形式，日志都为空。
 6. L2（对照）：context 有效时同样的 `sql.ErrTxDone` 仍打印；关闭的数据库错误仍打印且不含参数值（既有用例）；
-   `record not found` 仍打印；错误行与 Warn 行的位置指向 `db_test.go`；`LogMode(Silent)` 不打印。
+   `record not found`、慢 SQL 仍打印；错误行、慢 SQL 行与 Warn 行的位置指向测试文件 `logger_contract_test.go`；
+   `LogMode(Silent)` 不打印。
 
 测试需要从 `api` 包构造生产 logger，因此红测提交把 `databaseLogger` 改名导出为 `db.NewLogger`，不改行为。
 
@@ -168,3 +170,26 @@ GORM logger 换成写入缓冲区的生产 logger，从而断言日志：
 
 `cd backend && go test ./... && go vet ./...`；`go test -race -timeout 40m ./api ./db ./services/...`
 （端口测试需关闭沙箱）。前端未改动，跳过前端门与浏览器三视口。
+
+## 9. 实施与回归记录（2026-11-14）
+
+- 提交（分支 `claude/settings-write-client-cancel`，基于 main `9602dc4`）：合同 `b2d4a9e`、红测 `42a08c9`、实现 `65f85c5`。
+- 红测在 `9602dc4` 的实现上：API 12 个子测试失败，2 个对照通过。
+  - T1（三个 key）：500 `failed to save setting`，日志 `settings.go:95 context canceled`。
+  - T2（三个 key × 有/无行）：500。日志有两种：`settings.go:116 context canceled`（4 例），以及与发布回归逐字相同的
+    `settings.go:116 context canceled; sql: transaction has already been committed or rolled back`（2 例）。行与事件本来就不变（SQLite 已回滚）。
+  - T3（三个 key）：500，持久化后没有 `settings_update`，日志 `settings.go:120 context canceled`。
+  - db：L1 三个子测试失败（取消的查询、事务内取消的 INSERT、拼接形式与过期 deadline）。L2 四个对照和既有参数化日志测试通过。
+- 实现：`settings.go` 在读当前行前检查 context。读或 upsert 失败且 context 已结束时直接返回，不写响应。提交后用
+  `context.WithoutCancel(ctx)` 读回，广播一次，回 200。`backend/db/logger.go` 新增 `NewLogger`/`statementLogger`，
+  `Trace` 自行调用 `utils.FileWithLineNum`。同一批断言全部转绿，既有设置写入边界、CAS、`force` 和八路并发初写合同继续通过。
+- 编写测试时确认两点：首次写入时第一次读本来就打印 `settings.go:95 record not found`（`IgnoreRecordNotFoundError: false`，原有行为，本合同不改），
+  日志断言放行这一行；注入失败的回调放在提交前，原因见第 6 节第 4 条。
+- 回归（go1.26.11）：`go test ./...` 31 个包通过（另 8 个包无测试，api 122.3 s）；`go vet ./...` 通过；
+  `go test -race -timeout 40m ./api ./db ./services/...` 26 个包通过（另 5 个包无测试，api 1108.1 s、db 15.9 s），无数据竞争。前端未改动，跳过前端门。
+- 真实服务（本机，非 CI）：用同一份前端构建（SW `e5c767f8429a3a17`，64 个预缓存文件），每次全新数据目录、
+  `OPENREADER_INVITE_CODE=smoke-invite OPENREADER_USER_LIMIT=3`，交替运行 `registration-limits-contract.mjs`。
+  - `9602dc4`：12 次中 7 次出现设置写入 500，共 8 条（shelf 4、search 4），伴随 8 条 `settings.go:116` 取消日志（6 条拼接形式、2 条 `context canceled`）。
+  - 本分支：16 次全部通过，134 个设置 PUT 全为 200，没有 5xx，也没有取消日志。
+  - 本地没有碰到 W4（`settings.go:120`）的时序，由 T3 覆盖。
+- 状态 implementation-complete / regression-validated。未合入 main，镜像未发布，生产未访问。

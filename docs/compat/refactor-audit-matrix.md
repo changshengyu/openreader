@@ -6,6 +6,7 @@
 目标：`PUT /api/settings/:key` 在请求 context 结束时不写 500、不写库也不广播（提交前）或照常读回并广播一次（提交后）；GORM 不打印因语句自身 context
 结束而失败的错误，`文件:行号` 仍指向调用方。不改 `_txlock=immediate`、WAL、连接池、访问日志格式，不新增 499。盘点的 C2–C8 同类写法只记录。
 计划红测：`user_setting_request_cancellation_contract_test.go`（T1–T3 加对照）与 `db_test.go`（L1 加对照）。状态 **contract-only**。
+记录（2026-11-14）：合同 `b2d4a9e`、红测 `42a08c9`、实现 `65f85c5`。红测在 `9602dc4` 上：API 12 个子测试失败（T1 `settings.go:95`、T2 `settings.go:116` 含与发布回归逐字相同的拼接文本、T3 `settings.go:120` 且不广播），2 个对照通过；db `logger_contract_test.go` L1 三个子测试失败，L2 对照通过。实现后转绿。go1.26.11：`go test ./...` 31 个包与 `go vet` 通过；race `./api ./db ./services/...` 26 个包通过（api 1108.1 s），无数据竞争。本机真实服务交替跑 `registration-limits-contract.mjs`：`9602dc4` 12 次中 7 次出现设置 500（共 8 条）和 `settings.go:116` 取消日志，本分支 16 次全部通过、134 个设置 PUT 全为 200、无取消日志。前端未改。状态 implementation-complete / regression-validated；已推送分支，未合入 main，镜像未发布，生产未访问。
 
 ## 2026-11-13 当前切片：manifest 显示方式按上游 `fullscreen`、不锁方向（W19，P2）
 
