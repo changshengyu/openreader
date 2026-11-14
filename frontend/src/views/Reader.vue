@@ -1172,7 +1172,7 @@ const {
   canMatchBookmark: () => chapterFormat.value === 'text',
   onBookmarkNotFound: () => ElMessage.error('无法定位内容所在段落'),
   flashParagraph,
-  saveProgress: () => saveCurrentProgress(),
+  saveProgress: () => saveProgressQuietly(),
 })
 useReaderContentSearchIntent({
   request: computed(() => overlay.searchBookContentJump),
@@ -1218,7 +1218,7 @@ const {
     showTocDrawer.value = false
   },
   navigate: query => router.replace(readerRouteLocation(query)),
-  saveProgress: () => saveCurrentProgress(),
+  saveProgress: () => saveProgressQuietly(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
   cancelProgressSave: () => cancelProgressSave(),
   onVerticalPageSettled: () => settleVerticalPageScroll(),
@@ -1263,7 +1263,7 @@ const {
   getCurrentChapterPercent: currentChapterPercent,
   navigate: query => router.replace(readerRouteLocation(query)),
   applyLocalProgress: () => applyLocalProgressSnapshot(),
-  saveProgress: () => saveCurrentProgress(),
+  saveProgress: () => saveProgressQuietly(),
   scheduleProgressSave: delay => scheduleProgressSave(delay),
 })
 
@@ -1698,7 +1698,7 @@ const {
   updateLayout: updateFlipLayout,
   nextFrame,
   restorePosition: restoreReadingPosition,
-  saveProgress: () => saveCurrentProgress(),
+  saveProgress: () => saveProgressQuietly(),
   setRestoring: value => {
     restoringPosition.value = value
   },
@@ -1765,7 +1765,7 @@ const {
   currentVisibleParagraph,
   scrollBehavior: readerScrollBehavior,
   nextPage,
-  saveProgress: () => saveCurrentProgress(),
+  saveProgress: () => saveProgressQuietly(),
   notify: showReaderToast,
 })
 const {
@@ -1816,6 +1816,11 @@ const {
   getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
   ensureClientId: () => reader.ensureClientId(),
 })
+// Failure progress contract P7: progress saves are best effort, as reader-dev's saveBookProgress swallows every error.
+// Callers that do not wait for the result use this; the local pending snapshot stays for the next sync.
+function saveProgressQuietly(saveOptions) {
+  return saveCurrentProgress(saveOptions).catch(() => {})
+}
 const {
   goShelf,
   openBookInfo: openReaderBookInfo,
@@ -1841,7 +1846,7 @@ const {
   getCustomBgColor: () => reader.customBgColor,
   getLineHeight: () => reader.lineHeight,
   refreshBrowserCachedChapters: computeBrowserCachedChapters,
-  saveProgress: saveCurrentProgress,
+  saveProgress: saveProgressQuietly,
   navigate: routeLocation => router.push(routeLocation),
   openBookmarksOverlay: currentBook => overlay.openBookmark(currentBook, {
     createDraft: currentBookmarkDraft(),
@@ -1894,7 +1899,7 @@ const {
   updateLayout: updateFlipLayout,
   restorePosition: restoreReadingPosition,
   preloadNearby: preloadNearbyChapters,
-  saveProgress: saveCurrentProgress,
+  saveProgress: saveProgressQuietly,
   markProgressSaved,
   getCurrentProgress: currentProgressPayload,
   computeChapterWindow: computeShowChapterList,
@@ -2192,7 +2197,7 @@ useReaderPageLifecycle({
   cancelProgressSave,
   clearChapterLoadingTimer,
   stopAutoReading,
-  saveProgress: saveCurrentProgress,
+  saveProgress: saveProgressQuietly,
   onResize: handleResize,
   onWheel: handleReaderWheel,
   onScroll: () => {
@@ -2218,7 +2223,7 @@ useReaderPageLifecycle({
 })
 
 onBeforeRouteLeave(() => {
-  saveCurrentProgress({ force: true, background: true })
+  saveProgressQuietly({ force: true, background: true })
 })
 
 function nextFrame() {
@@ -2368,11 +2373,11 @@ function readerScrollBehavior() {
 }
 
 function handleReaderPageHide() {
-  saveCurrentProgress({ force: true, background: true })
+  saveProgressQuietly({ force: true, background: true })
 }
 
 function handleReaderVisibilityChange() {
-  if (document.hidden) saveCurrentProgress({ force: true, background: true })
+  if (document.hidden) saveProgressQuietly({ force: true, background: true })
 }
 
 function currentBookmarkParagraphContext() {

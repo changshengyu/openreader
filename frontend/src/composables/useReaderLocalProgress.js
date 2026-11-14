@@ -1,6 +1,7 @@
 import { unref } from 'vue'
 import {
   readerProgressBaseUpdatedAt,
+  readerProgressNamesCatalogRow,
   readerProgressPayload,
   readerProgressSaveKey,
 } from '../utils/readerProgressPersistence.js'
@@ -15,21 +16,33 @@ export function useReaderLocalProgress(options) {
     )
   }
 
+  function storedProgress(targetBookId) {
+    return options.reader.cachedProgress
+      ? options.reader.cachedProgress(targetBookId)
+      : options.reader.progressByBook[targetBookId]
+  }
+
   function currentPayload(snapshotOverride) {
     if (unref(options.isTemporaryReader)) return null
+    const chapters = unref(options.chapters)
+    // The audio player's payload is used only while it names the catalog row at its index (contract P1): after a
+    // failed or pending load `chapter` is still the previous audio chapter.
     const override = options.getCurrentPayload?.()
-    if (override) return override
+    if (override && readerProgressNamesCatalogRow(override, chapters)) return override
     const snapshot = arguments.length
       ? snapshotOverride
       : options.getVisibleSnapshot()
+    const bookId = unref(options.bookId)
     return readerProgressPayload({
-      bookId: unref(options.bookId),
+      bookId,
+      chapters,
       visibleSnapshot: snapshot,
       currentChapter: unref(options.chapter),
       currentChapterIndex: unref(options.currentIndex),
       currentOffset: snapshot ? 0 : options.getCurrentOffset(),
       currentChapterPercent: snapshot ? 0 : options.getCurrentPercent(),
-      totalChapters: unref(options.chapters).length,
+      totalChapters: chapters.length,
+      getStoredProgress: () => storedProgress(bookId),
     })
   }
 

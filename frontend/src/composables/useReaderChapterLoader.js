@@ -116,7 +116,9 @@ export function useReaderChapterLoader(options) {
       options.progressVersion.value += 1
       options.preloadNearby(targetIndex)
       if (loadOptions.saveAfterLoad) {
-        await options.saveProgress({ force: true })
+        // A progress save is best effort (failure progress contract P7): its rejection must not turn the chapter that
+        // just loaded into an error page.
+        await Promise.resolve(options.saveProgress({ force: true })).catch(() => {})
       } else {
         options.markProgressSaved(options.getCurrentProgress())
       }
