@@ -39,7 +39,7 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 	}
 
 	database, err := gorm.Open(sqlite.Open(sqliteDSN(cfg.DatabasePath)), &gorm.Config{
-		Logger: databaseLogger(log.New(os.Stdout, "\r\n", log.LstdFlags)),
+		Logger: NewLogger(log.New(os.Stdout, "\r\n", log.LstdFlags)),
 	})
 	if err != nil {
 		return nil, err
@@ -78,7 +78,8 @@ func sqliteDSN(path string) string {
 	return path + separator + "_txlock=immediate"
 }
 
-func databaseLogger(writer gormlogger.Writer) gormlogger.Interface {
+// NewLogger returns the GORM logger Open installs, writing to writer.
+func NewLogger(writer gormlogger.Writer) gormlogger.Interface {
 	return gormlogger.New(writer, gormlogger.Config{
 		SlowThreshold:             200 * time.Millisecond,
 		LogLevel:                  gormlogger.Warn,
