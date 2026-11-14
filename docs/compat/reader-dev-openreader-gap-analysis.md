@@ -1,5 +1,13 @@
 # Reader-dev vs OpenReader Gap Analysis
 
+## 2026-11-14 P2 其余 handler 在请求被客户端取消时不再返回或记录 5xx
+
+见[`request-cancellation-remaining-handlers-p2-contract.md`](request-cancellation-remaining-handlers-p2-contract.md)。基于 main `0584ae7`，分支 `claude/request-cancellation-remaining-handlers`，只改 `backend/api` 的 handler、测试与文档。
+来源是设置取消合同第 3.3 节的 C2–C8：登录/注册发 token 与登出（500）、同步升级认证（500）、管理员设为默认书源/重置书源/重置密码/删除用户/清理不活跃用户（500）、默认书源状态/保存/恢复（500）、单源搜索（502）、LocalStore 根初始化/列表/上传/下载/新建目录（500）。
+另查出三处误判：`requireAdmin` 把取消判成 403、`requireSourceEdit` 判成 500、LocalStore 改名判成 409；以及默认快照保存（和未配置时的初始化）在 SQLite 提交后用请求 context 读回并写 `defaultBookSources.json`，提交后取消时返回 500，镜像落后于 SQLite。
+上游 handler 不观察客户端断开，归为运行时适配。规则沿用设置切片：提交前取消不写库、不发事件、不写响应体、不返回 5xx；提交后取消时读回、镜像与广播用 `context.WithoutCancel`；鉴权与权限判断被取消时不写 401/403；访问日志不变，不新增 499。导入流程固定的取消 500 不重开（导入入口的根初始化保留 500）。
+待决定 D12：提交前被取消的登出不吊销会话（与现状相同；上游与前端的 fire-and-forget 登出都期望服务端完成），要完整处理还需改认证中间件，建议另开切片。状态 **contract-only**。
+
 ## 2026-11-14 P0 Reader 失败态进度载荷
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，只写文档。
