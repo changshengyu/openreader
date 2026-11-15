@@ -1,5 +1,16 @@
 # OpenReader Security Review Checklist
 
+2026-11-14 dependency maintenance (ahead of the 2026-12-16 x/crypto pin deadline):
+[`compat/dependency-advisory-x-crypto-tagged-release-p1-contract.md`](compat/dependency-advisory-x-crypto-tagged-release-p1-contract.md).
+x/crypto moves from the GO-2026-5932 fix pseudo-version (commit 2f1f834330b2) to v0.59.0, the first tagged release with
+the fix: its module zip has no openpgp/, it is outside the advisory's range, and the h1 matches sum.golang.org. Minimal
+version selection raises x/sys to v0.50.0 and x/text to v0.44.0. On the code paths used here their changes are hardening
+only (ParseUnixCredentials length check, Accept-Language separator guard; ParseDirent is not called). bcrypt, blowfish,
+sha3 and every x/text encoding package are byte-identical, and the three import graphs are unchanged. The gate no
+longer accepts the pseudo-version at any time: x/crypto must be a tagged release. Every finding still blocks and
+OpenPGP stays banned in every import graph. No new exceptions. Live Go (0 findings) and full-lock npm scans pass; bcrypt
+registration and WebDAV Basic pass in the isolated storage HTTP contract. Branch pushed, not merged or published yet.
+
 2026-11-12 release-blocker dependency maintenance:
 [`compat/dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md`](compat/dependency-advisory-go-1.26.11-maxbytesreader-p1-contract.md).
 GO-2026-6859 (CVE-2026-97054, net/http: when an HTTP/1 server's MaxBytesReader limit is exceeded, the reading side

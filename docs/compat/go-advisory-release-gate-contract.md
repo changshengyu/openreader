@@ -22,6 +22,7 @@
 **2026-11-03 起退役**，由 [`dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](dependency-advisory-x-crypto-openpgp-fix-p1-contract.md)
 取代：GO-2026-5932 于 2026-11-02 出现修复版本，第 1 条前提失效；x/crypto 固定到修复伪版本，门不再有不适用项，任何 finding
 都阻止发布，OpenPGP 族出现在任一依赖图即失败。以下为 2026-10-16 的历史裁决。
+2026-11-14：x/crypto 换成标签版本 `v0.59.0`，门删除固定伪版本特例、只接受标签版本（合入 main 后生效），见[`dependency-advisory-x-crypto-tagged-release-p1-contract.md`](dependency-advisory-x-crypto-tagged-release-p1-contract.md)。
 
 仅 GO-2026-5932 的纯模块级 x/crypto finding 可单列 not-applicable，必须同时满足：
 

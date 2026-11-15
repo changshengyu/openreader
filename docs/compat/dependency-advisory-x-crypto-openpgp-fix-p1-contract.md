@@ -122,6 +122,7 @@ govulncheck 版本、DB 14 天时效、Go 工具链、其它依赖、前端门�
 
 状态：**implementation-complete / regression-validated**，待合入 main 与可信 Actions；镜像未发布；生产未访问。
 固定项到期前（2026-12-16）需要换成包含 `2f1f834330b2` 的 x/crypto 标签版本，并删除门里的固定项常量与对应测试。
+2026-11-14：由 [`dependency-advisory-x-crypto-tagged-release-p1-contract.md`](dependency-advisory-x-crypto-tagged-release-p1-contract.md) 完成：x/crypto 换成 `v0.59.0`（第一个包含该修复的标签版本），门删除固定项常量与对应测试（分支 `claude/go-advisory-x-crypto-tagged-release`，合入 main 前本节的 D1 仍在 main 上生效）。
 
 ## 发布（2026-11-03）
 
