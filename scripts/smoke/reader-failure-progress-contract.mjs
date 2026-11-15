@@ -312,6 +312,49 @@ async function runInBook({ browser, token, userId, viewport, mode, results }) {
   }
 }
 
+// A failed neighbor already has a rendered block. A catalog press must load its row.
+async function runAdjacentCatalog({ browser, token, userId, viewport, mode, results, recover }) {
+  const label = `E8 ${viewport.label} ${mode} ${recover ? 'recover' : 'fail'}`
+  if (caseFilter && !caseFilter.test(label)) return
+  const failures = []
+  await setMode(token, mode)
+  const book = await importBook(token, `相邻目录 ${viewport.width} ${mode} ${recover}`)
+  const { context, page, log } = await openContext(browser, viewport, token, userId, mode)
+  let requests = 0
+  let fail = true
+  await page.route(new RegExp(`/api/books/${book.id}/chapters/1/content$`), route => {
+    requests++
+    return fail ? route.fulfill({ status: 502, json: CONTENT_FAILURE }) : route.continue()
+  })
+  try {
+    await page.goto(`${targetUrl}/books/${book.id}/read?chapter=0`)
+    const block = page.locator('.chapter-content[data-index="1"]')
+    await block.locator('.chapter-inline-error').waitFor({ state: 'attached' })
+    await pressTool(page, viewport, '目录')
+    const target = page.locator('.toc-item').filter({ hasText: TITLES[1] })
+    if (await target.evaluate(el => el.classList.contains('active'))) throw new Error('fixture selected chapter 1 before press')
+    const before = requests
+    fail = !recover
+    await target.click()
+    await page.waitForFunction(() => !document.querySelector('.toc-item')?.offsetParent)
+    if (recover) {
+      const text = block.locator('[data-reader-block]:not(.chapter-inline-error *)').first()
+      if (!await text.waitFor({ state: 'attached', timeout: 6000 }).then(() => true, () => false)) failures.push('recovered text absent')
+    }
+    await sleep(1500)
+    if (requests !== before + 1) failures.push(`catalog press made ${requests - before} target reads, expected 1`)
+    if (!recover && !await block.locator('.chapter-inline-error').count()) failures.push('target error absent')
+    const progress = await serverProgress(token, book.id)
+    if (Number(progress?.chapterId) !== Number(book.chapters[1].id)) failures.push(`target progress missing: ${describe(progress)}`)
+    writeChecks(log, failures, label)
+  } catch (error) {
+    failures.push(`harness: ${error.message.split('\n')[0]}`)
+  } finally {
+    results.push({ label, failures, writes: log.writes.map(describeWrite), navigations: log.navigations })
+    await context.close()
+  }
+}
+
 async function runFirstLoad({ browser, token, userId, viewport, mode, results }) {
   const label = `E2 ${viewport.label} ${mode}`
   if (caseFilter && !caseFilter.test(label)) return
@@ -496,6 +539,9 @@ const browser = await openSmokeBrowser()
 const results = []
 try {
   for (const viewport of VIEWPORTS) {
+    for (const mode of CONTINUOUS) {
+      for (const recover of [false, true]) await runAdjacentCatalog({ browser, token, userId, viewport, mode, results, recover })
+    }
     for (const mode of MODES) await runInBook({ browser, token, userId, viewport, mode, results })
     for (const mode of ['page', 'scroll']) await runFirstLoad({ browser, token, userId, viewport, mode, results })
     for (const mode of ['page', 'scroll']) await runLoading({ browser, token, userId, viewport, mode, results })

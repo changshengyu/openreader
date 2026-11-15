@@ -416,3 +416,20 @@ test('keeps a successfully loaded chapter when its progress save is rejected (P7
   assert.equal(fixture.state.chapterLoaded.value, true)
   assert.ok(fixture.calls.some(call => call[0] === 'window'), 'the continuous window is still computed')
 })
+
+test('switching books while a retried chapter saves leaves the new window alone', async () => {
+  let startSave, finishSave
+  const saving = new Promise(resolve => { startSave = resolve })
+  const saved = new Promise(resolve => { finishSave = resolve })
+  const fixture = createController({
+    saveProgress: () => { startSave(); return saved },
+  })
+  fixture.state.isContinuousScrollRead.value = true
+  const retry = fixture.controller.load(1, 0, { refresh: true, saveAfterLoad: true })
+  await saving
+  fixture.controller.invalidate()
+  finishSave()
+  assert.equal(await retry, false)
+  assert.equal(fixture.state.chapterLoaded.value, false)
+  assert.equal(fixture.calls.some(([event]) => event === 'window'), false)
+})
