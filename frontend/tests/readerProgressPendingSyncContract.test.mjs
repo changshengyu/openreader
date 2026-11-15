@@ -178,6 +178,7 @@ async function openReader(t, { mode = 'page', elapseBeforeRequest = 2 } = {}) {
   const currentIndex = ref(1)
   const position = { offset: 1594, chapterPercent: 0.25, visible: null }
   const local = useReaderLocalProgress({
+    getMode: () => reader.mode,
     reader,
     bookshelf,
     bookId: ref(BOOK_ID),
