@@ -119,6 +119,7 @@ export function useReaderChapterLoader(options) {
         // A progress save is best effort (failure progress contract P7): its rejection must not turn the chapter that
         // just loaded into an error page.
         await Promise.resolve(options.saveProgress({ force: true })).catch(() => {})
+        if (!isCurrent()) return false
       } else {
         options.markProgressSaved(options.getCurrentProgress())
       }
