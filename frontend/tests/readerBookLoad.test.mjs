@@ -205,3 +205,19 @@ test('opening from a pending shelf entry preserves its unconfirmed progress', as
   assert.equal(fixture.calls.some(([event]) => event === 'server-progress'), false)
   assert.ok(fixture.calls.some(([event, progress]) => event === 'shelf-progress' && progress.pendingSync))
 })
+
+test('a late catalog error from an earlier visit cannot fail the reopened book', async () => {
+  let rejectCatalog
+  const fixture = createController({
+    loadCachedChapters: () => rejectCatalog
+      ? Promise.resolve({ data: [{ id: 1 }] })
+      : new Promise((_, reject) => { rejectCatalog = reject }),
+  })
+  const initial = fixture.controller.load()
+  fixture.bookId.value = 8
+  await fixture.controller.load()
+  fixture.bookId.value = 7
+  await fixture.controller.load()
+  rejectCatalog(new Error('first catalog failed'))
+  await initial
+})

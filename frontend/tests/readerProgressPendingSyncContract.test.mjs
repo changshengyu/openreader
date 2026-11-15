@@ -563,3 +563,15 @@ test('a confirmed Reader save is replaced by a newer shelf row from another devi
   })
   assert.equal(shelfProgress(r)?.chapterIndex, 3)
 })
+
+test('reopening retries the local position when the server has no progress row', async t => {
+  const r = await openReader(t)
+  r.position.offset = 3918
+  r.local.apply()
+  r.server.row = {}
+  const opened = await r.reader.loadProgress(BOOK_ID, { preferLocal: true })
+  assert.equal(opened.pendingSync, true)
+  await settle()
+  assert.equal(r.server.puts.length, 1)
+  assert.equal(r.server.puts[0].offset, 3918)
+})
