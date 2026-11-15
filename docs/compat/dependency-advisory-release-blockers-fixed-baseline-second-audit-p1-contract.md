@@ -257,4 +257,6 @@ r23 相同；`etc/apk/world` 变为 `musl=1.2.5-r24`、`musl-utils=1.2.5-r24`，
 - Git：`main` 与分支 `claude/auth-legacy-public-secret-forgery` 在 `92c98a9`（`git ls-remote` 核验）。
 - 镜像：已发布，见上。
 - 生产：未访问，运行版本未知。
-- 后续：O3（发布流程补浏览器启动门）。README 的 Go 版本字样已由 README 改写（`9f94117`）更新为 1.26.10。
+- 后续：O3（发布流程补浏览器启动门）已关闭：见
+  [`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)，
+  可信 run `39884938803` 发布 `a7fd6aa`。README 的 Go 版本字样已由 README 改写（`9f94117`）更新为 1.26.10。

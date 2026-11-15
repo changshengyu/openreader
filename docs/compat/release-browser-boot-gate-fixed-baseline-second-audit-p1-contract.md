@@ -5,7 +5,7 @@
 当前实施基线：`origin/main` 为 `b1e84f3`（应用代码与已发布的 `92c98a9` 相同）。
 
 审查日期：2026-10-22
-状态：**implementation-complete / regression-validated**（证据见第 8 节；尚未经可信 Actions 运行）
+状态：**implementation-complete / regression-validated / Docker-published**，O3 关闭（证据见第 8 节，发布见第 9 节）
 
 来源：[`dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md`](dependency-advisory-release-blockers-fixed-baseline-second-audit-p1-contract.md)
 第 8 节的观察 O3。该合同已签收的结论（vite 8.1.6、`strictExecutionOrder: true` 等）不重开。
@@ -214,6 +214,32 @@ rolldown 1.1+ 把运行时辅助函数放进一个共享应用 chunk，该 chunk
 
 ### 8.5 状态
 
-- Git：分支 `claude/peaceful-burnell-ca0ef7` 在本记录提交；`origin/main` 仍为 `b1e84f3`。
-- 镜像：未发布；新门尚未在可信 Actions 上运行。
+本节写于合入 main 之前；发布见第 9 节。
+
+## 9. 发布（2026-10-23）
+
+`main` 由 `b1e84f3` 快进到 `a7fd6aa`（上述五个提交加证据记录）。可信 Actions run `39884938803`（`a7fd6aa`，
+01:36:19Z → 01:54:24Z，约 18 分钟）全部步骤成功。新增三步：
+
+| 步骤 | 耗时 | 日志要点 |
+| --- | --- | --- |
+| Install pinned smoke browser | 6 s | 根 `npm ci` 安装 2 个包；`Chrome Headless Shell 149.0.7827.55 (playwright chromium-headless-shell v1228)` 从 `cdn.playwright.dev` 下载到 `chromium_headless_shell-1228`（另带 Playwright 默认的 ffmpeg v1011） |
+| Test browser smoke gate precision and wiring | 14 s | 10/10，0 失败 0 取消 |
+| Load the native validation image in a real browser | 6 s | `IMAGE: openreader-ci:a7fd6aa…`；健康检查 commit 为 `a7fd6aa8c5c6aaf89476f276650b114dfb244db0`；`desktop 1440x900`、`mobile-390 390x844`、`mobile-360 360x800` 都是 `ok /login visibleNodes=26 text=33` |
+
+新门共增加约 26 s，在 native 候选镜像（110 s）之后、arm64 候选镜像（742 s）之前运行。其余步骤照常：Go 测试、Go/前端
+advisory 门、OS 门测试、前端测试与构建、Compose、存储 HTTP 合同、OS APK 门、fresh 卷与 portable 备份、历史卷兼容、
+发布、平台核验。不需要 `--with-deps`。
+
+镜像：`ghcr.io/changshengyu/openreader:a7fd6aa` 与 `latest` 为同一 OCI index
+`sha256:c5dcdffbbea1dbe4e318b131c5760db0f110a0a561bb45cac537a78280d7d7c1`，`linux/amd64`
+`sha256:a4b195f5bb9a27b285559c469f9fbfc04b66cce131048b831dc1740a99f3b8f1`、`linux/arm64`
+`sha256:be52ef10a39801f73a2b7fb6dce303c36dc0529f6ac7ad0ef6ff37414d1ac8fd`；两平台 revision 标签为
+`a7fd6aa8c5c6aaf89476f276650b114dfb244db0`。amd64 镜像创建于 01:40:05Z，就是 01:40:24Z 起被浏览器门加载的 native 候选镜像
+（发布步骤复用其缓存层）；arm64 创建于 01:52:32Z。应用代码与 `92c98a9` 相同，本次发布只多了发布流程的门。
+
+状态：
+
+- Git：本次发布对应 `a7fd6aa8c5c6aaf89476f276650b114dfb244db0`。归档时按 [可信 Actions 运行](https://github.com/changshengyu/openreader/actions/runs/39884938803) 的作业与日志核对。
+- 镜像：已发布，见上。
 - 生产：未访问，运行版本未知。

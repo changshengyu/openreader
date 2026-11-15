@@ -568,8 +568,9 @@ G2（checker按整个body而非`#app`判空白）、G3（空白失败不报页�
 错误；workflow增加浏览器安装、门精度/接线测试和门步骤，`paths`纳入门文件。G4只测amd64、G5只测入口为acceptable-change。
 提交b41b33f/2453d01/501eb58/06800f0/a83264f：门测试红6/10→9/10→10/10；经已发布92c98a9镜像，门脚本对删除
 `strictExecutionOrder`的构建失败（`empty #app at /`+`pageerror: e is not a function`），对镜像自带产物与当前树构建通过；
-advisory门测试131/131、两项实际扫描、前端810/810与build、Compose、存储HTTP合同通过。状态implementation-complete /
-regression-validated，待可信Actions运行。
+advisory门测试131/131、两项实际扫描、前端810/810与build、Compose、存储HTTP合同通过。run 39884938803全部成功，新门三步
+共约26 s（门测试10/10，native候选镜像三视口`/login`），发布`a7fd6aa`/`latest`（index `sha256:c5dcdffb…d7c1`，amd64+arm64）。
+状态Docker-published，O3关闭。
 
 ## 2026-10-22 当前切片：发布门新增依赖公告维护（P1，阻塞 P0 发布）
 
