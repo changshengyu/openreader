@@ -7,6 +7,14 @@
 不改事务语义、WAL、单连接、中间件、services、go.mod 与访问日志格式，不新增 499；导入流程的取消 500 不重开。D12（被取消的登出不吊销会话）待决定，另开切片。
 计划红测：`request_cancellation_remaining_handlers_contract_test.go`，每个 C 项至少一条，加正常请求与真实错误对照；红测提交新增 nil-in-production 接缝 `beforeLocalStoreWriteTestHook`。状态 **contract-only**。
 
+## 2026-11-14 当前切片：发布门依赖 x/crypto 换成标签版本 v0.59.0（P1，2026-12-16 前的发布阻塞）
+
+见[`dependency-advisory-x-crypto-tagged-release-p1-contract.md`](dependency-advisory-x-crypto-tagged-release-p1-contract.md)。基于 main `0584ae7`，分支 `claude/go-advisory-x-crypto-tagged-release`，
+只改 `backend/go.mod`、`backend/go.sum`、Go 公告门脚本与测试和文档。x/crypto `v0.59.0`（2026-11-11）包含 GO-2026-5932 修复（无 `openpgp/`），取代 2026-12-16 到期的修复伪版本。
+must-fix：X1 换成标签版本、X2 删除门里的固定项特例；acceptable-change：X3 x/sys `v0.50.0`、x/text `v0.44.0` 连带升级。不重开：D2 任何 finding 阻止发布、D3 OpenPGP 无条件禁止、
+DB 时效、Go 工具链与构建镜像 pin。计划红测：门合同测试 3 项（R1–R3）。状态 contract-only；镜像未构建，生产未动。
+记录（2026-11-14，取代上段的状态）：合同 `8257461`、红测 `614daa4`（3/67 失败）、实现 `c9121b4`；门测试 67/67 + 49/49，现场 Go 门 exit 0、0 个发现（`crypto` 为 `v0.59.0`），前端门 0 个发现；backend 全量 31 包、vet、race api/db/services 26 个包（api 1139.6 s，无 DATA RACE）；vendor/trimpath 与两个 Linux 目标检查、frontend 999/999 与 build、smoke 三视口、存储 HTTP 合同 10/10、Compose 通过。状态 implementation-complete / regression-validated；分支已推送，未合入 main，镜像仍为 `b563af7`，生产未动。
+
 ## 2026-11-14 当前切片：Reader 失败态进度载荷盘点（P0）
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，只写文档。
@@ -569,8 +577,9 @@ G2（checker按整个body而非`#app`判空白）、G3（空白失败不报页�
 错误；workflow增加浏览器安装、门精度/接线测试和门步骤，`paths`纳入门文件。G4只测amd64、G5只测入口为acceptable-change。
 提交b41b33f/2453d01/501eb58/06800f0/a83264f：门测试红6/10→9/10→10/10；经已发布92c98a9镜像，门脚本对删除
 `strictExecutionOrder`的构建失败（`empty #app at /`+`pageerror: e is not a function`），对镜像自带产物与当前树构建通过；
-advisory门测试131/131、两项实际扫描、前端810/810与build、Compose、存储HTTP合同通过。状态implementation-complete /
-regression-validated，待可信Actions运行。
+advisory门测试131/131、两项实际扫描、前端810/810与build、Compose、存储HTTP合同通过。run 39884938803全部成功，新门三步
+共约26 s（门测试10/10，native候选镜像三视口`/login`），发布`a7fd6aa`/`latest`（index `sha256:c5dcdffb…d7c1`，amd64+arm64）。
+状态Docker-published，O3关闭。
 
 ## 2026-10-22 当前切片：发布门新增依赖公告维护（P1，阻塞 P0 发布）
 

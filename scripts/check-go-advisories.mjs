@@ -8,9 +8,6 @@ import {fileURLToPath} from 'node:url'
 
 const scanner = 'golang.org/x/vuln/cmd/govulncheck@v1.9.0'
 const openpgp = 'golang.org/x/crypto/openpgp'
-// x/crypto 2f1f834330b2 is v0.58.0 with only openpgp/ deleted, the GO-2026-5932 fix; no tagged release has it yet.
-const cryptoPin = 'v0.58.1-0.20261009181718-2f1f834330b2'
-const cryptoPinReviewUntil = Date.parse('2026-12-16T00:00:00Z')
 const day = 86_400_000
 const isOpenPGP = path => path === openpgp || path.startsWith(`${openpgp}/`)
 
@@ -74,9 +71,8 @@ export function evaluateSourceScan(raw, evidence, {now = Date.now()} = {}) {
   }
   assert.ok(modules.has('openreader/backend'))
   assert.equal(modules.get('golang.org/x/crypto'), evidence.cryptoVersion)
-  // Tagged releases only, except the reviewed fix pin until its review date.
-  if (evidence.cryptoVersion === cryptoPin) assert.ok(now < cryptoPinReviewUntil, 'x/crypto fix pin expired: move to a tagged release')
-  else assert.match(evidence.cryptoVersion, /^v\d+\.\d+\.\d+$/, 'x/crypto must be a tagged release or the reviewed fix pin')
+  // Tagged releases only: no pseudo-version, pre-release or +incompatible exception remains.
+  assert.match(evidence.cryptoVersion, /^v\d+\.\d+\.\d+$/, 'x/crypto must be a tagged release')
   assert.ok(['darwin','linux'].includes(evidence.goos), 'unsupported host OS')
   assert.ok(['amd64','arm64'].includes(evidence.goarch), 'unsupported host architecture')
   assert.equal(evidence.cgoEnabled, '1', 'CGO source selection required')
@@ -100,8 +96,7 @@ export function evaluateSourceScan(raw, evidence, {now = Date.now()} = {}) {
   return {status:'pass', scanMode:'source', scanLevel:'symbol', goVersion:evidence.goVersion,
     goos:evidence.goos, goarch:evidence.goarch, cgoEnabled:evidence.cgoEnabled,
     dbLastModified:config.db_last_modified, advisories:osvs.size, findings:grouped.finding.length,
-    crypto:{version:evidence.cryptoVersion,
-      pinReviewUntil:evidence.cryptoVersion === cryptoPin ? new Date(cryptoPinReviewUntil).toISOString() : null},
+    crypto:{version:evidence.cryptoVersion},
     limitations:['C/OS/Node/frontend not scanned', 'target import graphs are not cross-platform binary scans']}
 }
 

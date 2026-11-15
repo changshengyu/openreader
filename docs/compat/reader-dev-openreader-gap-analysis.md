@@ -8,6 +8,17 @@
 上游 handler 不观察客户端断开，归为运行时适配。规则沿用设置切片：提交前取消不写库、不发事件、不写响应体、不返回 5xx；提交后取消时读回、镜像与广播用 `context.WithoutCancel`；鉴权与权限判断被取消时不写 401/403；访问日志不变，不新增 499。导入流程固定的取消 500 不重开（导入入口的根初始化保留 500）。
 待决定 D12：提交前被取消的登出不吊销会话（与现状相同；上游与前端的 fire-and-forget 登出都期望服务端完成），要完整处理还需改认证中间件，建议另开切片。状态 **contract-only**。
 
+## 2026-11-14 P1 发布门依赖：x/crypto 换成包含 GO-2026-5932 修复的标签版本 v0.59.0
+
+见[`dependency-advisory-x-crypto-tagged-release-p1-contract.md`](dependency-advisory-x-crypto-tagged-release-p1-contract.md)。基于 main `0584ae7`，分支 `claude/go-advisory-x-crypto-tagged-release`。
+main 的 x/crypto 是 GO-2026-5932 修复伪版本 `v0.58.1-0.20261009181718-2f1f834330b2`，Go 公告门只接受到 2026-12-16，到期后所有发布都会失败关闭。
+查证（proxy.golang.org、vuln.go.dev、sum.golang.org）：`v0.59.0`（2026-11-11，`6c966a75`）是第一个包含该修复的标签版本，zip 里没有 `openpgp/`，按 SEMVER 在 GO-2026-5932 范围之外，
+h1 与校验和库一致。它声明 `go 1.26.0`，最小版本选择连带 x/sys `v0.50.0`、x/text `v0.44.0`（都是 `@latest`，本项目路径上只有加固），x/net 不变；三张依赖图 361/360/359
+与 main 逐字节相同，bcrypt/blowfish/sha3 逐字节相同。草稿副本上的现场门 0 个发现。X1（伪版本到期）、X2（门里的固定项特例）为 must-fix，X3（x/sys、x/text 连带升级）为 acceptable-change。
+目标：`go.mod` 3 行、`go.sum` 6+/6-；删除 `cryptoPin`/`cryptoPinReviewUntil`，x/crypto 只能是标签版本，摘要去掉 `pinReviewUntil`；D2（任何 finding 阻止发布）、D3（OpenPGP 无条件禁止）与其它判定不变。
+计划红测 3 项（R1–R3）。状态 **contract-only**；镜像未构建，生产未访问。
+记录（2026-11-14，取代上段的状态）：合同 `8257461`、红测 `614daa4`（旧门 67 项中 3 项失败，即 R1–R3）、实现 `c9121b4`（`go.mod` 3 行、`go.sum` 6+/6-，门删除固定项特例）。门测试 67/67 + 前端门 49/49；现场 Go 门 exit 0、`pass`、go1.26.11、**0 个发现**（DB 2026-11-11T02:51:11Z，250 条公告，`crypto` 为 `v0.59.0`，三张图 361/360/359 与 main 逐字节相同），前端全锁门 0 个发现；backend 全量 31 个包与 vet、race api/db/services 26 个包（api 1139.6 s，无 DATA RACE）；`-mod=vendor -trimpath` 编译与两个 Linux 目标的编译和 `#cgo` 检查通过；frontend 999/999 与 build；smoke 三视口、存储 HTTP 合同 10/10（bcrypt 注册与 WebDAV Basic）、Compose 通过。状态 **implementation-complete / regression-validated**；分支已推送，未合入 main，镜像仍为 `b563af7`，生产未访问。
+
 ## 2026-11-14 P0 Reader 失败态进度载荷
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，只写文档。
@@ -734,7 +745,8 @@ awaiting-device-verification**，进度块（第 10 节第 1 条）仍开放，�
 判断从整个 body 收紧到 `#app`，并在失败时附上页面错误和视口。arm64 镜像拷贝同一个构建平台阶段的产物、只检查未登录入口，
 两项记为 acceptable-change。上游行为不涉及。门测试先红后绿（6/10 → 10/10）；经已发布的 `92c98a9` 镜像，门脚本对
 删除 `strictExecutionOrder: true` 的构建失败并报出 `pageerror: e is not a function`，对镜像自带产物和当前树构建通过。状态
-**implementation-complete / regression-validated**，待可信 Actions 运行。完整合同见
+**Docker-published**，O3 关闭：可信 run `39884938803` 中新门约 26 s 通过（门测试 10/10，native 候选镜像三视口加载 `/login`），
+发布 `ghcr.io/changshengyu/openreader:a7fd6aa` / `latest`（OCI index `sha256:c5dcdffb…d7c1`，amd64 + arm64）。完整合同见
 [`release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md`](release-browser-boot-gate-fixed-baseline-second-audit-p1-contract.md)。
 
 ## 2026-10-22 P1 依赖维护 发布门新增公告
