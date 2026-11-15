@@ -26,7 +26,7 @@ function createToc(failed) {
     currentIndex: ref(5),
     goChapter: async index => calls.push(['go', index]),
     isCurrentChapterFailed: () => failed,
-    reloadCurrentChapter: async index => calls.push(['reload', index]),
+    reloadChapter: async index => calls.push(['reload', index]),
   })
   return { calls, toc }
 }
@@ -54,7 +54,7 @@ test('selecting an adjacent failed block loads its catalog row once', async () =
     chapters: ref([{ index: 0 }, { index: 1 }]),
     currentIndex: ref(0),
     isWindowChapterFailed: index => index === 1,
-    reloadCurrentChapter: async index => calls.push(['load', index]),
+    reloadChapter: async index => calls.push(['load', index]),
     goChapter: async index => calls.push(['jump', index]),
   })
   await toc.jump(1)
