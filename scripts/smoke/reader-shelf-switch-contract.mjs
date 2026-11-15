@@ -142,7 +142,7 @@ function installReaderObservers() {
     return {
       path: location.pathname,
       loading: text.includes('正在加载章节'),
-      error: Boolean(document.querySelector('.chapter-load-error')),
+      error: Boolean(document.querySelector('.chapter-load-error, .chapter-inline-error')),
       markers: [...new Set([...text.matchAll(/【书(\d+)】/g)].map(match => Number(match[1])))],
       progress,
     }
@@ -287,7 +287,7 @@ async function ensureMobileChrome(page, viewport) {
 
 async function openShelf(page, viewport) {
   if (!isMobile(viewport)) {
-    await page.locator('.reader-left-rail button[title="书架"]').click()
+    await page.locator('.reader-left-rail button[aria-label="书架"]').click()
     return
   }
   await ensureMobileChrome(page, viewport)
@@ -425,7 +425,7 @@ async function runShelfSwitches(browser, viewport, mode) {
       const failedBeforeCatalog = chapterOne.filter(event => event.status === failOnce.status && event.t < releasedAt)
       if (failedBeforeCatalog.length) failures.push(`${step}: the first-attempt failure was consumed by a request sent before book 5's catalog`)
       // R4: book 5's own first attempt fails after its catalog arrived and uses the existing error surface.
-      if (!(await page.locator('.chapter-load-error:visible').count())) {
+      if (!(await page.locator('.chapter-load-error:visible, .chapter-inline-error:visible').count())) {
         failures.push(`${step}: book 5's own chapter failure is not shown with the existing error surface`)
       }
     })

@@ -427,7 +427,7 @@ async function clickHome(page, viewport) {
     await page.locator('.reader-mobile-top .mobile-tool-button', { hasText: '首页' }).click()
     return
   }
-  await page.locator('.reader-left-rail .rail-item[title="返回首页"]').click()
+  await page.locator('.reader-left-rail .rail-item[aria-label="返回首页"]').click()
 }
 
 // Same location shape as useReaderNavigation.goChapter → Reader.vue navigate (router.replace).
