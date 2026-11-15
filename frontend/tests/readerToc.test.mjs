@@ -47,3 +47,16 @@ test('the catalog still jumps for a healthy current chapter and for other chapte
   await other.toc.jump(4)
   assert.deepEqual(other.calls, [['go', 4]])
 })
+
+test('selecting an adjacent failed block loads its catalog row once', async () => {
+  const calls = []
+  const toc = useReaderToc({
+    chapters: ref([{ index: 0 }, { index: 1 }]),
+    currentIndex: ref(0),
+    isWindowChapterFailed: index => index === 1,
+    reloadCurrentChapter: async index => calls.push(['load', index]),
+    goChapter: async index => calls.push(['jump', index]),
+  })
+  await toc.jump(1)
+  assert.deepEqual(calls, [['load', 1]])
+})
