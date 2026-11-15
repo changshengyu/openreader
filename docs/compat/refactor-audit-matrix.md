@@ -1,5 +1,15 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-15 三线整合发布
+
+主线发布提交 `44aebaa10ce078938335a1eacdb1bed98751b01c`。完成 Reader 待同步进度保留（书架更新、缓存打开、空服务端进度补传）、切书目录与迟到错误隔离、其余 API handler 请求取消处理，以及 x/crypto v0.59.0 正式版本升级。
+
+最终前端 1041/1041 与 build 通过。后端全量、vet、专项 race 通过，完整 race 日志覆盖 31 包（26 通过、5 无测试，原句柄因会话重连失效）。浏览器离线进度 24/24、换书三视口两模式 6/6、既有失败章进度 33/33、标签页标题三视口通过。最后两项复审补充边界通过先红后绿的单元测试。
+
+[可信 Actions 43696695582](https://github.com/changshengyu/openreader/actions/runs/43696695582) 完成双平台镜像、真实浏览器启动、新卷、历史卷、可移植备份与实例密钥升级/重启/回滚/再升级验证。标签 `ghcr.io/changshengyu/openreader:44aebaa` 与发布时 `latest` 的索引摘要为 `sha256:096cd5878e46ace71fa78c0ee856c59d737d7eaf4a400879c407680b31f5bdb5`，平台 linux/amd64 与 linux/arm64。
+
+允许差异沿用多用户隔离、运行时取消适配及既有安全加固。OS 门为 `pass-with-unknown-origins`，沿用 2026-12-10 复审期限。设备验收仍待确认，页面标题工作树中的未提交改动留待后续独立复核。
+
 ## 2026-11-14 当前切片：其余 handler 的请求取消不返回或记录 5xx（P2，运行时适配）
 
 见[`request-cancellation-remaining-handlers-p2-contract.md`](request-cancellation-remaining-handlers-p2-contract.md)。基于 main `0584ae7`，分支 `claude/request-cancellation-remaining-handlers`，只改 `backend/api`。
