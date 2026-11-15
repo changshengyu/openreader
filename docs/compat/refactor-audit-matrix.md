@@ -1,5 +1,12 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-14 当前切片：其余 handler 的请求取消不返回或记录 5xx（P2，运行时适配）
+
+见[`request-cancellation-remaining-handlers-p2-contract.md`](request-cancellation-remaining-handlers-p2-contract.md)。基于 main `0584ae7`，分支 `claude/request-cancellation-remaining-handlers`，只改 `backend/api`。
+范围：设置取消合同 3.3 的 C2–C8（发 token、登出、同步升级、管理员用户与书源操作、默认书源、单源搜索、LocalStore 管理操作），加上 `requireAdmin` 403、`requireSourceEdit` 500、LocalStore 改名 409 三处取消误判，以及默认快照提交后的读回与镜像（D8，改用 `context.WithoutCancel`）。
+不改事务语义、WAL、单连接、中间件、services、go.mod 与访问日志格式，不新增 499；导入流程的取消 500 不重开。D12（被取消的登出不吊销会话）待决定，另开切片。
+计划红测：`request_cancellation_remaining_handlers_contract_test.go`，每个 C 项至少一条，加正常请求与真实错误对照；红测提交新增 nil-in-production 接缝 `beforeLocalStoreWriteTestHook`。状态 **contract-only**。
+
 ## 2026-11-14 当前切片：Reader 失败态进度载荷盘点（P0）
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，只写文档。

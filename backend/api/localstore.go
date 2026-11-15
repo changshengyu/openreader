@@ -38,6 +38,17 @@ func runStoreReadTestHook(action string) {
 	}
 }
 
+// Nonparallel tests cancel after authorized lazy-root initialization, before
+// an upload, directory creation or rename starts writing. Observation seam
+// only; nil in production, and it adds no cancellation check.
+var beforeLocalStoreWriteTestHook func(action string)
+
+func runLocalStoreWriteTestHook(action string) {
+	if beforeLocalStoreWriteTestHook != nil {
+		beforeLocalStoreWriteTestHook(action)
+	}
+}
+
 func (s *Server) listLocalStore(c *gin.Context) {
 	if !s.requireLocalStoreAccess(c) {
 		return
@@ -58,6 +69,9 @@ func (s *Server) listLocalStore(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		writeLocalStoreFilesystemError(c, err, "failed to read local store")
 		return
 	}
@@ -74,6 +88,9 @@ func (s *Server) listLocalStore(c *gin.Context) {
 	recursive := c.Query("recursive") == "1" || strings.EqualFold(c.Query("recursive"), "true")
 	resources, err := reader.ListLocal(recursive)
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		writeLocalStoreFilesystemError(c, err, "failed to read local store")
 		return
 	}
@@ -89,6 +106,9 @@ func (s *Server) listLocalStore(c *gin.Context) {
 	})
 
 	if err := reader.Validate(); err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		writeLocalStoreFilesystemError(c, err, "failed to read local store")
 		return
 	}
@@ -130,8 +150,12 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runLocalStoreWriteTestHook("local-upload")
 	if upload.path != "" {
 		if err := service.MkdirContext(c.Request.Context(), upload.path); err != nil {
+			if requestContextEnded(c) {
+				return
+			}
 			writeLocalStoreFilesystemError(c, err, "failed to create directory")
 			return
 		}
@@ -151,6 +175,8 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 				errors.Is(err, webdavfs.ErrConflict),
 				errors.Is(err, errLocalStorePathInvalid):
 				writeLocalStoreFilesystemError(c, err, "failed to save file")
+				return
+			case requestContextEnded(c):
 				return
 			default:
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
@@ -219,6 +245,9 @@ func (s *Server) downloadFromLocalStore(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		writeLocalStoreFilesystemError(c, err, "failed to download local store item")
 		return
 	}
@@ -257,8 +286,12 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runLocalStoreWriteTestHook("local-directory")
 	if parentPath != "" {
 		if err := service.MkdirContext(c.Request.Context(), parentPath); err != nil {
+			if requestContextEnded(c) {
+				return
+			}
 			writeLocalStoreFilesystemError(c, err, "failed to create parent directory")
 			return
 		}
@@ -279,7 +312,7 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 	if err := service.MkdirContext(c.Request.Context(), relativePath); err != nil {
 		if errors.Is(err, webdavfs.ErrConflict) {
 			c.JSON(http.StatusConflict, gin.H{"error": "failed to create directory"})
-		} else {
+		} else if !requestContextEnded(c) {
 			writeLocalStoreFilesystemError(c, err, "failed to create directory")
 		}
 		return
@@ -328,11 +361,15 @@ func (s *Server) renameLocalStoreItem(c *gin.Context) {
 		writeLocalStoreFilesystemError(c, err, "failed to rename local store item")
 		return
 	}
+	runLocalStoreWriteTestHook("local-rename")
 	if err := service.MoveContext(c.Request.Context(), relativePath, newRelativePath, true); errors.Is(err, webdavfs.ErrMoveCleanupPending) {
 		c.Header("X-OpenReader-WebDAV-Cleanup", "pending")
 	} else if err != nil {
 		if errors.Is(err, webdavfs.ErrUnsafePath) || errors.Is(err, webdavfs.ErrNotDirectory) {
 			writeLocalStoreFilesystemError(c, err, "failed to rename local store item")
+			return
+		}
+		if requestContextEnded(c) {
 			return
 		}
 		c.JSON(http.StatusConflict, gin.H{"error": "failed to rename local store item"})
