@@ -5,7 +5,7 @@ scratchpad 里的临时探针，没有入库；脚本、`report.json`、`summary
 `side-session-notes/local_5898921b-baed-4ec8-956f-1e5aa5daf56f/pending-sync-keepalive/`。红测与实现按第 9 节在后续阶段进行。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
-`/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不存在且不可写，上游从 GitHub 克隆到会话 scratchpad 后 checkout 同一提交。  
+`/private/tmp/changshengyu-reader-dev` 在本会话沙箱里不存在且不可写，上游从 GitHub 克隆到会话 scratchpad 后 checkout 同一提交。
 当前基线：`OpenReader@ebb2640`（本分支 `claude/competent-hypatia-1e8938` 从 `5bc38a3` 快进到正文失败进度载荷盘点
 `claude/clever-easley-4e4500`）；`git diff 186c762 ebb2640 -- frontend backend` 为空，产品代码与已发布的 `186c762` 相同。
 本文所有 OpenReader 行号以 `ebb2640` 为准。
@@ -361,3 +361,9 @@ R7. **其余不变。** keepalive 仍只排队一次，排队失败才回退普�
 2. 跨时钟比较：协调（`utils/bookOrder.js:22–30`）和冲突重试（`stores/reader.js:833–838`）都用客户端 `updatedAt` 比较服务端
    `updatedAt`。客户端时钟慢于服务端时，即使本切片修好，一个有效的 pending 也可能被判为“不比服务端新”而被替换。书架刷新 P1 的
    反向时钟夹具只覆盖非 pending 的未来时间。没有复现，需另行盘点，暂记 `unknown`。
+
+## 2026-11-15 主线复核
+
+在本机上游仓库 `/Users/yuchangsheng/Documents/reader-dev` 核对固定提交 `fa22f271` 的 `web/src/views/Reader.vue`。OpenReader 起点为 `49392de5`。
+
+上游保存进度失败时保留本地阅读位置。当前修复让书架更新和重开时的本地快照保留待同步标记。首次没有服务端进度时，读取成功触发补写；读取失败仍保留待同步位置。适配当前接口后 18 项单测中 12 项先红后绿，另有缓存重开和服务端无行的专项红测。三视口真实 Go 服务与 SQLite 浏览器合同通过 24/24；补充复审的无服务端行分支由单测覆盖。
