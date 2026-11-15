@@ -268,6 +268,10 @@ func (s *Server) me(c *gin.Context) {
 func (s *Server) respondWithToken(c *gin.Context, user models.User) {
 	token, err := s.sessions.Issue(c.Request.Context(), user)
 	if err != nil {
+		// A cancelled issue committed no session, and the client is gone.
+		if requestContextEnded(c) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create token"})
 		return
 	}
@@ -290,6 +294,10 @@ func (s *Server) logout(c *gin.Context) {
 		return
 	}
 	if err := s.sessions.Revoke(c.Request.Context(), identity); err != nil {
+		// Cancelled before the DELETE committed: the session stays valid.
+		if requestContextEnded(c) {
+			return
+		}
 		if errors.Is(err, authsession.ErrInvalidSession) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		} else {

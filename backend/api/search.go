@@ -100,6 +100,11 @@ func (s *Server) search(c *gin.Context) {
 		}
 		result, err := searchSingleSourcePage(c.Request.Context(), sources[0], req.Keyword, page)
 		if err != nil {
+			// The client went away: nothing to answer and no source failure to
+			// record. A timeout of the page's own context is still a 502.
+			if requestContextEnded(c) {
+				return
+			}
 			s.recordSourceFailure(userID, sources[0], err)
 			writeSourceError(c, http.StatusBadGateway, "failed to search source", err, "search")
 			return

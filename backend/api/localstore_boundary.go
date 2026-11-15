@@ -229,7 +229,20 @@ func hasWindowsPathVolume(value string) bool {
 	return first >= 'A' && first <= 'Z' || first >= 'a' && first <= 'z'
 }
 
+// localStoreFileService opens the caller's LocalStore root for the store
+// management handlers, creating it on first use. A request that ended while
+// the root was being created gets no response.
 func (s *Server) localStoreFileService(c *gin.Context) (*webdavfs.Service, bool) {
+	return s.openLocalStoreFileService(c, false)
+}
+
+// localStoreImportFileService is localStoreFileService for the import flows,
+// whose own contracts keep answering a cancellation with a 500.
+func (s *Server) localStoreImportFileService(c *gin.Context) (*webdavfs.Service, bool) {
+	return s.openLocalStoreFileService(c, true)
+}
+
+func (s *Server) openLocalStoreFileService(c *gin.Context, forImport bool) (*webdavfs.Service, bool) {
 	root, ok := s.storeRoot(c, s.cfg.LocalStoreDir)
 	if !ok {
 		return nil, false
@@ -240,6 +253,9 @@ func (s *Server) localStoreFileService(c *gin.Context) (*webdavfs.Service, bool)
 		return nil, false
 	}
 	if err := service.EnsureRootContext(c.Request.Context()); err != nil {
+		if !forImport && requestContextEnded(c) {
+			return nil, false
+		}
 		writeLocalStoreFilesystemError(c, err, "failed to create local store")
 		return nil, false
 	}
@@ -344,7 +360,7 @@ func (s *Server) prepareLocalStoreImport(c *gin.Context, request localBookImport
 		}
 
 		if plan.service == nil {
-			service, ok := s.localStoreFileService(c)
+			service, ok := s.localStoreImportFileService(c)
 			if !ok {
 				return localStoreImportPlan{}, false
 			}

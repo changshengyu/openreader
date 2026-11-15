@@ -29,6 +29,10 @@ func (s *Server) requireAdmin(c *gin.Context) bool {
 	}
 	var user models.User
 	if err := s.db.WithContext(c.Request.Context()).First(&user, userID).Error; err != nil || user.Role != "admin" {
+		// A lookup the client cancelled decided nothing: not a 403.
+		if err != nil && requestContextEnded(c) {
+			return false
+		}
 		c.JSON(http.StatusForbidden, errResp("FORBIDDEN", "admin access required"))
 		return false
 	}
@@ -108,6 +112,9 @@ func (s *Server) setUserSourcesAsDefault(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	} else if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to load user")
 		return
 	}
@@ -117,6 +124,9 @@ func (s *Server) setUserSourcesAsDefault(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to save default sources")
 		return
 	}
@@ -163,6 +173,9 @@ func (s *Server) resetUserSources(c *gin.Context) {
 	}
 	var existing int64
 	if err := s.db.WithContext(c.Request.Context()).Model(&models.User{}).Where("id IN ?", ids).Count(&existing).Error; err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to load users")
 		return
 	}
@@ -179,6 +192,9 @@ func (s *Server) resetUserSources(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to load default sources")
 		return
 	}
@@ -188,6 +204,9 @@ func (s *Server) resetUserSources(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to reset user sources")
 		return
 	}
@@ -449,6 +468,9 @@ func (s *Server) resetUserPassword(c *gin.Context) {
 		}
 		return s.sessions.RevokeUser(c.Request.Context(), tx, user.ID)
 	}); err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to reset password")
 		return
 	}
@@ -642,6 +664,9 @@ func (s *Server) deleteUsers(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "failed to delete users")
 		return
 	}
@@ -671,6 +696,9 @@ func (s *Server) cleanupInactiveUsers(c *gin.Context) {
 	}
 	deletedUsers, plans, err := s.deleteUserData(c.Request.Context(), ids, 0)
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		internalError(c, "cleanup failed")
 		return
 	}

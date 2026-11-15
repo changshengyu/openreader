@@ -17,6 +17,10 @@ var upgrader = websocket.Upgrader{
 func (s *Server) syncSocket(c *gin.Context) {
 	token := c.Query("token")
 	identity, err := s.sessions.Authenticate(c.Request.Context(), token)
+	// Like the auth middleware: a cancelled check is neither a 401 nor a 500.
+	if err != nil && requestContextEnded(c) {
+		return
+	}
 	if errors.Is(err, authsession.ErrInvalidSession) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return

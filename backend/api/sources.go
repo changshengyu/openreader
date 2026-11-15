@@ -613,6 +613,9 @@ func (s *Server) defaultSourcesStatus(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load default sources"})
 		return
 	}
@@ -630,6 +633,9 @@ func (s *Server) saveDefaultSources(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	count, err := s.saveDefaultSourceSnapshotContext(c.Request.Context(), userID, false)
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save default sources"})
 		return
 	}
@@ -658,7 +664,10 @@ func (s *Server) saveDefaultSourceSnapshotContext(ctx context.Context, userID ui
 	if err != nil {
 		return 0, err
 	}
-	if err := s.writeCanonicalDefaultSourceMirror(ctx, bookSources); err != nil {
+	// The snapshot has committed, so its mirror must follow it even if the
+	// client has gone away meanwhile.
+	committed := context.WithoutCancel(ctx)
+	if err := s.writeCanonicalDefaultSourceMirror(committed, booksources.New(s.db.WithContext(committed))); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -679,6 +688,9 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load default sources"})
 		return
 	}
@@ -688,6 +700,9 @@ func (s *Server) restoreDefaultSources(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		if requestContextEnded(c) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to restore default sources"})
 		return
 	}
@@ -1013,6 +1028,10 @@ func (s *Server) ensureDefaultBookSourceNamespaceLocked(ctx context.Context, boo
 	if _, err := bookSources.ReplaceActive(0, sources); err != nil {
 		return false, 0, err
 	}
+	// The default namespace has committed: read it back and mirror it even if
+	// the request that seeded it has ended.
+	ctx = context.WithoutCancel(ctx)
+	bookSources = booksources.New(s.db.WithContext(ctx))
 	configured, count, err = bookSources.DefaultStatus()
 	if err != nil {
 		return false, 0, err
@@ -1044,6 +1063,10 @@ func (s *Server) requireSourceEdit(c *gin.Context) bool {
 
 	var user models.User
 	err := s.db.WithContext(c.Request.Context()).Select("can_edit_sources").First(&user, userID).Error
+	// A lookup the client cancelled decided nothing: not a 401 or a 500.
+	if err != nil && requestContextEnded(c) {
+		return false
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		unauthorized(c, "user not found")
 		return false
