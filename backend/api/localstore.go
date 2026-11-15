@@ -38,6 +38,17 @@ func runStoreReadTestHook(action string) {
 	}
 }
 
+// Nonparallel tests cancel after authorized lazy-root initialization, before
+// an upload, directory creation or rename starts writing. Observation seam
+// only; nil in production, and it adds no cancellation check.
+var beforeLocalStoreWriteTestHook func(action string)
+
+func runLocalStoreWriteTestHook(action string) {
+	if beforeLocalStoreWriteTestHook != nil {
+		beforeLocalStoreWriteTestHook(action)
+	}
+}
+
 func (s *Server) listLocalStore(c *gin.Context) {
 	if !s.requireLocalStoreAccess(c) {
 		return
@@ -130,6 +141,7 @@ func (s *Server) uploadToLocalStore(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runLocalStoreWriteTestHook("local-upload")
 	if upload.path != "" {
 		if err := service.MkdirContext(c.Request.Context(), upload.path); err != nil {
 			writeLocalStoreFilesystemError(c, err, "failed to create directory")
@@ -257,6 +269,7 @@ func (s *Server) createLocalStoreDirectory(c *gin.Context) {
 	if !ok {
 		return
 	}
+	runLocalStoreWriteTestHook("local-directory")
 	if parentPath != "" {
 		if err := service.MkdirContext(c.Request.Context(), parentPath); err != nil {
 			writeLocalStoreFilesystemError(c, err, "failed to create parent directory")
@@ -328,6 +341,7 @@ func (s *Server) renameLocalStoreItem(c *gin.Context) {
 		writeLocalStoreFilesystemError(c, err, "failed to rename local store item")
 		return
 	}
+	runLocalStoreWriteTestHook("local-rename")
 	if err := service.MoveContext(c.Request.Context(), relativePath, newRelativePath, true); errors.Is(err, webdavfs.ErrMoveCleanupPending) {
 		c.Header("X-OpenReader-WebDAV-Cleanup", "pending")
 	} else if err != nil {
