@@ -3,7 +3,7 @@
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`（本切片不涉及上游可见行为）。
 
 审查日期：2026-11-14。实施基线：`origin/main` = `0584ae78`；分支 `claude/go-advisory-x-crypto-tagged-release` 从 `origin/main` 切出。
-状态：**contract-only**。
+状态：**implementation-complete / regression-validated**（记录见第 10 节）；未合入 main，镜像未发布，生产未访问。
 
 前置合同：[`dependency-advisory-x-crypto-openpgp-fix-p1-contract.md`](dependency-advisory-x-crypto-openpgp-fix-p1-contract.md)（D1 精确固定项与
 2026-12-16 期限、D2 任何 finding 都阻止发布、D3 OpenPGP 无条件禁止）、[`go-advisory-release-gate-contract.md`](go-advisory-release-gate-contract.md)。
@@ -141,3 +141,34 @@ source 门仍不代表整镜像 clean（C/OS/Node/frontend 未扫描）；本地
    无页面错误、无 5xx API）；隔离存储 HTTP 合同 `scripts/smoke/store-read-list-lifecycle-contract.mjs`（真实服务的注册与 WebDAV Basic
    都经过 bcrypt）。
 5. 推送分支；合入 main 与发布由协调会话决定，发布后由可信 Actions 复核。
+
+## 10. 记录（2026-11-14）
+
+合同 `82574610`、红测 `614daa40`、实现 `c9121b4e`（分支 `claude/go-advisory-x-crypto-tagged-release`，基线 `0584ae78`；main 在验证期间未移动）。
+
+- 红：新门测试在旧门脚本上 67 项中 3 项失败、64 项通过，正是第 7 节所列：R1 摘要多出 `pinReviewUntil: null`（deepStrictEqual 失败）；
+  R2 旧门在 2026-12-15T23:59:59Z 仍接受固定伪版本（`Missing expected exception`，期望 `/x\/crypto must be a tagged release/`）；
+  R3 旧门在默认时刻接受固定伪版本（同上）。对照（其它 6 个非标签版本带消息断言、2027-06-01 标签版本通过等）在旧门上都通过。
+- 绿：`c9121b4e` 上同一断言转绿，Go 门测试 67/67、前端门测试 49/49（共 116，0 skip）。`go.mod` 3 行、`go.sum` 6+/6-，与第 3 节预演逐字节相同；
+  `go mod verify` 为 “all modules verified”。门脚本 3+/8-：删除 `cryptoPin`、`cryptoPinReviewUntil`，标签版本断言消息改为 `x/crypto must be a tagged release`，
+  摘要 `crypto` 只剩 `version`。
+- 现场 Go 门（沙箱外，2026-11-14T11:53:14Z–11:53:22Z）exit 0：`pass`，go1.26.11 / darwin-arm64 / CGO 1，DB `2026-11-11T02:51:11Z`，250 条公告，**0 个发现**，
+  `crypto` 为 `{"version":"v0.59.0"}`；SBOM 33 个模块（x/crypto `v0.59.0`、x/net `v0.62.0`、x/sys `v0.50.0`、x/text `v0.44.0`）；三张图 361/360/359 个包，
+  与 main 逐字节相同，无 openpgp 族。证据目录 `/var/folders/5z/h__cbxf93c5gc1p4myzqpd480000gn/T/openreader-go-advisories-m4u51k`。
+- 现场前端门（沙箱外）exit 0：完整锁文件 132 个包、0 个发现（证据目录 `/var/folders/5z/h__cbxf93c5gc1p4myzqpd480000gn/T/openreader-npm-advisories-oI6TKO`）。
+- backend（go1.26.11，按 `go.mod` 自动切换工具链）：`go test -count=1 ./...`（沙箱外）31 个包通过、8 个无测试文件，api 125.457 s；`go vet ./...` 通过；
+  `go test -count=1 -race -timeout 40m ./api ./db ./services/...`（沙箱外，2026-11-14T11:52:57Z–12:12:06Z）26 个包通过，api 1139.605 s，无 DATA RACE。
+- vendor 与 Linux 目标：按 workflow 的 `go mod vendor -o` 生成 vendor（`modules.txt` 为 x/crypto `v0.59.0`、x/net `v0.62.0`、x/sys `v0.50.0`、x/text `v0.44.0`；
+  x/crypto 只含 bcrypt/blowfish/sha3），`-mod=vendor -trimpath` 宿主编译通过，二进制记录 go1.26.11、`CGO_ENABLED=1` 与上述版本。linux/amd64、linux/arm64 用
+  `CGO_ENABLED=0 -mod=vendor -trimpath` 编译 main 包通过（编进 x/sys v0.50.0 的 Linux 文件与 rootedfs 的 Linux 实现），`CGO_ENABLED=1 CC=gcc build -n`
+  的 `#cgo` 参数检查两个目标都通过。（`CGO_ENABLED=0` 下的 `go vet` 只在调用 go-sqlite3 cgo 专有 API 的测试文件上报 undefined，是关闭 cgo 的产物，不计入门。）
+- frontend `npm ci` 后 `npm test` 999/999、`npm run build` 通过（体积告警为既有）。
+- 真实服务：vendor 构建的二进制在独立临时卷上运行，`openreader-smoke.mjs` 在 1440×900、390×844、360×800 都通过（`/login`，无页面错误、无 5xx）；
+  隔离存储 HTTP 合同 `store-read-list-lifecycle-contract.mjs` 10/10 PASS（三个用户经 bcrypt 注册，WebDAV Basic 经 bcrypt 校验）；`docker compose config --quiet` 通过。
+- 未跑及原因：OS APK 门、新旧卷与便携备份门、双平台镜像构建与平台核验只在可信 Actions 上跑；`check-os-advisories`、`release-browser-smoke` 的脚本自测未改动，
+  由 CI 覆盖。
+- 复核（2026-11-15T03:44Z，写记录前）：`origin/main` 仍为 `0584ae78`；x/crypto `v0.59.0`、x/sys `v0.50.0`、x/text `v0.44.0`、x/net `v0.62.0`
+  仍是 `@latest`；vuln.go.dev 仍为 `2026-11-11T02:51:11Z`，GO-2026-5932 未改，上面的现场门结论仍然有效。
+
+状态：**implementation-complete / regression-validated**；分支已推送，未合入 main；镜像未发布（仍为 main 的 `b563af7` 发布）；生产未访问。
+合入 main 前需要按发布协调重新确认 `origin/main`、进行中的发布 run 与现场公告门。
