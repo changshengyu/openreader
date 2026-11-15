@@ -10,6 +10,8 @@ must-fix：F1、F9、F10（P0）与 F11、F12。待用户决定：D1（失败章
 决定（2026-11-14，取代上段的状态）：用户对 D2 选 (a)，不重开 R6 第 13 节第 7 条。决定已齐，状态 contract-only，下一步红测；镜像未构建，生产未动。
 记录（2026-11-14，取代上段的状态）：红测 `2f25981`，实现 `9d3bc11`、`8f7d14a`、`614745a`、`cf73ae5`，合并 main `0584ae7`。单元 1015/1015（红测时 13 条失败）与 build；新真实服务合同 33/33（红测基线 0/33）；错误页、运行标题、连续、桌面面板、移动（含 iPad）、TTS 五视口、smoke、文本模式、书架刷新、标签页标题、EPUB、音频、重新认证、桌面 flip、双客户端进度回归全部通过。状态 implementation-complete / regression-validated；未合入 main，镜像未构建，生产未动。
 
+发布（2026-11-15）：GitHub main 已包含四项修复。[Actions run 43673767925](https://github.com/changshengyu/openreader/actions/runs/43673767925) 在 `49392de5` 通过后端、前端、真实浏览器启动、新卷、历史卷、备份及实例密钥升级/回滚门禁，随后发布并验证 linux/amd64 和 linux/arm64。GHCR 标签 `49392de` 与本次发布时的 `latest` 指向索引 `sha256:73bf217aa9473a5ce04030589e10b911f9fe332e1819cdef221531a5eadd01c4`。生产设备验收仍待确认。
+
 ## 2026-11-13 当前切片：设置写入在客户端取消时不返回或记录 500（P2，运行时适配 + 日志加固）
 
 见[`user-setting-write-request-cancellation-p2-contract.md`](user-setting-write-request-cancellation-p2-contract.md)。基于 main `9602dc4`，分支 `claude/settings-write-client-cancel`，只改后端。
