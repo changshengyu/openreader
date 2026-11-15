@@ -1,6 +1,6 @@
 # 其余 handler 的请求取消合同（P2）
 
-状态：**contract-only**（2026-11-14）。
+状态：**已实现并通过本地 Go 与 LocalStore HTTP 回归（2026-11-15）**。
 
 基于 main `0584ae7`（已含设置写入的取消修复 `65f85c5` 与全局 GORM 日志器 `backend/db/logger.go`），分支
 `claude/request-cancellation-remaining-handlers`。来源是
@@ -231,3 +231,13 @@ nil-in-production 观察接缝 `beforeLocalStoreWriteTestHook`（上传、新建
   `authenticated-session-lifecycle-real-api-contract.mjs`、`user-management-contract.mjs`、`source-workspace-contract.mjs`、
   `store-read-list-lifecycle-contract.mjs`、`local-store-directory-lifecycle-contract.mjs`、`openreader-smoke.mjs`。
 - 前端未改动，跳过前端单元门与三视口截图；浏览器合同使用同一份前端构建。
+
+## 9. 2026-11-15 本地验证
+
+合同 `71a18ac6`、红测 `5a4847b7`、实现 `e32c3366`。实现合入了主线 `49392de5`。
+`go test ./...` 通过（API 240.587s），`go vet ./...` 通过。
+`go test -race -timeout 40m ./api ./db ./services/...` 通过（API 1262.761s）。
+`TestRemainingCancellation*` 单独运行通过，开启 race 的独立运行也通过。
+真实 Go 服务通过 `store-read-list-lifecycle-contract.mjs` 与 `local-store-directory-lifecycle-contract.mjs`，
+覆盖多用户存储隔离、目录创建、上传和下载。本次分支验证未运行第 8 节其余浏览器冒烟或发布门禁。
+D12 保留为独立产品决定。
