@@ -196,3 +196,12 @@ test('reconciles only a newer server position while the baseline is unchanged', 
     ['mark', { bookId: 7, chapterIndex: 3, offset: 120 }],
   ])
 })
+
+test('opening from a pending shelf entry preserves its unconfirmed progress', async () => {
+  const fixture = createController({
+    getShelfBook: () => ({ id: 7, progress: { ...fixture.saved, pendingSync: true } }),
+  })
+  await fixture.controller.load()
+  assert.equal(fixture.calls.some(([event]) => event === 'server-progress'), false)
+  assert.ok(fixture.calls.some(([event, progress]) => event === 'shelf-progress' && progress.pendingSync))
+})
