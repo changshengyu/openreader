@@ -79,15 +79,27 @@ export function useReaderBookLoad(options) {
     })
   }
 
+  let loadGeneration = 0
+
   async function load() {
-    options.cancelProgressSave()
+    const generation = ++loadGeneration
     const targetBookId = unref(options.bookId)
+    const isCurrent = () => generation === loadGeneration && unref(options.bookId) === targetBookId
+    try {
+      await loadBook(targetBookId, isCurrent)
+    } catch (error) {
+      if (isCurrent()) throw error
+    }
+  }
+
+  async function loadBook(targetBookId, isCurrent) {
+    options.cancelProgressSave()
     // A catalog belongs to the book it was loaded for. Drop the previous book's rows before the first await so the
     // TOC, preloads, chapter clamping, progress and N% never size or label this book with them.
     options.chapters.value = []
     if (unref(options.isTemporaryReader)) {
       const response = await options.loadTemporaryReader(targetBookId)
-      if (unref(options.bookId) !== targetBookId) return
+      if (!isCurrent()) return
       const temporaryBook = response?.book
       const temporaryChapters = response?.chapters
       if (!temporaryBook || !Array.isArray(temporaryChapters)) {
@@ -117,24 +129,22 @@ export function useReaderBookLoad(options) {
     const shelfBook = options.getShelfBook?.(targetBookId) || null
     if (shelfBook?.id) options.book.value = options.mergeLoadedBook(shelfBook)
     const bookRequest = options.loadCachedBook(targetBookId)
-      .catch(error => {
-        if (shelfBook?.id) return { error }
-        throw error
-      })
+      .catch(error => ({ error }))
     const chapterResponse = await options.loadCachedChapters(targetBookId)
-    if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+    if (!isCurrent()) return
 
     let bookResponse = null
     if (!shelfBook?.id) {
       bookResponse = await bookRequest
-      if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+      if (!isCurrent()) return
+      if (bookResponse.error) throw bookResponse.error
       options.book.value = options.mergeLoadedBook(bookResponse.data)
     }
 
     const saved = cachedProgress?.bookId
       ? cachedProgress
       : await progressRequest
-    if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+    if (!isCurrent()) return
 
     options.chapters.value = chapterResponse.data
     if (options.book.value?.progress?.bookId) {
@@ -186,14 +196,14 @@ export function useReaderBookLoad(options) {
     })
     if (chapterResponse.fromCache) refreshCaches({ chapters: true }).catch(() => {})
     bookmarksRequest?.then(data => {
-      if (options.bookmarks && Number(unref(options.bookId)) === Number(targetBookId)) {
+      if (options.bookmarks && isCurrent()) {
         options.bookmarks.value = data
       }
     }).catch(() => {})
     await options.jumpToRouteLine()
 
     if (!bookResponse) bookResponse = await bookRequest
-    if (Number(unref(options.bookId)) !== Number(targetBookId)) return
+    if (!isCurrent()) return
     if (bookResponse?.data?.id) {
       options.book.value = options.mergeLoadedBook(bookResponse.data)
       if (saved?.bookId) {
