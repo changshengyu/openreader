@@ -389,9 +389,9 @@ export const useBookshelfStore = defineStore('bookshelf', {
       booksRevision.mutate(this.shelfScope)
       const index = this.books.findIndex(item => Number(item.id) === Number(book.id))
       const nextBook = index >= 0 ? mergeShelfBook(this.books[index], book) : book
-      if (nextBook?.progress?.bookId) {
+      if (book.progress?.bookId && !book.progress.pendingSync) {
         const reader = useReaderStore()
-        reader.applyServerProgress(nextBook.progress)
+        reader.applyServerProgress(book.progress)
       }
       const nextBooks = index >= 0
         ? this.books.map(item => Number(item.id) === Number(book.id) ? nextBook : item)

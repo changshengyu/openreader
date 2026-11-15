@@ -70,11 +70,11 @@ export function useReaderShelf(options) {
       // The local pending snapshot stays for the next sync.
     }
     const progress = newestBookProgress(item, options.reader.progressByBook)
-    const fallbackCount = Number(options.currentChapterCount?.() || 0)
+    // Only the selected book's own chapterCount may size the route percent; without it the route carries none.
     await options.router.push({
       name: 'reader',
       params: { id: item.id },
-      query: readerRouteQueryFromBook(item, progress, item?.chapterCount || fallbackCount),
+      query: readerRouteQueryFromBook(item, progress),
     })
   }
 

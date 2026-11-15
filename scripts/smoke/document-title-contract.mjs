@@ -12,12 +12,14 @@ const shellTitle = readShellDocumentTitle()
 const books = {
   1: { id: 1, title: '标题契约测试', author: '标题作者', sourceId: 0, chapterCount: 6, categoryIds: [], progress: null },
   2: { id: 2, title: '标题契约测试二', author: '标题作者', sourceId: 0, chapterCount: 3, categoryIds: [], progress: null },
-  3: { id: 3, title: '标题契约测试三', author: '标题作者', sourceId: 0, chapterCount: 3, categoryIds: [], progress: null },
+  3: { id: 3, title: '标题契约测试三', author: '标题作者', sourceId: 0, chapterCount: 2, categoryIds: [], progress: null },
 }
 const catalogs = {
   1: ['第一章 起点', '第二章 中途', '', '第四章 失败', '第五章', '   '],
   2: ['序章 新书', '第一章 起点', '第二章 余波'],
-  3: ['第一章 起点', '第二章 归途', '第三章 终点'],
+  // Two chapters, one fewer than book 2: step 7 switches away from book 2, so preloads sized by the previous
+  // catalog would request /api/books/3/chapters/2/content (reader shelf switch stale catalog contract 8.2(2)).
+  3: ['第一章 起点', '第二章 归途'],
 }
 const failingChapter = { bookId: 1, index: 3 }
 const remoteSessionId = 'document-title-session'
