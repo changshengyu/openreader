@@ -1,5 +1,9 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-15 页面标题旧候选复核
+
+旧分支 `claude/youthful-blackburn-9df7fb`（红测 `7e932f22`）及未提交草稿已被主线产品显示名合同第 14 节和 `f8786ab` 发布取代。固定上游的“阅读”和“Reader书源编辑器”按用户 2026-11-12 决定改为“闲读”和“闲读书源编辑器”。主线 HTML、首页/登录挂载、调试页进入退出及 Reader 动态标题均有实现，displayNameContract 与 document-title-contract 覆盖这些入口。旧候选中要求旧品牌或特定 composable 结构的测试不再适用。原工作树保留供用户查阅。本次只读核验，关闭旧待办。
+
 ## 2026-11-15 三线整合发布
 
 主线发布提交 `44aebaa10ce078938335a1eacdb1bed98751b01c`。完成 Reader 待同步进度保留（书架更新、缓存打开、空服务端进度补传）、切书目录与迟到错误隔离、其余 API handler 请求取消处理，以及 x/crypto v0.59.0 正式版本升级。
@@ -8,7 +12,7 @@
 
 [可信 Actions 43696695582](https://github.com/changshengyu/openreader/actions/runs/43696695582) 完成双平台镜像、真实浏览器启动、新卷、历史卷、可移植备份与实例密钥升级/重启/回滚/再升级验证。标签 `ghcr.io/changshengyu/openreader:44aebaa` 与发布时 `latest` 的索引摘要为 `sha256:096cd5878e46ace71fa78c0ee856c59d737d7eaf4a400879c407680b31f5bdb5`，平台 linux/amd64 与 linux/arm64。
 
-允许差异沿用多用户隔离、运行时取消适配及既有安全加固。OS 门为 `pass-with-unknown-origins`，沿用 2026-12-10 复审期限。设备验收仍待确认，页面标题工作树中的未提交改动留待后续独立复核。
+允许差异沿用多用户隔离、运行时取消适配及既有安全加固。OS 门为 `pass-with-unknown-origins`，沿用 2026-12-10 复审期限。设备验收仍待确认。页面标题旧工作树已于下述复核关闭。
 
 ## 2026-11-14 当前切片：其余 handler 的请求取消不返回或记录 5xx（P2，运行时适配）
 
