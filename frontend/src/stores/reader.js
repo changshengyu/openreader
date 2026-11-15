@@ -764,7 +764,10 @@ export const useReaderStore = defineStore('reader', {
       if (options.preferLocal && local?.bookId && local.pendingSync) {
         api.get(`/progress/${bookId}`)
           .then(({ data }) => {
-            if (readerProgressOperations.canCommit(operation) && data?.bookId) this.applyServerProgress(data)
+            if (!readerProgressOperations.canCommit(operation)) return
+            if (data?.bookId) return this.applyServerProgress(data)
+            const pending = this.cachedProgress(bookId)
+            if (pending?.pendingSync) return this.syncLocalProgress(pending, pending.baseUpdatedAt, { operation })
           })
           .catch(() => {})
         return local
