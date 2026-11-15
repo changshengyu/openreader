@@ -138,7 +138,7 @@ export function useReaderBookLoad(options) {
 
     options.chapters.value = chapterResponse.data
     if (options.book.value?.progress?.bookId) {
-      options.reader.applyServerProgress(options.book.value.progress)
+      if (!options.book.value.progress.pendingSync) options.reader.applyServerProgress(options.book.value.progress)
       options.bookshelf.applyBookProgress(options.book.value.progress)
     }
     if (saved?.bookId) {
