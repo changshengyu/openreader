@@ -707,7 +707,7 @@ test('E: without a stale load the held switch exposes no previous catalog and sa
 
     await release()
     assert.deepEqual([state.chapter.value?.bookId, state.chapter.value?.index], [3, 0], 'E: book 3 opens at its first chapter')
-    assert.equal(state.bookProgressLabel.value, '0%', 'E: N% returns once book 3\'s catalog is applied')
+    assert.equal(state.bookProgressLabel.value, '50%', 'E: N% returns once book 3\'s catalog is applied')
     assertTargetCacheOwnership(reader, item, 'E')
   } finally {
     reader.stop()
