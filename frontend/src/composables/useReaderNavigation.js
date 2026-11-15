@@ -20,6 +20,17 @@ export function useReaderNavigation(options) {
   let animationGeneration = 0
   let settlementTask = null
 
+  // Progress saves here are fire and forget and best effort (failure progress contract P7): reader-dev's
+  // saveBookProgress swallows every error, so a rejected save must not become an unhandled rejection.
+  function saveProgress() {
+    try {
+      const saving = options.saveProgress()
+      if (typeof saving?.catch === 'function') saving.catch(() => {})
+    } catch {
+      // A synchronous failure is just as best effort.
+    }
+  }
+
   function cancelVerticalSettlement() {
     if (!settlementTask) return
     cancelSettlementTask(settlementTask.id)
@@ -164,7 +175,7 @@ export function useReaderNavigation(options) {
         pageCount: options.pageCount.value,
       })
       options.progressVersion.value += 1
-      options.saveProgress()
+      saveProgress()
       return
     }
     if (jumpToLoadedChapter(options.currentIndex.value, offset)) return
@@ -180,7 +191,7 @@ export function useReaderNavigation(options) {
       }),
     )
     options.progressVersion.value += 1
-    options.saveProgress()
+    saveProgress()
   }
 
   async function goChapter(index, offset = 0) {
@@ -211,7 +222,7 @@ export function useReaderNavigation(options) {
     if (options.getMode() === 'flip' && options.page.value > 0) {
       options.page.value -= 1
       options.progressVersion.value += 1
-      options.saveProgress()
+      saveProgress()
       return
     }
     if (unref(options.isVerticalRead) && options.contentEl.value) {
@@ -233,7 +244,7 @@ export function useReaderNavigation(options) {
     ) {
       options.page.value += 1
       options.progressVersion.value += 1
-      options.saveProgress()
+      saveProgress()
       return
     }
     if (unref(options.isVerticalRead) && options.contentEl.value) {
@@ -259,7 +270,7 @@ export function useReaderNavigation(options) {
       return
     }
     options.progressVersion.value += 1
-    options.saveProgress()
+    saveProgress()
   }
 
   function scrollToBottom() {
@@ -275,7 +286,7 @@ export function useReaderNavigation(options) {
       return
     }
     options.progressVersion.value += 1
-    options.saveProgress()
+    saveProgress()
   }
 
   return {

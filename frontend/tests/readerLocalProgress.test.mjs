@@ -6,7 +6,8 @@ import { useReaderLocalProgress } from '../src/composables/useReaderLocalProgres
 function createController(overrides = {}) {
   const calls = []
   const book = ref({ id: 7, title: '测试书' })
-  const chapter = ref({ id: 12, title: '第三章' })
+  // Catalog rows carry their book, index and id like /books/:id/chapters; `chapter` is row 2's loaded chapter.
+  const chapter = ref({ id: 12, bookId: 7, index: 2, title: '第三章' })
   const reader = reactive({
     mode: 'scroll',
     progressByBook: {},
@@ -25,7 +26,7 @@ function createController(overrides = {}) {
     bookId: ref(7),
     book,
     chapter,
-    chapters: ref(Array.from({ length: 10 }, () => ({}))),
+    chapters: ref(Array.from({ length: 10 }, (_, index) => ({ id: 10 + index, bookId: 7, index, title: `第${index + 1}章` }))),
     currentIndex: ref(2),
     getVisibleSnapshot: () => null,
     getCurrentOffset: () => 120,

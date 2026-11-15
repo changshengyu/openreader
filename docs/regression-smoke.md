@@ -70,6 +70,18 @@ cd frontend && npm run build && cd ..
 node scripts/smoke/pwa-service-worker-contract.mjs
 ```
 
+## Reader failure progress
+
+`reader-failure-progress-contract.mjs` needs a real OpenReader server, not mocks: `PUT /api/progress` must be answered
+by the backend, whose chapter identity check (`400 invalid progress payload`) the mocked Reader contracts never see. It
+registers a fresh user and imports its own TXT books, so any instance with registration open works; `page.route` only
+fails one chapter's content or one book's catalog, holds one chapter's content, or fails `PUT /api/progress`
+(contract `docs/compat/reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`):
+
+```bash
+TARGET_URL=http://127.0.0.1:8080 node scripts/smoke/reader-failure-progress-contract.mjs
+```
+
 ## Release gate
 
 `.github/workflows/docker-publish.yml` runs `scripts/smoke/release-browser-smoke.sh` right after the

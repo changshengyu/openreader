@@ -335,3 +335,84 @@ function validLoaderContent(index) {
     format: 'text',
   }
 }
+
+// docs/compat/reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md P2 (D1-A): reader-dev saves the
+// requested chapter on the server before fetching its content, so a failed navigation still moves the progress there.
+test('saves the failed target chapter once after a failed navigation (P2)', async () => {
+  const fixture = createController({
+    loadContent: async () => {
+      throw new Error('source down')
+    },
+  })
+  assert.equal(await fixture.controller.load(1, 0, { saveAfterLoad: true }), false)
+  assert.deepEqual(fixture.calls.map(call => call[0]), ['cancel', 'layout', 'save', 'frame'])
+  assert.deepEqual(fixture.calls.filter(call => call[0] === 'save'), [['save', { force: true }]])
+})
+
+test('saves a failed continuous target only after its chapter window settles (P2)', async () => {
+  let settle = () => {}
+  const fixture = createController({
+    loadContent: async () => {
+      throw new Error('source down')
+    },
+    showFailedChapterWindow: () => new Promise((resolve) => {
+      settle = () => {
+        fixture.calls.push(['window-settled'])
+        resolve()
+      }
+    }),
+  })
+  fixture.state.isContinuousScrollRead.value = true
+  await fixture.controller.load(2, 0, { saveAfterLoad: true })
+  assert.deepEqual(fixture.calls.filter(call => call[0] === 'save'), [], 'the window transaction blocks progress until it settles')
+  settle()
+  for (let tick = 0; tick < 5; tick += 1) await Promise.resolve()
+  const order = fixture.calls.map(call => call[0]).filter(name => name === 'window-settled' || name === 'save')
+  assert.deepEqual(order, ['window-settled', 'save'])
+})
+
+test('does not save after a failed initial load, a failed reload or an aborted or superseded navigation (P2 control)', async () => {
+  const failing = createController({
+    loadContent: async () => {
+      throw new Error('source down')
+    },
+  })
+  await failing.controller.load(1)
+  await failing.controller.load(1, 0, { refresh: true })
+  assert.deepEqual(failing.calls.filter(call => call[0] === 'save'), [])
+
+  const pending = new Map()
+  const raced = createController({
+    loadContent: (index, options) => new Promise((resolve, reject) => {
+      pending.set(index, { resolve, reject, signal: options.signal })
+    }),
+  })
+  const first = raced.controller.load(0, 0, { saveAfterLoad: true })
+  const second = raced.controller.load(1, 0, { saveAfterLoad: true })
+  const aborted = new Error('chapter request cancelled')
+  aborted.name = 'AbortError'
+  pending.get(0).reject(aborted)
+  assert.equal(await first, false)
+  const third = raced.controller.load(2, 0, { saveAfterLoad: true })
+  pending.get(1).reject(new Error('superseded failure'))
+  assert.equal(await second, false)
+  pending.get(2).reject(aborted)
+  assert.equal(await third, false)
+  assert.deepEqual(raced.calls.filter(call => call[0] === 'save'), [])
+})
+
+// Contract P7: a progress save is best effort. A rejected save after a successful navigation must not turn the loaded
+// chapter into an error page.
+test('keeps a successfully loaded chapter when its progress save is rejected (P7)', async () => {
+  const fixture = createController({
+    saveProgress: async (options) => {
+      fixture.calls.push(['save', options])
+      throw new Error('invalid progress payload')
+    },
+  })
+  fixture.state.isContinuousScrollRead.value = true
+  assert.equal(await fixture.controller.load(1, 0, { saveAfterLoad: true }), true)
+  assert.equal(fixture.state.chapterLoadError.value, '')
+  assert.equal(fixture.state.chapterLoaded.value, true)
+  assert.ok(fixture.calls.some(call => call[0] === 'window'), 'the continuous window is still computed')
+})

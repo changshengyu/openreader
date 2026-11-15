@@ -53,6 +53,12 @@ export function useReaderToc(options) {
   async function jump(index) {
     visible.value = false
     const targetIndex = readerTocTargetIndex(index, unref(options.chapters)?.length)
+    // reader-dev's catalog press is getContent(index): pressing the failed current chapter retries it instead of
+    // jumping within an error page (failure progress contract P6).
+    if (targetIndex === unref(options.currentIndex) && options.isCurrentChapterFailed?.()) {
+      await options.reloadCurrentChapter?.(targetIndex)
+      return
+    }
     await options.goChapter(targetIndex)
   }
 
