@@ -1,5 +1,9 @@
 # OpenReader 全量上游复审矩阵
 
+## 2026-11-15 Reader 离线进度与换书目录
+
+[离线待同步进度](reader-progress-pending-sync-keepalive-fixed-baseline-second-audit-p0-contract.md)与[换书目录归属](reader-shelf-switch-stale-catalog-fixed-baseline-second-audit-p1-contract.md)均完成实现。两个浏览器合同分别通过 24/24 和 6/6。
+
 ## 2026-11-14 当前切片：Reader 失败态进度载荷盘点（P0）
 
 见[`reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md`](reader-failure-progress-payload-fixed-baseline-second-audit-p0-contract.md)。基于 main `9602dc4`，分支 `claude/reader-failure-progress-inventory`，只写文档。

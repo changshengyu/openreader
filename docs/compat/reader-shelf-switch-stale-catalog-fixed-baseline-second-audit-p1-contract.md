@@ -5,7 +5,7 @@ scratchpad 里的临时探针（真实 composable 加真实 Vue 调度，网络�
 第 9 节在后续阶段进行。
 
 固定上游：`changshengyu/reader-dev@fa22f271849d45f93349ae1636223e27b16a4691`。约定路径
-`/private/tmp/changshengyu-reader-dev` 不存在，本会话在 scratchpad 浅取同一提交（`git rev-parse HEAD` 为 `fa22f271…`）。  
+`/private/tmp/changshengyu-reader-dev` 不存在，本会话在 scratchpad 浅取同一提交（`git rev-parse HEAD` 为 `fa22f271…`）。
 当前基线：`OpenReader@5bc38a3`（等于 `origin/main`，本分支 `claude/ecstatic-volhard-4d53ee`）；
 `git diff 186c762 5bc38a3 -- frontend backend scripts` 为空，Reader 产品代码与已发布的 `186c762` 相同。本文 OpenReader
 行号都以 `5bc38a3` 为准。标签页标题切片（`claude/xenodochial-carson-5004c3`，未合入）只给 `Reader.vue` 加一行
@@ -305,3 +305,9 @@ R6. 不变：第 6 节所列各项。不新增 API、数据库字段、浏览器
 3. 上游换书时目录走网络（`loadCatalog(true, true)` → `getCatalog(true)` → `cacheFirstRequest(..., true)` 跳过缓存，
    `web/src/plugins/helper.js` L104–126），OpenReader 先读浏览器缓存、再在后台刷新（`useReaderBookLoad.js:121`、`:184`）。这让
    换书窗口通常更短，但不改变本文的竞态。是否对齐不在本切片。
+
+## 2026-11-15 主线复核
+
+在本机上游仓库 `/Users/yuchangsheng/Documents/reader-dev` 核对固定提交 `fa22f271` 的 `web/src/views/Reader.vue`。OpenReader 起点为 `49392de5`。
+
+上游换书后调用新书目录加载。主线保留最新失败章进度规则，换书由目标目录负责定位，旧目录不会触发预载或影响百分比。目录请求晚到的错误按加载代际丢弃，包括首次加载后切走再返回同书的情况。浏览器拦截目标目录 1.5 秒，桌面与两个移动视口在 page、scroll2 下通过 6/6；补充复审的迟到目录错误由乱序单测覆盖。
