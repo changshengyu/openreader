@@ -131,6 +131,8 @@ function installReaderObservers() {
   const states = []
   window.__shelfSwitchStates = states
   let lastKey = ''
+  window.__shelfSwitchMessages = []
+  const seenMessages = new WeakSet()
   const snapshot = () => {
     const body = document.querySelector('.reader-body')
     const text = body ? body.innerText : ''
@@ -149,6 +151,11 @@ function installReaderObservers() {
   }
   window.__shelfSwitchSnapshot = snapshot
   const record = () => {
+    for (const message of document.querySelectorAll('.el-message')) {
+      if (seenMessages.has(message) || message.querySelector('.el-message__content')?.textContent !== '换书成功') continue
+      seenMessages.add(message)
+      window.__shelfSwitchMessages.push({ path: location.pathname, info: message.classList.contains('el-message--info') })
+    }
     const state = snapshot()
     const key = JSON.stringify(state)
     if (key === lastKey) return
@@ -312,6 +319,7 @@ async function switchFromShelf(run, target, settle) {
   state.catalogGates.set(target.id, gate)
   const stateStart = await page.evaluate(() => window.__shelfSwitchStates.length)
   const requestStart = await page.evaluate(() => window.__shelfSwitchRequests.length)
+  const messageStart = await page.evaluate(() => window.__shelfSwitchMessages.length)
   let releasedAt = 0
   let releasedAtPage = 0
   try {
@@ -323,6 +331,10 @@ async function switchFromShelf(run, target, settle) {
     await page.waitForURL(url => new URL(url).pathname === `/books/${target.id}/read`, { timeout: 10_000 })
     const switchedUrl = new URL(page.url())
     await page.waitForTimeout(catalogHoldMs)
+    const messages = await page.evaluate(start => window.__shelfSwitchMessages.slice(start), messageStart)
+    if (messages.length !== 1 || !messages[0].info || messages[0].path !== `/books/${target.id}/read`) {
+      failures.push(`${step}: expected one info 换书成功 after navigation while catalog held, got ${JSON.stringify(messages)}`)
+    }
     const held = await page.evaluate(() => window.__shelfSwitchSnapshot())
     releasedAtPage = await page.evaluate(() => performance.now())
     releasedAt = Date.now()
@@ -361,6 +373,14 @@ async function switchFromShelf(run, target, settle) {
     if (progressTexts.length) failures.push(`${step}: N% showed ${JSON.stringify(progressTexts)} while book ${target.id}'s catalog was held`)
 
     await settle({ releasedAt, switchedUrl, step })
+    const messageCount = await page.evaluate(start => window.__shelfSwitchMessages.length - start, messageStart)
+    if (messageCount !== 1) failures.push(`${step}: expected exactly one switch toast through chapter completion, got ${messageCount}`)
+    await openShelf(page, viewport)
+    await page.locator(`.reader-shelf-card[data-book-id="${target.id}"]:visible`).click()
+    await page.waitForTimeout(100)
+    if (await page.evaluate(start => window.__shelfSwitchMessages.length - start, messageStart) !== messageCount) {
+      failures.push(`${step}: selecting current book emitted a switch toast`)
+    }
   } finally {
     if (state.catalogGates.get(target.id) === gate) state.catalogGates.delete(target.id)
     gate.release()

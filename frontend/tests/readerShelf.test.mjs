@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { useReaderShelf } from '../src/composables/useReaderShelf.js'
 import { sortByShelfOrder } from '../src/utils/bookOrder.js'
 import { readerRouteQueryFromBook } from '../src/utils/readerRoute.js'
@@ -89,4 +90,90 @@ test('a rejected progress save does not stop a reader shelf book switch (P5)', a
     assert.equal(pushed.length, 1, `${failure.message}: the switch must still navigate`)
     assert.deepEqual(pushed[0]?.params, { id: 2 })
   }
+})
+
+
+// Shelf switch feedback contract §10.1: these are real Router results, including resolved navigation failures.
+async function feedbackShelf({ saveFails = false, guard } = {}) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/books/:id/read', name: 'reader', component: {} },
+      { path: '/other', name: 'other', component: {} },
+    ],
+  })
+  await router.push({ name: 'reader', params: { id: 1 } })
+  if (guard) router.beforeEach(guard)
+  router.onError(() => {})
+  const messages = []
+  const shelf = useReaderShelf({
+    bookshelf: { books: [] },
+    reader: { progressByBook: {} },
+    currentBookId: computed(() => router.currentRoute.value.params.id),
+    router,
+    saveProgress: async () => { if (saveFails) throw new Error('save failed') },
+    onSuccess: message => messages.push(message),
+  })
+  return { shelf, router, messages }
+}
+
+for (const saveFails of [false, true]) {
+  test(`successful shelf navigation reports once after navigation (saveFails=${saveFails})`, async () => {
+    let release
+    const gate = new Promise(resolve => { release = resolve })
+    const { shelf, router, messages } = await feedbackShelf({ saveFails, guard: () => gate })
+    const switching = shelf.select({ id: 2 })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(messages, [], 'no success while navigation is pending')
+    release(true)
+    await switching
+    assert.equal(router.currentRoute.value.params.id, '2')
+    assert.deepEqual(messages, ['换书成功'])
+    await shelf.select({ id: 2 })
+    assert.deepEqual(messages, ['换书成功'], 'current book selection stays silent')
+  })
+}
+
+for (const [label, guard] of [
+  ['aborted', () => false],
+  ['rejected', () => { throw new Error('guard failed') }],
+  ['redirected to another book', to => to.params.id === '2' ? { name: 'reader', params: { id: 3 } } : true],
+  ['redirected away', to => to.name === 'reader' ? { name: 'other' } : true],
+]) {
+  test(`shelf navigation ${label} never reports success`, async () => {
+    const { shelf, messages } = await feedbackShelf({ guard })
+    await shelf.select({ id: 2 }).catch(() => {})
+    assert.deepEqual(messages, [])
+  })
+}
+
+test('concurrent duplicate shelf navigation only reports the successful navigation', async () => {
+  const { shelf, messages } = await feedbackShelf()
+  await Promise.all([shelf.select({ id: 2 }), shelf.select({ id: 2 })])
+  assert.deepEqual(messages, ['换书成功'])
+})
+
+test('a duplicate navigation result stays silent even if currentBookId is stale', async () => {
+  const { shelf, router, messages } = await feedbackShelf()
+  await router.push({ name: 'reader', params: { id: 2 }, query: { resume: '1' } })
+  // Simulate a reader identity snapshot that has not caught up with the route yet.
+  const duplicate = useReaderShelf({
+    bookshelf: { books: [] }, reader: { progressByBook: {} }, currentBookId: ref(1), router,
+    onSuccess: message => messages.push(message),
+  })
+  await duplicate.select({ id: 2 })
+  assert.deepEqual(messages, [])
+})
+
+test('a cancelled navigation cannot report success after a newer switch', async () => {
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  const { shelf, router, messages } = await feedbackShelf({ guard: to => to.params.id === '2' ? gate : true })
+  const first = shelf.select({ id: 2 })
+  await new Promise(resolve => setImmediate(resolve))
+  await shelf.select({ id: 3 })
+  release(true)
+  await first
+  assert.equal(router.currentRoute.value.params.id, '3')
+  assert.deepEqual(messages, ['换书成功'])
 })
