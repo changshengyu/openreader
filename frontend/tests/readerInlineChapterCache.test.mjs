@@ -191,3 +191,39 @@ test('keeps temporary Reader chapter responses no-store', async () => {
   await fixture.controller.cacheFollowing(50)
   assert.deepEqual(fixture.calls, [['unavailable']])
 })
+
+test('drops marks synchronously on book, source, and reactive scope changes', () => {
+  const scope = ref('user:11')
+  const fixture = createController({ getCacheScope: () => scope.value })
+  for (const change of [
+    () => { fixture.contextKey.value = 'book:10|source:1' },
+    () => { fixture.contextKey.value = 'book:10|source:2' },
+    () => { scope.value = 'user:12' },
+  ]) {
+    fixture.controller.markCached(4)
+    change()
+    assert.deepEqual(fixture.controller.cachedChapters.value, {})
+    fixture.controller.markCached(0)
+    assert.deepEqual(fixture.controller.cachedChapters.value, { 0: true })
+  }
+})
+
+for (const fails of [false, true]) {
+  test(`ignores a late cache listing ${fails ? 'failure' : 'success'} after leaving and returning to the same context`, async () => {
+    const read = deferred()
+    const fixture = createController({
+      listCachedChapters: async () => {
+        await read.promise
+        if (fails) throw new Error('old read failed')
+        return { 4: true }
+      },
+    })
+    const pending = fixture.controller.refresh()
+    fixture.contextKey.value = 'book:10|generation:1'
+    fixture.contextKey.value = 'book:9|generation:1'
+    fixture.controller.markCached(0)
+    read.resolve()
+    await pending
+    assert.deepEqual(fixture.controller.cachedChapters.value, { 0: true })
+  })
+}
