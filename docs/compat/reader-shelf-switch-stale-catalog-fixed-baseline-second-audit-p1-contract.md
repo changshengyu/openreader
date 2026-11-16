@@ -323,6 +323,16 @@ R6. 不变：第 6 节所列各项。不新增 API、数据库字段、浏览器
 | 不变项 | 选择当前书无需换书；不等待保存 | 已签收 P5：保存失败仍切书 | 当前书、重复导航、中止/取消、拒绝或重定向到其它页面不报成功；保存失败而导航成功仍提示一次 |
 | API / 数据 | 无此通知相关契约 | 无此通知相关契约 | 不改请求/响应、路由参数、持久化 key、数据库、目录或缓存策略 |
 
-阶段：本提交只补合同。下一提交先补单元与现有 shelf-switch smoke 红测，再实现 callback 和 Reader 的 info 消息接线。
+阶段：合同 `f2bf37b0` → 红测 `5ffbb9c7` → 独立实现提交，严格按序。实现只加导航成功回调和 Reader 的 info 消息接线。
 
 验收：用真实 memory router 覆盖成功、保存失败、当前书、重复、守卫中止、守卫抛错、导航取消、重定向到其它书/页面；重复并发选择同一本目标书仅提示一次。浏览器在现有目录 gate 下记录新加入的消息节点，确认导航完成且目录仍挂起时已提示一次、正文/失败章完成后不重复；当前书选择无新提示。覆盖 1440×900、390×844、360×800 的 page 与 scroll2。
+
+
+### 10.1 验证记录
+
+- `node --test frontend/tests/readerShelf.test.mjs`：红测 14 条、10 绿 / 4 红（正常成功、保存失败后成功、并发重复中的唯一成功、取消旧导航后的新成功均缺少消息）；实现后 14/14 通过。新增 9 条真实 memory router 合同。
+- `TARGET_URL=http://127.0.0.1:5182 SMOKE_VIEWPORTS=1440x900,390x844,360x800 CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node scripts/smoke/reader-shelf-switch-contract.mjs`：红测六组各 8 个失败（4 次换书在目录挂起和正文完成两个检查点均无 toast），其它旧断言无失败；实现后六组全绿，目录挂起 1500ms，每组含 4 次换书与 4 次当前书选择。书 5 正文失败后仍只有一次导航成功提示。
+- `cd frontend && npm test`：1052/1052 通过。首次沙箱内跑时 3 条已有 dependency advisory worker 因 `listen EPERM 127.0.0.1` 失败；允许本机监听后重跑全部通过。
+- `cd frontend && npm run build`：通过；保留既有 chunk 大小提示。`git diff --check` 通过。
+- 浏览器在沙箱内 Chrome 启动被限制，授权沙箱外重跑通过。后端无修改，集成代理已完成基线 `cd backend && go test ./...`；本切片不重复执行。
+- 无发布、推送或生产操作。允许差异仅为上表的 Vue Router 成功边界；目录/正文成功不作为 toast 条件，所有其它合同维持不变。
