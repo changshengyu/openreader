@@ -5,6 +5,7 @@ import api from '../src/api/client.js'
 import { getChapterContent } from '../src/api/books.js'
 import { getRemoteReaderChapterContent } from '../src/api/remoteReader.js'
 import { useReaderChapterContent } from '../src/composables/useReaderChapterContent.js'
+import { loadBrowserChapterContent } from '../src/utils/bookChapterCache.js'
 
 function validContent(index) {
   return {
@@ -197,6 +198,57 @@ test('retries a transient explicit reload conflict with the same remote refresh 
     [true, true],
   ])
   assert.equal(calls[1].signal, calls[0].signal)
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('prevents an older queued retry from publishing over an explicit reload', async () => {
+  const heldRetry = Promise.withResolvers()
+  const firstRetryStarted = Promise.withResolvers()
+  const olderConflict = Promise.withResolvers()
+  const attempts = new Map()
+  const chapterWrites = []
+  const fresh = { ...validContent(2), content: 'fresh from the source' }
+  const fixture = createController({
+    loadBrowserContent: (book, bookId, index, options) => loadBrowserChapterContent(book, bookId, index, {
+      ...options,
+      scope: 'user:7',
+      // Simulate a browser cache miss when the queued retry finally runs.
+      getCache: async () => null,
+      setCache: async (_key, data) => {
+        if (index === 2) chapterWrites.push(data)
+      },
+      getChapterContent: async (_id, chapterIndex, requestOptions) => {
+        if (requestOptions.refreshRemote) return { data: fresh }
+        const count = (attempts.get(chapterIndex) || 0) + 1
+        attempts.set(chapterIndex, count)
+        if (count === 1) {
+          if (chapterIndex === 2) olderConflict.resolve()
+          throw staleChapterError()
+        }
+        if (chapterIndex === 1) {
+          firstRetryStarted.resolve()
+          await heldRetry.promise
+        }
+        return { data: validContent(chapterIndex) }
+      },
+    }),
+  })
+
+  const blocking = fixture.controller.load(1)
+  await firstRetryStarted.promise
+  const older = fixture.controller.load(2)
+  try {
+    await olderConflict.promise
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(attempts.get(2), 1)
+    assert.deepEqual(await fixture.controller.load(2, { refreshRemote: true }), fresh)
+  } finally {
+    heldRetry.resolve()
+    await Promise.all([blocking, older])
+  }
+
+  assert.equal(attempts.get(2), 2)
+  assert.deepEqual(chapterWrites, [fresh])
   assert.deepEqual(fixture.controller.get(2), fresh)
 })
 

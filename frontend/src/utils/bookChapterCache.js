@@ -50,7 +50,7 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
     else if (pending.refreshRemote) read.canWrite = false
   }
   active.add(read)
-  const canWrite = () => read.canWrite && !options.signal?.aborted
+  const canWrite = () => read.canWrite && !options.signal?.aborted && options.canWrite?.() !== false
 
   try {
     if (!options.refresh && !refreshRemote) {
