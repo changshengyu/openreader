@@ -191,6 +191,20 @@ test('keeps a failed continuous target chapter in the chapter window', async () 
   assert.deepEqual(single.calls.filter(call => call[0] === 'failed-window'), [], 'single-chapter modes show the error page')
 })
 
+test('passes the explicit reload intent to the failed continuous chapter', async () => {
+  const error = new Error('source unavailable')
+  const fixture = createController({
+    loadContent: async () => { throw error },
+    showFailedChapterWindow: (...args) => fixture.calls.push(['failed-window', ...args]),
+  })
+  fixture.state.isContinuousScrollRead.value = true
+
+  assert.equal(await fixture.controller.load(2, 80, { refresh: true, refreshRemote: true }), false)
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'failed-window'), [
+    'failed-window', 2, error, { refreshRemote: true },
+  ])
+})
+
 test('discards an older main load that finishes after the active chapter', async () => {
   const pending = new Map()
   const fixture = createController({

@@ -179,10 +179,10 @@ test('builds the chapter window for the mode it is given rather than the raw set
 
 test('renders adjacent chapter failures and can retry them without losing current content', async () => {
   let attempts = 0
-  const loadedIndexes = []
+  const loads = []
   const fixture = createController({
-    loadContent: async index => {
-      loadedIndexes.push(index)
+    loadContent: async (index, options) => {
+      loads.push([index, options])
       if (index === 4 && attempts++ === 0) throw new Error('network error')
       return { chapter: fixture.chapters.value[index], content: `正文 ${index}` }
     },
@@ -201,12 +201,12 @@ test('renders adjacent chapter failures and can retry them without losing curren
   assert.equal(fixture.chapterBlocks.value[1].error, '加载失败：network error')
   fixture.controller.maybeExtend()
   await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(loadedIndexes, [4])
+  assert.deepEqual(loads, [[4, undefined]])
 
   await fixture.controller.retry(4)
   assert.equal(fixture.chapterBlocks.value[1].error, undefined)
   assert.equal(fixture.chapterBlocks.value[1].content, '正文 4')
-  assert.deepEqual(loadedIndexes, [4, 4])
+  assert.deepEqual(loads, [[4, undefined], [4, { refresh: true }]])
 })
 
 test('serializes boundary extension and releases its lock after completion', async () => {
@@ -405,4 +405,37 @@ test('retrying the failed current chapter replaces it in place and commits it as
     fixture.calls.filter(call => call[0] === 'load' && call[1] === 2),
     [['load', 2, true], ['load', 2, true]],
   )
+})
+
+
+test('keeps reloading the source after a failed explicit reload in the continuous window', async () => {
+  const attempts = []
+  let sourceAvailable = false
+  const fixture = createController({
+    loadContent: async (index, options) => {
+      if (index === 2) {
+        attempts.push(options)
+        if (options.refreshRemote && !sourceAvailable) throw new Error('source unavailable')
+      }
+      return {
+        chapter: fixture.chapters.value[index],
+        content: options?.refreshRemote ? 'updated source body' : 'old server cache',
+      }
+    },
+  })
+  fixture.content.value = 'last successful reload'
+  await fixture.controller.showFailedChapter(2, new Error('source unavailable'), { refreshRemote: true })
+
+  assert.equal(await fixture.controller.retry(2), false)
+  assert.ok(fixture.chapterBlocks.value[0].error)
+  assert.equal(fixture.content.value, 'last successful reload')
+
+  sourceAvailable = true
+  assert.equal(await fixture.controller.retry(2), true)
+  assert.equal(fixture.chapterBlocks.value[0].error, undefined)
+  assert.equal(fixture.content.value, 'updated source body')
+  assert.deepEqual(attempts, [
+    { refresh: true, refreshRemote: true },
+    { refresh: true, refreshRemote: true },
+  ])
 })
