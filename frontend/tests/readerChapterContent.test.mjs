@@ -179,24 +179,81 @@ test('distinguishes an explicit refresh from a concurrent browser-only refresh',
   assert.deepEqual(fixture.controller.get(2), fresh)
 })
 
-test('reports a stale conflict on an explicit remote refresh rather than reading the old cache', async () => {
+test('retries a transient explicit reload conflict with the same remote refresh intent', async () => {
   const calls = []
-  const conflict = staleChapterError()
+  const fresh = { ...validContent(2), content: 'fresh from the source' }
   const fixture = createController({
-    loadBrowserContent: async (_book, _id, index, options) => {
+    loadBrowserContent: async (_book, _id, _index, options) => {
+      calls.push(options)
+      if (calls.length === 1) throw staleChapterError()
+      return options.refreshRemote ? fresh : validContent(2)
+    },
+  })
+  fixture.controller.set(2, validContent(2))
+
+  assert.deepEqual(await fixture.controller.load(2, { refreshRemote: true }), fresh)
+  assert.deepEqual(calls.map(({ refresh, refreshRemote }) => [refresh, refreshRemote]), [
+    [true, true],
+    [true, true],
+  ])
+  assert.equal(calls[1].signal, calls[0].signal)
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('reports an explicit reload failure after the second stale conflict', async () => {
+  const calls = []
+  const secondConflict = staleChapterError()
+  const fixture = createController({
+    loadBrowserContent: async (_book, _id, _index, options) => {
       calls.push(options.refreshRemote)
-      if (calls.length === 1) throw conflict
-      return validContent(index)
+      throw calls.length === 1 ? staleChapterError() : secondConflict
     },
   })
   fixture.controller.set(2, validContent(2))
 
   await assert.rejects(
-    fixture.controller.load(2, { refresh: true, refreshRemote: true }),
-    { message: '章节状态已更新，请重试' },
+    fixture.controller.load(2, { refreshRemote: true }),
+    { name: 'ChapterStaleConflictError', message: '章节状态已更新，请重试', cause: secondConflict },
   )
-  assert.deepEqual(calls, [true])
+  assert.deepEqual(calls, [true, true])
   assert.deepEqual(fixture.controller.get(2), validContent(2))
+})
+
+test('drops an explicit reload retry cancelled while queued and publishes its replacement', async () => {
+  const heldRetry = Promise.withResolvers()
+  const ordinaryRetryStarted = Promise.withResolvers()
+  const attempts = []
+  const fresh = { ...validContent(2), content: 'replacement reload' }
+  const fixture = createController({
+    loadBrowserContent: async (_book, _id, index, options) => {
+      const attempt = attempts.filter(row => row.index === index).length + 1
+      attempts.push({ index, signal: options.signal })
+      if (attempt === 1) throw staleChapterError()
+      if (index === 2) return fresh
+      ordinaryRetryStarted.resolve()
+      await heldRetry.promise
+      return validContent(index)
+    },
+  })
+
+  const ordinary = fixture.controller.load(1)
+  await ordinaryRetryStarted.promise
+  const controller = new AbortController()
+  const cancelled = fixture.controller.load(2, { refreshRemote: true, signal: controller.signal })
+    .catch(error => error)
+  await new Promise(resolve => setImmediate(resolve))
+  controller.abort()
+  try {
+    assert.equal((await cancelled).name, 'AbortError')
+    assert.equal(attempts[2].signal.aborted, true)
+    assert.deepEqual(await fixture.controller.load(2, { refreshRemote: true }), fresh)
+  } finally {
+    heldRetry.resolve()
+    await ordinary
+  }
+
+  assert.equal(attempts.filter(row => row.index === 2).length, 2)
+  assert.deepEqual(fixture.controller.get(2), fresh)
 })
 
 test('does not start an explicit remote refresh for an already cancelled reader load', async () => {

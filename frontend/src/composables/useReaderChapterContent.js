@@ -87,8 +87,6 @@ export function useReaderChapterContent(options) {
       } catch (error) {
         if (entry.controller.signal.aborted) throw chapterAbortError(entry.controller.signal)
         if (!isStaleChapterConflict(error)) throw error
-        // A cached body cannot satisfy a request to reload from the source.
-        if (refreshRemote) throw chapterStaleRetryError(error)
         try {
           data = await enqueueStaleRetry(
             staleRetryTails,
@@ -99,7 +97,9 @@ export function useReaderChapterContent(options) {
               targetBookId,
               index,
               {
-                refresh: false,
+                // Explicit reloads still need a fresh body after a conflict.
+                refresh: refreshRemote,
+                ...(refreshRemote ? { refreshRemote: true } : {}),
                 signal: entry.controller.signal,
               },
             ),
