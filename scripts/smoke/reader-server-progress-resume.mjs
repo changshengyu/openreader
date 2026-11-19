@@ -47,6 +47,7 @@ async function checkResume(browser, viewport, scenario) {
       await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$router.push({
         name: 'reader', params: { id: 3 }, query: { resume: '1', chapter: 7 },
       }))
+      await body.getByText('换书契约三第8章', { exact: false }).first().waitFor({ timeout: 10000 })
     }
     await page.evaluate(() => window.releaseResume())
     await page.waitForFunction(expected => window.resumeResult === expected, scenario === 'normal' ? 'applied' : 'cancelled')
