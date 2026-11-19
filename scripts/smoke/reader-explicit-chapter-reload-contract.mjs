@@ -135,12 +135,17 @@ async function api(root, path, { token, body, method = 'GET' } = {}) {
   return response.json()
 }
 
-async function seedBook(root, source, fixtureKey) {
+async function seedBook(root, source, fixtureKey, mode) {
   const auth = await api(root, '/auth/register', {
     method: 'POST',
     body: { username: fixtureKey, password: randomBytes(16).toString('hex') },
   })
   assert.ok(auth.token && auth.user?.id, 'isolated reader account did not return user and token')
+  await api(root, '/settings/reader', {
+    token: auth.token,
+    method: 'PUT',
+    body: { value: { mode, autoTheme: false } },
+  })
   const remote = await api(root, '/sources', {
     token: auth.token,
     method: 'POST',
@@ -167,22 +172,32 @@ async function seedBook(root, source, fixtureKey) {
   return { ...auth, book }
 }
 
-async function createReaderContext(browser, viewport, auth) {
+async function createReaderContext(browser, viewport, auth, mode) {
   const mobile = viewport.width <= 750
   const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile })
-  await context.addInitScript(({ token, scope }) => {
+  // Leave each tab's reading position independent while testing shared body storage.
+  await context.routeWebSocket(url => new URL(url).pathname === '/ws/sync', () => {})
+  await context.addInitScript(({ token, scope, mode }) => {
     localStorage.setItem('openreader_token', token)
     if (!localStorage.getItem('reader')) {
-      localStorage.setItem('reader', JSON.stringify({ mode: 'scroll2', settingsScope: scope, progressScope: scope }))
+      localStorage.setItem('reader', JSON.stringify({ mode, autoTheme: false, settingsScope: scope, progressScope: scope }))
     }
-  }, { token: auth.token, scope: 'user:' + auth.user.id })
+  }, { token: auth.token, scope: 'user:' + auth.user.id, mode })
   return context
 }
 
-async function openReader(context, url, version) {
+async function assertReaderBody(page, mode, version) {
+  const body = page.locator('.reader-shell.' + mode).locator(chapter)
+  const firstParagraph = body.getByText(/^v[123] 第1段/, { exact: false })
+  await firstParagraph.waitFor({ timeout: 10_000 })
+  const text = await firstParagraph.textContent()
+  assert.ok(text.startsWith(version + ' 第1段'), 'expected body ' + version + ', opened with ' + text.slice(0, 12))
+}
+
+async function openReader(context, url, mode, version) {
   const page = await context.newPage()
   await page.goto(url, { waitUntil: 'domcontentloaded' })
-  await page.locator(chapter).getByText(version + ' 第1段', { exact: false }).waitFor({ timeout: 10_000 })
+  await assertReaderBody(page, mode, version)
   return page
 }
 
@@ -196,87 +211,165 @@ async function visibleParagraphIndex(page) {
   }, chapter)
 }
 
-async function assertViewport(browser, root, source, viewport) {
+async function positionedReader(context, url, mode) {
+  const page = await openReader(context, url + '&offset=1200', mode, 'v1')
+  await page.waitForFunction(() => {
+    const scroller = document.querySelector('.reader-shell.document-scroll')
+      ? document.scrollingElement
+      : document.querySelector('.reader-content')
+    return scroller?.scrollTop > 100
+  }, null, { timeout: 5_000 })
+  const before = await visibleParagraphIndex(page)
+  assert.ok(before > 3, 'reader did not restore a position beyond the first screen')
+  return { page, before }
+}
+
+async function newScenario(browser, root, source, viewport, mode) {
   const fixtureKey = 'reload' + viewport.width + randomBytes(4).toString('hex')
   const fixture = { version: 'v1', fetches: 0, failed: false }
   source.books.set(fixtureKey, fixture)
-  const auth = await seedBook(root, source, fixtureKey)
+  const auth = await seedBook(root, source, fixtureKey, mode)
   const contentPath = '/books/' + auth.book.id + '/chapters/0/content'
-  const isContentResponse = response => new URL(response.url()).pathname === '/api' + contentPath
-    && response.request().method() === 'GET'
+  const matchesContent = url => new URL(url).pathname === '/api' + contentPath
   const mobile = viewport.width <= 750
   const reloadSelector = mobile
     ? '.reader-mobile-float-right.visible button[aria-label="重新载入章节"]'
     : '.reader-right-rail button[aria-label="重新载入章节"]'
-  const url = root + '/books/' + auth.book.id + '/read?chapter=0'
-  const context = await createReaderContext(browser, viewport, auth)
-  try {
-    const page = await openReader(context, url + '&offset=1200', 'v1')
-    await page.waitForFunction(() => {
-      const shell = document.querySelector('.reader-shell')
-      const scroller = shell?.classList.contains('document-scroll')
-        ? document.scrollingElement
-        : document.querySelector('.reader-content')
-      return scroller?.scrollTop > 100
-    }, null, { timeout: 5_000 })
-    const before = await visibleParagraphIndex(page)
-    assert.ok(before > 3, 'reader did not restore a position beyond the first screen')
+  async function press(page, selector) {
+    await page.bringToFront()
+    const button = page.locator(selector)
+    const [response] = await Promise.all([
+      page.waitForResponse(response => matchesContent(response.url()) && response.request().method() === 'GET', { timeout: 10_000 }),
+      mobile ? button.tap({ timeout: 5_000 }) : button.click({ timeout: 5_000 }),
+    ])
+    return response
+  }
+  return {
+    fixture,
+    auth,
+    contentPath,
+    matchesContent,
+    url: root + '/books/' + auth.book.id + '/read?chapter=0',
+    context: await createReaderContext(browser, viewport, auth, mode),
+    toolbarReload: page => press(page, reloadSelector),
+    retryError: page => press(page, mode === 'scroll2'
+      ? chapter + ' .chapter-inline-error button'
+      : '.chapter-load-error button'),
+  }
+}
 
+function assertReloadResponse(response, status, action) {
+  const refresh = new URL(response.url()).searchParams.get('refresh')
+  assert.equal(response.status(), status, action + ' returned HTTP ' + response.status() + ' (refresh=' + refresh + ')')
+  assert.equal(refresh, '1', action + ' did not request explicit refresh')
+}
+
+async function assertToolbarReload(page, mode, scenario, version) {
+  const fetches = scenario.fixture.fetches
+  const response = await scenario.toolbarReload(page)
+  assertReloadResponse(response, 200, 'toolbar reload')
+  assert.match((await response.json()).content, new RegExp('^' + version + ' 第1段'))
+  assert.equal(scenario.fixture.fetches, fetches + 1, 'toolbar reload should request the source once')
+  await page.locator('.reader-toast').filter({ hasText: '章节已重新载入' }).waitFor({ timeout: 5_000 })
+  await assertReaderBody(page, mode, version)
+  assert.equal(new URL(page.url()).searchParams.get('chapter'), '0')
+}
+
+async function assertMode(browser, root, source, viewport, mode) {
+  const scenario = await newScenario(browser, root, source, viewport, mode)
+  const { fixture, auth, contentPath, url, context } = scenario
+  try {
+    // An equal-body reload supplies a control for the existing position restore.
+    const control = await positionedReader(context, url, mode)
+    assert.ok(fixture.fetches > 0, 'opening v1 did not warm the server cache')
+    await assertToolbarReload(control.page, mode, scenario, 'v1')
+    const controlAfter = await visibleParagraphIndex(control.page)
+    await control.page.close()
+
+    const { page, before } = await positionedReader(context, url, mode)
     fixture.version = 'v2'
     const cachedReads = fixture.fetches
-    assert.ok(cachedReads > 0, 'opening v1 did not warm the server cache')
     const v1 = await api(root, contentPath, { token: auth.token })
-    assert.match(v1.content, /v1 第1段/)
+    assert.match(v1.content, /^v1 第1段/)
     assert.equal(fixture.fetches, cachedReads, 'ordinary API GET unexpectedly re-fetched the source')
-
-    const reload = page.locator(reloadSelector)
-    const [refreshed] = await Promise.all([
-      page.waitForResponse(isContentResponse, { timeout: 10_000 }),
-      mobile ? reload.tap() : reload.click(),
-    ])
-    assert.equal(refreshed.status(), 200)
-    const result = await refreshed.json()
-    assert.ok(result.content.includes('v2 第1段'),
-      'toolbar reload returned stale v1 (refresh=' + new URL(refreshed.url()).searchParams.get('refresh')
-      + ', source fetches during reload=' + (fixture.fetches - cachedReads) + ')')
-    assert.equal(new URL(refreshed.url()).searchParams.get('refresh'), '1')
-    assert.equal(fixture.fetches, cachedReads + 1, 'toolbar reload should request the source once')
-    await page.locator('.reader-toast').filter({ hasText: '章节已重新载入' }).waitFor({ timeout: 5_000 })
-    await page.locator(chapter).getByText('v2 第1段', { exact: false }).waitFor({ timeout: 5_000 })
-    assert.equal(new URL(page.url()).searchParams.get('chapter'), '0')
+    await assertToolbarReload(page, mode, scenario, 'v2')
     const after = await visibleParagraphIndex(page)
-    // The existing scroll2 restore snaps the captured character offset to a paragraph.
-    // With this fixture an unchanged chapter advances by two paragraphs on desktop and one on mobile.
-    const paragraphTolerance = mobile ? 1 : 2
-    assert.ok(Math.abs(after - before) <= paragraphTolerance,
-      'visible paragraph changed from ' + before + ' to ' + after)
+    assert.deepEqual([before, after], [control.before, controlAfter], 'changed text followed a different position restore than equal text')
     await page.close()
 
-    const reopened = await openReader(context, url, 'v2')
+    const reopened = await openReader(context, url, mode, 'v2')
     fixture.failed = true
-    const failedReload = reopened.locator(reloadSelector)
-    const [failure] = await Promise.all([
-      reopened.waitForResponse(isContentResponse, { timeout: 10_000 }),
-      mobile ? failedReload.tap() : failedReload.click(),
-    ])
-    assert.equal(failure.status(), 502, 'source failure should surface as a failed reload')
-    await reopened.locator('.chapter-inline-error, .chapter-load-error').waitFor({ timeout: 5_000 })
+    assertReloadResponse(await scenario.toolbarReload(reopened), 502, 'toolbar reload with failing source')
+    const errorSelector = mode === 'scroll2' ? chapter + ' .chapter-inline-error' : '.chapter-load-error'
+    await reopened.locator('.reader-shell.' + mode + ' ' + errorSelector).waitFor({ timeout: 5_000 })
+    assertReloadResponse(await scenario.retryError(reopened), 502, 'chapter error retry with failing source')
+    await reopened.locator(errorSelector).waitFor({ timeout: 5_000 })
     assert.equal(await reopened.locator('.reader-toast').filter({ hasText: '章节已重新载入' }).count(), 0)
-    const recovered = await reopened.reload({ waitUntil: 'domcontentloaded' })
-    assert.equal(recovered.status(), 200)
-    await reopened.locator(chapter).getByText('v2 第1段', { exact: false }).waitFor({ timeout: 5_000 })
-    assert.equal(fixture.fetches, cachedReads + 2, 'ordinary reopens must preserve the browser cache after failure')
+    await (await openReader(context, url, mode, 'v2')).close()
 
-    const clean = await createReaderContext(browser, viewport, auth)
+    fixture.failed = false
+    fixture.version = 'v3'
+    assertReloadResponse(await scenario.retryError(reopened), 200, 'chapter error retry after source recovery')
+    await assertReaderBody(reopened, mode, 'v3')
+    assert.equal(new URL(reopened.url()).searchParams.get('chapter'), '0')
+    await reopened.close()
+    await (await openReader(context, url, mode, 'v3')).close()
+
+    const clean = await createReaderContext(browser, viewport, auth, mode)
     try {
-      await openReader(clean, url, 'v1')
-      assert.equal(fixture.fetches, cachedReads + 2, 'fresh browser should read the original server cache')
+      await openReader(clean, url, mode, 'v1')
+      assert.equal(fixture.fetches, cachedReads + 4, 'ordinary reopens must use the last cached response')
     } finally {
       await clean.close()
     }
-    console.log(viewport.width + 'x' + viewport.height + ': v1 cache, v2 reload, paragraph '
-      + (before + 1) + ' → ' + (after + 1) + ', failed reload, cached reopens passed')
+    console.log(viewport.width + 'x' + viewport.height + ' ' + mode + ': v1 cache, v2 reload, paragraph '
+      + (before + 1) + ' → ' + (after + 1) + ' (equal-body control '
+      + (control.before + 1) + ' → ' + (controlAfter + 1) + '), failed retry, v3 recovery, cached reopens passed')
   } finally {
+    await context.close()
+  }
+}
+
+async function assertTabWriteOrder(browser, root, source, viewport) {
+  const mode = 'page'
+  const scenario = await newScenario(browser, root, source, viewport, mode)
+  const { fixture, auth, contentPath, matchesContent, url, context } = scenario
+  const { promise: hold, resolve: release } = Promise.withResolvers()
+  const { promise: captured, resolve: capture, reject: rejectCapture } = Promise.withResolvers()
+  try {
+    await api(root, contentPath, { token: auth.token })
+    const olderTab = await context.newPage()
+    await olderTab.route(matchesContent, async route => {
+      if (new URL(route.request().url()).searchParams.has('refresh')) {
+        await route.continue()
+        return
+      }
+      try {
+        const response = await route.fetch()
+        assert.equal(response.status(), 200)
+        assert.match((await response.json()).content, /^v1 第1段/)
+        capture()
+        await hold
+        await route.fulfill({ response })
+      } catch (error) {
+        rejectCapture(error)
+        await route.abort().catch(() => {})
+      }
+    })
+    await olderTab.goto(url, { waitUntil: 'domcontentloaded' })
+    await Promise.race([captured, delay(5_000, undefined, { ref: false }).then(() => {
+      throw new Error('older tab did not capture its ordinary v1 response')
+    })])
+    const refreshTab = await openReader(context, url, mode, 'v1')
+    fixture.version = 'v2'
+    await assertToolbarReload(refreshTab, mode, scenario, 'v2')
+    release()
+    await assertReaderBody(olderTab, mode, 'v1')
+    await openReader(context, url, mode, 'v2')
+    assert.equal(fixture.fetches, 2, 'cross-tab scenario should fetch v1 once and v2 once')
+    console.log(viewport.width + 'x' + viewport.height + ' tabs: paused v1 write, v2 reload, released v1, new tab kept v2')
+  } finally {
+    release()
     await context.close()
   }
 }
@@ -290,11 +383,18 @@ async function main() {
     browser = await openSmokeBrowser()
     let failures = 0
     for (const viewport of viewports) {
-      try {
-        await assertViewport(browser, app.root, source, viewport)
-      } catch (error) {
-        failures += 1
-        console.error(viewport.width + 'x' + viewport.height + ': ' + error.stack)
+      const scenarios = [
+        ['page', () => assertMode(browser, app.root, source, viewport, 'page')],
+        ['scroll2', () => assertMode(browser, app.root, source, viewport, 'scroll2')],
+        ['tabs', () => assertTabWriteOrder(browser, app.root, source, viewport)],
+      ]
+      for (const [label, run] of scenarios) {
+        try {
+          await run()
+        } catch (error) {
+          failures += 1
+          console.error(viewport.width + 'x' + viewport.height + ' ' + label + ': ' + error.stack)
+        }
       }
     }
     if (failures) process.exitCode = 1
