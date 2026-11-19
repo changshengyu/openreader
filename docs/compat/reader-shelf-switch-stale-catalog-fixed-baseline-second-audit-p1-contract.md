@@ -321,9 +321,11 @@ R6. 不变：第 6 节所列各项。不新增 API、数据库字段、浏览器
 
 | 层面 | 裁决 | 验证 |
 | --- | --- | --- |
-| 当前书/来源/remote 会话变化 | must-fix：同步清空标记并取消旧任务；新书正文和显式目录刷新恢复真实标记 | 真实 composable 回归；真实浏览器观察始终打开的目录 |
+| 当前书/来源/remote 会话变化 | must-fix：同步清空标记并取消旧任务；新书正文和显式目录刷新恢复真实标记 | 真实 composable 回归；真实浏览器换书后重开目录，延迟缓存列表返回 |
 | 迟到列表读取 | must-fix：上下文切走再返回 A 时，旧 A 读取也不能覆盖新 A 标记 | A→B→A 延迟成功/失败回归 |
 | 用户范围 | 保留 snapshot scope 校验；响应式 scope 提供方改变时清空；产品切号由现有 sessionGeneration 卸载 Reader，localStorage token 不是响应式状态 | scope ref 是 composable 防御测试，不代表原地 token 替换有响应性 |
 | API/数据 | 无改动，IndexedDB/localStorage 缓存 key、目录和正文 API 不变 | 既有缓存回归 |
 
 本切片只处理目录缓存标记，不改变目录读取策略、换书提示或正文缓存内容。
+
+2026-11-19 验证：`readerInlineChapterCache.test.mjs` 的 9 条用例通过。真实浏览器先打开 A 的目录确认第 3 章有缓存标记，切到 B 后延迟 IndexedDB 游标返回。B 的第 10 章显示已缓存，第 3 章没有标记。桌面和两个手机视口均通过。
