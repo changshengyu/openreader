@@ -477,10 +477,8 @@ function readerRouteLocation(query = {}) {
     : { name: 'reader', params: { id: bookId.value }, query }
 }
 
-let suppressNextReaderPositionReload = () => {}
 function replaceReaderPositionWithoutReload(query = {}) {
-  suppressNextReaderPositionReload(query)
-  return router.replace(readerRouteLocation(query))
+  return readerRouteSync.replacePosition(readerRouteLocation(query))
 }
 
 function temporaryReaderUnavailable() {
@@ -2125,6 +2123,7 @@ const {
 })
 
 const readerRouteSync = useReaderRouteSync({
+  router,
   bookId,
   currentIndex,
   positionQuery: () => [route.query.chapter, route.query.offset, route.query.percent],
@@ -2145,7 +2144,6 @@ const readerRouteSync = useReaderRouteSync({
   },
   onBookLoadError: handleReaderBookLoadError,
 })
-suppressNextReaderPositionReload = readerRouteSync.suppressNextPositionReload
 
 useReaderTypographySync({
   reader,
