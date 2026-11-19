@@ -34,7 +34,7 @@ for (const request of [cacheFirstRequest, networkFirstRequest]) {
   })
 }
 
-test('cache writes recheck ownership after IndexedDB opens and before localStorage fallback', async t => {
+test('cache writes recheck ownership after IndexedDB opens', async t => {
   const openRequest = {}
   let notifyOpen
   const opening = new Promise(resolve => { notifyOpen = resolve })
@@ -51,4 +51,43 @@ test('cache writes recheck ownership after IndexedDB opens and before localStora
   await write
   assert.equal(transactions, 0)
   assert.equal(values.size, 0)
+})
+
+test('an obsolete IndexedDB write failure cannot replace the localStorage fallback', async t => {
+  // Each test fixture owns its connection because the cache module keeps the open database promise.
+  const { networkFirstRequest: request } = await import('../src/utils/browserCache.js?failed-write')
+  let markObsoletePut
+  const obsoletePutStarted = new Promise(resolve => { markObsoletePut = resolve })
+  const database = {
+    transaction: () => ({
+      objectStore: () => ({
+        put: ({ value }) => {
+          const putRequest = { error: new Error('write unavailable') }
+          if (value[0] === 'obsolete') {
+            markObsoletePut(putRequest)
+          } else {
+            queueMicrotask(() => putRequest.onerror())
+          }
+          return putRequest
+        },
+      }),
+    }),
+  }
+  const values = legacyStorage(t, {
+    open() {
+      const openRequest = { result: database }
+      queueMicrotask(() => openRequest.onsuccess())
+      return openRequest
+    },
+  })
+  let current = true
+  const obsolete = request(async () => ({ data: ['obsolete'] }), 'reader-response', {
+    canWrite: () => current,
+  })
+  const putRequest = await obsoletePutStarted
+  current = false
+  await request(async () => ({ data: ['latest'] }), 'reader-response')
+  putRequest.onerror()
+  await obsolete
+  assert.deepEqual([...values.values()].map(JSON.parse), [['latest']])
 })
