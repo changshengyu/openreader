@@ -82,6 +82,14 @@ test('hides mobile chrome only when the caller explicitly requests it', async ()
   assert.equal(fixture.state.mobileChromeVisible.value, false)
 })
 
+test('passes explicit remote reload through with its current reading offset', async () => {
+  const fixture = createController()
+  const options = { refresh: true, refreshRemote: true }
+  assert.equal(await fixture.controller.load(1, 88, options), true)
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'load'), ['load', 1, options])
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'restore'), ['restore', 88, options])
+})
+
 test('saves forced progress and expands continuous chapter windows', async () => {
   const fixture = createController()
   fixture.state.isContinuousScrollRead.value = true

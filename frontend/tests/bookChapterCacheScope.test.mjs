@@ -44,10 +44,11 @@ test('authenticated chapter loading never falls back to an unowned legacy cache 
   assert.deepEqual(reads, ['user:11@Scoped_Reader@book-url-7@chapterContent-0'])
   assert.equal(fetched, 1)
   assert.equal(result.content, 'network content')
-  assert.deepEqual(writes, [[
-    'user:11@Scoped_Reader@book-url-7@chapterContent-0',
-    result,
-  ]])
+  assert.equal(writes.length, 1)
+  const [writtenKey, value, canWrite] = writes[0]
+  assert.equal(writtenKey, 'user:11@Scoped_Reader@book-url-7@chapterContent-0')
+  assert.deepEqual(value, result)
+  assert.equal(canWrite(), true)
 })
 
 test('forwards cancellation and never caches a response cancelled during fetch', async () => {
@@ -87,4 +88,45 @@ test('book cleanup deletes only the captured scoped chapter prefix', async () =>
   assert.deepEqual(prefixes, [
     'user:11@Scoped_Reader@book-url-7@chapterContent-',
   ])
+})
+
+test('publishes explicit refresh content even when an older browser cache load finishes later', async () => {
+  const book = { id: 7, title: 'Scoped', author: 'Reader', url: 'book-url-7' }
+  let completeOld
+  let signalOldStarted
+  const oldStarted = new Promise(resolve => { signalOldStarted = resolve })
+  const existing = { chapter: { index: 0 }, content: 'previous body' }
+  const fresh = { chapter: { index: 0 }, content: 'updated body' }
+  const writes = []
+  const queries = []
+  let reads = 0
+  const options = {
+    scope: 'user:11',
+    getCache: async () => {
+      reads += 1
+      return null
+    },
+    setCache: async (_key, data) => writes.push(data),
+    getChapterContent: (_id, _index, request) => {
+      queries.push(request.refreshRemote)
+      if (queries.length === 1) {
+        return new Promise(resolve => {
+          completeOld = resolve
+          signalOldStarted()
+        })
+      }
+      return Promise.resolve({ data: fresh })
+    },
+  }
+
+  const old = loadBrowserChapterContent(book, 7, 0, options)
+  await oldStarted
+  const refreshed = await loadBrowserChapterContent(book, 7, 0, { ...options, refreshRemote: true })
+  completeOld({ data: existing })
+
+  assert.deepEqual(await old, existing)
+  assert.deepEqual(refreshed, fresh)
+  assert.equal(reads, 1)
+  assert.deepEqual(queries, [undefined, true])
+  assert.deepEqual(writes, [fresh])
 })

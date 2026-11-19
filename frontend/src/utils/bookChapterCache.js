@@ -2,6 +2,8 @@ import { getChapterContent } from '../api/books.js'
 import { getBrowserCache, listBrowserCacheKeys, removeBrowserCache, removeBrowserCacheKeys, setBrowserCache } from './browserCache.js'
 import { currentUserScope } from './authScope.js'
 
+const activeChapterReads = new Map()
+
 export function chapterCacheBookKey(book, fallbackBookId) {
   const currentBook = book || {}
   return currentBook.url || currentBook.bookUrl || currentBook.libraryPath || `book:${fallbackBookId}`
@@ -35,15 +37,38 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
   const setCache = options.setCache || setBrowserCache
   const fetchChapter = options.getChapterContent || getChapterContent
   const cacheKey = chapterCacheKey(book, bookId, index, scope)
-  if (!options.refresh) {
-    const cached = await getValidCachedChapter(cacheKey, getCache)
-    if (cached) return cached
+  const refreshRemote = options.refreshRemote === true
+  let active = activeChapterReads.get(cacheKey)
+  if (!active) {
+    active = new Set()
+    activeChapterReads.set(cacheKey, active)
   }
-  const { data } = await fetchChapter(bookId, index, { signal: options.signal })
-  if (!options.signal?.aborted && isValidChapterContentResponse(data)) {
-    await setCache(cacheKey, data)
+  const read = { refreshRemote, canWrite: true }
+  // Coordinate writes from the Reader and independent cache jobs for this scoped chapter.
+  for (const pending of active) {
+    if (refreshRemote) pending.canWrite = false
+    else if (pending.refreshRemote) read.canWrite = false
   }
-  return data
+  active.add(read)
+  const canWrite = () => read.canWrite && !options.signal?.aborted
+
+  try {
+    if (!options.refresh && !refreshRemote) {
+      const cached = await getValidCachedChapter(cacheKey, getCache)
+      if (cached) return cached
+    }
+    const { data } = await fetchChapter(bookId, index, {
+      signal: options.signal,
+      ...(refreshRemote ? { refreshRemote: true } : {}),
+    })
+    if (canWrite() && isValidChapterContentResponse(data)) {
+      await setCache(cacheKey, data, canWrite)
+    }
+    return data
+  } finally {
+    active.delete(read)
+    if (!active.size) activeChapterReads.delete(cacheKey)
+  }
 }
 
 export async function listBookBrowserCachedChapters(book, bookId, options = {}) {

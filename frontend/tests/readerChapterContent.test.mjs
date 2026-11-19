@@ -118,7 +118,7 @@ test('deduplicates concurrent loads for the same book and chapter', async () => 
   assert.deepEqual(await second, validContent(2))
 })
 
-test('uses the upstream 30 second budget for shelf and temporary chapter content', async () => {
+test('sends the refresh query only for explicit shelf reload, with the upstream 30 second budget', async () => {
   const originalAdapter = api.defaults.adapter
   const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
   const requests = []
@@ -139,6 +139,7 @@ test('uses the upstream 30 second budget for shelf and temporary chapter content
   }
   try {
     await getChapterContent(7, 0)
+    await getChapterContent(7, 0, { refreshRemote: true })
     await getRemoteReaderChapterContent('session-7', 0)
   } finally {
     api.defaults.adapter = originalAdapter
@@ -149,9 +150,65 @@ test('uses the upstream 30 second budget for shelf and temporary chapter content
     }
   }
 
-  assert.equal(requests.length, 2)
-  assert.equal(requests[0].timeout, 30_000)
-  assert.equal(requests[1].timeout, 30_000)
+  assert.equal(requests.length, 3)
+  assert.deepEqual(requests.map(request => request.timeout), [30_000, 30_000, 30_000])
+  assert.deepEqual(requests.map(request => request.params?.refresh), [undefined, 1, undefined])
+})
+
+test('distinguishes an explicit refresh from a concurrent browser-only refresh', async () => {
+  const loads = []
+  const fixture = createController({
+    loadBrowserContent: (_book, _id, _index, options) => new Promise(resolve => {
+      loads.push({ options, resolve })
+    }),
+  })
+  const ordinary = fixture.controller.load(2, { refresh: true })
+  const remote = fixture.controller.load(2, { refresh: true, refreshRemote: true })
+  const repeated = fixture.controller.load(2, { refresh: true, refreshRemote: true })
+
+  const fresh = { ...validContent(2), content: 'updated chapter' }
+  loads.slice(1).forEach(load => load.resolve(fresh))
+  if (loads.length > 1) await remote
+  loads[0].resolve(validContent(2))
+  const results = await Promise.all([ordinary, remote, repeated])
+
+  assert.equal(loads.length, 2)
+  assert.equal(loads[0].options.refreshRemote, undefined)
+  assert.equal(loads[1].options.refreshRemote, true)
+  assert.deepEqual(results.slice(1), [fresh, fresh])
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('reports a stale conflict on an explicit remote refresh rather than reading the old cache', async () => {
+  const calls = []
+  const conflict = staleChapterError()
+  const fixture = createController({
+    loadBrowserContent: async (_book, _id, index, options) => {
+      calls.push(options.refreshRemote)
+      if (calls.length === 1) throw conflict
+      return validContent(index)
+    },
+  })
+  fixture.controller.set(2, validContent(2))
+
+  await assert.rejects(
+    fixture.controller.load(2, { refresh: true, refreshRemote: true }),
+    { message: '章节状态已更新，请重试' },
+  )
+  assert.deepEqual(calls, [true])
+  assert.deepEqual(fixture.controller.get(2), validContent(2))
+})
+
+test('does not start an explicit remote refresh for an already cancelled reader load', async () => {
+  const fixture = createController()
+  const controller = new AbortController()
+  controller.abort()
+
+  await assert.rejects(
+    fixture.controller.load(2, { refreshRemote: true, signal: controller.signal }),
+    { name: 'AbortError' },
+  )
+  assert.deepEqual(fixture.calls, [])
 })
 
 test('keeps a shared same-chapter request alive when a new caller replaces an aborted caller', async () => {

@@ -219,6 +219,7 @@ export function listChapters(id) {
 
 export function getChapterContent(id, index, options = {}) {
   return api.get(`/books/${id}/chapters/${index}/content`, {
+    params: options.refreshRemote ? { refresh: 1 } : undefined,
     signal: options.signal,
     timeout: 30_000,
   })
