@@ -20,6 +20,9 @@ function openDB() {
           db.createObjectStore(STORE_NAME, { keyPath: 'key' })
         }
       }
+    }).catch(error => {
+      dbPromise = undefined
+      throw error
     })
   }
   return dbPromise
@@ -53,7 +56,10 @@ async function idbSet(key, value, canWrite, chapterRequest) {
     // Read and conditionally replace the chapter within one transaction across tabs.
     const existing = store.get(key)
     existing.onsuccess = () => {
-      const lastReload = updateChapterReload(existing.result?.chapterReload, chapterRequest)
+      const indexedReload = existing.result?.chapterReload
+      const fallbackReload = readLegacyCache(key)?.openReaderChapterReload
+      const currentReload = newerReload(fallbackReload, indexedReload) ? fallbackReload : indexedReload
+      const lastReload = updateChapterReload(currentReload, chapterRequest)
       if (lastReload === false || canWrite?.() === false) return
       const record = { key, value, updatedAt: Date.now() }
       if (lastReload) record.chapterReload = lastReload
@@ -71,6 +77,10 @@ async function idbRemove(key) {
     request.onerror = () => reject(request.error || new Error('failed to remove cache'))
     request.onsuccess = () => resolve()
   })
+}
+
+function newerReload(candidate, current) {
+  return candidate !== undefined && (current === undefined || candidate > current)
 }
 
 function updateChapterReload(lastReload, request) {
@@ -110,13 +120,14 @@ export async function getBrowserCache(key) {
 
 export async function readBrowserCacheRecord(key) {
   const cacheKey = prefixedKey(key)
+  let record
   try {
-    const record = await idbGet(cacheKey)
-    if (record?.value) return record
+    record = await idbGet(cacheKey)
   } catch {
     // Fall through to the old localStorage-compatible path.
   }
   const cached = readLegacyCache(cacheKey)
+  if (record?.value && !newerReload(cached?.openReaderChapterReload, record.chapterReload)) return record
   if (cached?.openReaderChapterReload) {
     const { openReaderChapterReload, ...value } = cached
     return { value, chapterReload: openReaderChapterReload }
