@@ -91,7 +91,7 @@ test('cold load restores an offset-only WebDAV position without percentage zero'
     fixture.saved.percent = 0.5
     await fixture.controller.load()
     assert.deepEqual(fixture.calls.find(call => call[0] === 'load-chapter'),
-      ['load-chapter', 2, 90, { restorePercent: null, saveAfterLoad: false }])
+      ['load-chapter', 2, 90, { restorePercent: null, saveAfterLoad: false, restoredProgress: fixture.saved }])
   }
 })
 
@@ -106,7 +106,7 @@ test('opens a book from saved progress and loads bookmarks independently', async
     ['cancel'],
     ['reset-sources'],
     ['shelf-progress', fixture.saved],
-    ['load-chapter', 2, 90, { restorePercent: 0.3, saveAfterLoad: false }],
+    ['load-chapter', 2, 90, { restorePercent: 0.3, saveAfterLoad: false, restoredProgress: fixture.saved }],
     ['jump'],
   ])
 })

@@ -454,6 +454,53 @@ async function assertWebDAVMirror(progressDir, book, progress) {
   assert(Number.isFinite(mirror.durChapterTime) && mirror.durChapterTime > 0, `${book.title}: mirrored timestamp is invalid`)
 }
 
+function readerScrollTop() {
+  return document.querySelector('.reader-shell')?.classList.contains('document-scroll')
+    ? document.scrollingElement?.scrollTop
+    : document.querySelector('.reader-content')?.scrollTop
+}
+
+function captureProgressWrites(context) {
+  const writes = []
+  context.on('request', request => {
+    if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/progress') {
+      writes.push(request.postDataJSON())
+    }
+  })
+  return writes
+}
+
+async function scrollReaderBack(reader, viewport) {
+  const start = await reader.page.evaluate(readerScrollTop)
+  if (viewport.width <= 750) {
+    const cdp = await reader.context.newCDPSession(reader.page)
+    const x = Math.round(viewport.width / 2)
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x, y: Math.round(viewport.height * 0.25) }],
+    })
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: Math.round(viewport.height * 0.5) }],
+    })
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: Math.round(viewport.height * 0.75) }],
+    })
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await cdp.detach()
+  } else {
+    await reader.page.mouse.move(viewport.width / 2, viewport.height / 2)
+    await reader.page.mouse.wheel(0, -Math.round(viewport.height / 2))
+  }
+  await reader.page.waitForFunction(previous => {
+    const top = document.querySelector('.reader-shell')?.classList.contains('document-scroll')
+      ? document.scrollingElement?.scrollTop
+      : document.querySelector('.reader-content')?.scrollTop
+    return top < previous - 40
+  }, start, { timeout: 3000 })
+}
+
 async function runViewport(browser, app, token, progressDir, viewport) {
   const suffix = `${viewport.width}${viewport.height}`
   const book = await importTXT(app.root, token, `进度并发合同 ${suffix}`)
@@ -561,27 +608,51 @@ async function runViewport(browser, app, token, progressDir, viewport) {
     assert(durable.offset === winner.offset && durable.updatedAt === winner.updatedAt, `${suffix}: durable progress diverged from the CAS winner`)
     await assertWebDAVMirror(progressDir, book, durable)
 
-    await readerA.context.close()
-    await readerB.context.close()
+    for (const [name, reader] of [['A', readerA], ['B', readerB]]) {
+      const writes = captureProgressWrites(reader.context)
+      await reader.context.close()
+      const afterClose = await api(app.root, `/progress/${book.id}`, { token })
+      assert(
+        afterClose.offset === winner.offset && afterClose.updatedAt === winner.updatedAt,
+        `${suffix}/${name}: untouched close changed the CAS winner from ${winner.offset}@${winner.updatedAt} to ${afterClose.offset}@${afterClose.updatedAt}`,
+      )
+      assert(writes.length === 0, `${suffix}/${name}: untouched close sent a progress write`)
+    }
     const reopened = await newReaderContext(browser, app.root, token, viewport, book.id, `${suffix}/reopen`)
+    const scrollWrites = captureProgressWrites(reopened.context)
     try {
       await waitForLocalProgress(reopened.page, book.id, winner.offset)
       const restored = await localProgress(reopened.page, book.id)
       assert(restored?.updatedAt === winner.updatedAt, `${suffix}: fresh context did not restore the server winner`)
-      await reopened.page.waitForFunction(() => (
-        Number(
-          document.querySelector('.reader-shell')?.classList.contains('document-scroll')
-            ? document.scrollingElement?.scrollTop
-            : document.querySelector('.reader-content')?.scrollTop,
-        ) > 0
-      ), null, { timeout: 10_000 })
+      assert(await reopened.page.evaluate(readerScrollTop) > 0, `${suffix}: fresh context did not scroll to the server winner`)
       assert(reopened.errors.length === 0, reopened.errors.join('\n'))
+      await scrollReaderBack(reopened, viewport)
+      assert(scrollWrites.length === 0, `${suffix}: scroll fixture reached an ordinary save before closing the page`)
     } finally {
       await reopened.context.close()
     }
+    const afterScroll = await api(app.root, `/progress/${book.id}`, { token })
+    assert(
+      afterScroll.chapterIndex === chapter.index && afterScroll.offset < winner.offset && afterScroll.updatedAt !== winner.updatedAt,
+      `${suffix}: scrolling toward the previous paragraphs before close did not save a new position (${winner.offset} -> ${afterScroll.offset})`,
+    )
+    assert(
+      scrollWrites.some(write => write.offset === afterScroll.offset && write.baseUpdatedAt === winner.updatedAt),
+      `${suffix}: no close-time write matched the saved position and the restored server version`,
+    )
+    await assertWebDAVMirror(progressDir, book, afterScroll)
+    const afterScrollReopen = await newReaderContext(browser, app.root, token, viewport, book.id, `${suffix}/scroll-reopen`)
+    try {
+      await waitForLocalProgress(afterScrollReopen.page, book.id, afterScroll.offset)
+      const restored = await localProgress(afterScrollReopen.page, book.id)
+      assert(restored.updatedAt === afterScroll.updatedAt, `${suffix}: fresh context did not restore the position saved on close`)
+      assert(afterScrollReopen.errors.length === 0, afterScrollReopen.errors.join('\n'))
+    } finally {
+      await afterScrollReopen.context.close()
+    }
     const errors = [...readerA.errors, ...readerB.errors]
     assert(errors.length === 0, errors.join('\n'))
-    console.log(`${viewport.width}x${viewport.height}: client ID recovery + two-client CAS + WebSocket convergence + cold restore + WebDAV mirror ok`)
+    console.log(`${viewport.width}x${viewport.height}: client ID recovery + two-client CAS + WebSocket convergence + untouched close + cold restore + scroll and close + WebDAV mirror ok`)
   } finally {
     await readerA.context.close().catch(() => {})
     await readerB.context.close().catch(() => {})
@@ -645,6 +716,7 @@ async function runIngressViewport(browser, app, token, viewport) {
     await reader.page.waitForTimeout(900)
     assert(writes.length === 0, `${label}: online external update echoed a progress PUT`)
     const cold = await newReaderContext(browser, app.root, token, viewport, book.id, `${label}/cold`)
+    const coldWrites = captureProgressWrites(cold.context)
     try {
       await assertExactParagraph(cold.page, 1, 2400)
       await waitForLocalProgress(cold.page, book.id, 2400)
@@ -652,6 +724,10 @@ async function runIngressViewport(browser, app, token, viewport) {
       assert(durable.updatedAt === received.updatedAt, `${label}: cold restore rewrote progress`)
       assert(cold.errors.length === 0, cold.errors.join('\n'))
     } finally { await cold.context.close() }
+    const afterClose = await api(app.root, `/progress/${book.id}`, { token })
+    assert(afterClose.offset === received.offset && afterClose.updatedAt === received.updatedAt,
+      `${label}: closing after a cold restore changed the server position ${received.offset} → ${afterClose.offset}`)
+    assert(coldWrites.length === 0, `${label}: cold close echoed a progress PUT`)
     await upload(0, 0)
     try {
       await reader.page.waitForFunction(() => {
@@ -674,7 +750,7 @@ async function runIngressViewport(browser, app, token, viewport) {
     }
     assert(writes.length === 0, `${label}: explicit reset echoed a PUT`)
     assert(reader.errors.length === 0, reader.errors.join('\n'))
-    console.log(`${label}: raw Basic upload + canonical shelf + WebSocket online exact paragraph + cold exact paragraph + chapter-zero reset + no echo ok`)
+    console.log(`${label}: raw Basic upload + canonical shelf + WebSocket online exact paragraph + cold exact paragraph and close + chapter-zero reset + no echo ok`)
   } finally { await reader.context.close() }
 }
 

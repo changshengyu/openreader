@@ -1017,7 +1017,7 @@ const {
   nextFrame,
 })
 const {
-  apply: applyLocalProgressSnapshot,
+  apply: writeLocalProgressSnapshot,
   currentPayload: currentProgressPayload,
   serverBaseUpdatedAt: progressServerBaseUpdatedAt,
   upsert: upsertReaderBookProgress,
@@ -1037,6 +1037,9 @@ const {
   mergeBook: mergeShelfBook,
   isTemporaryReader: isTemporaryRemoteReader,
 })
+function applyLocalProgressSnapshot(payload = currentProgressPayload()) {
+  if (!isRestoredProgressPosition(payload)) writeLocalProgressSnapshot(payload)
+}
 const {
   busy: continuousWindowBusy,
   compute: computeShowChapterList,
@@ -1802,12 +1805,14 @@ const {
 const {
   cancelScheduled: cancelProgressSave,
   isBusy: isProgressSaveBusy,
+  isRestoredPosition: isRestoredProgressPosition,
   key: progressSaveKey,
   markSaved: markProgressSaved,
   save: saveCurrentProgress,
   schedule: scheduleProgressSave,
   suspend: suspendProgressSaving,
   resume: resumeProgressSaving,
+  trackRestore: trackProgressRestore,
 } = useReaderProgressPersistence({
   minimumInterval: 1200,
   isBlocked: () => continuousWindowBusy.value || readerBookDeleted.value,
@@ -1815,11 +1820,11 @@ const {
   // (failure progress contract P2); without a row of this book there is nothing to save.
   getPayload: () => currentProgressPayload(),
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
-  applyLocal: applyLocalProgressSnapshot,
+  applyLocal: writeLocalProgressSnapshot,
   saveRemote: payload => reader.saveProgress({ ...payload, mode: interfaceReaderMode.value }),
   onSaved: progress => upsertReaderBookProgress(progress, { replace: true }),
   getMode: () => effectiveReaderMode.value,
-  getStoredProgress: targetBookId => reader.progressByBook[targetBookId],
+  getStoredProgress: targetBookId => reader.cachedProgress(targetBookId),
   ensureClientId: () => reader.ensureClientId(),
 })
 // Failure progress contract P7: progress saves are best effort, as reader-dev's saveBookProgress swallows every error.
@@ -2001,6 +2006,7 @@ const {
   progressKey: progressSaveKey,
   getCurrentProgress: currentProgressPayload,
   navigate: replaceReaderPositionWithoutReload,
+  trackRestore: trackProgressRestore,
   markProgressSaved,
   jumpToRouteLine,
 })
@@ -2177,6 +2183,7 @@ const {
   getCurrentProgress: currentProgressPayload,
   cancelProgressSave,
   navigate: replaceReaderPositionWithoutReload,
+  trackRestore: trackProgressRestore,
   loadChapter,
   markProgressSaved,
   getCurrentOffset: currentOffset,
