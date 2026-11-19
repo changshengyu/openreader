@@ -2652,6 +2652,9 @@ func (s *Server) chapterContent(c *gin.Context) {
 	}
 
 	reloadFromSource := c.Query("refresh") == "1" && book.SourceID != 0 && book.Type == 0 && strings.TrimSpace(chapter.URL) != ""
+	if reloadFromSource {
+		c.Header("Cache-Control", "no-store")
+	}
 	loadBook := book
 	content, contentErr := s.loadChapterTextContextResultWithPolicy(c.Request.Context(), &loadBook, &chapter, chapterTextLoadPolicy{
 		ReloadFromSource:        reloadFromSource,

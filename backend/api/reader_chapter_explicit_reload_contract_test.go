@@ -42,8 +42,13 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 	assertReaderReloadContent(t, get(""), "original content")
 	previousBook, previous := loadReaderChapterContentLifecycleState(t, fixture)
 	sourceContent = "updated content"
-	assertReaderReloadContent(t, get(""), "original content")
-	assertReaderReloadContent(t, get("?refresh=0"), "original content")
+	for _, query := range []string{"", "?refresh=0"} {
+		response := get(query)
+		assertReaderReloadContent(t, response, "original content")
+		if got := response.Header().Get("Cache-Control"); got != "" {
+			t.Fatalf("ordinary chapter GET %q Cache-Control = %q, want no header", query, got)
+		}
+	}
 
 	otherUser := registerLifecycleToken(t, fixture.router.(*gin.Engine), "chapterreloadother")
 	if response := requestExplicitChapterReload(fixture, context.Background(), otherUser, "?refresh=1"); response.Code != http.StatusNotFound {
@@ -69,7 +74,11 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 		t.Fatalf("initial read, cached reads and other user reload made %d source requests, want 1", fetches)
 	}
 
-	assertReaderReloadContent(t, get("?refresh=1"), "updated content")
+	refreshed := get("?refresh=1")
+	assertReaderReloadContent(t, refreshed, "updated content")
+	if got := refreshed.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("successful reload Cache-Control = %q, want no-store", got)
+	}
 	updatedBook, updatedChapter := loadReaderChapterContentLifecycleState(t, fixture)
 	assertReaderReloadVariable(t, updatedChapter, "updated content token")
 	if updatedBook.Variable != previousBook.Variable || updatedChapter.CachePath != previous.CachePath {
@@ -81,8 +90,12 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 	}
 	sourceOffline = true
 	assertReaderReloadContent(t, get(""), "original content")
-	if response := get("?refresh=1"); response.Code != http.StatusBadGateway {
-		t.Fatalf("offline source reload response = %d %s, want 502", response.Code, response.Body.String())
+	failed := get("?refresh=1")
+	if failed.Code != http.StatusBadGateway {
+		t.Fatalf("offline source reload response = %d %s, want 502", failed.Code, failed.Body.String())
+	}
+	if got := failed.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("failed reload Cache-Control = %q, want no-store", got)
 	}
 	assertReaderReloadContent(t, get(""), "original content")
 
