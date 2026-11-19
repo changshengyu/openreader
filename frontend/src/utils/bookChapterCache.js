@@ -1,5 +1,5 @@
 import { getChapterContent } from '../api/books.js'
-import { getBrowserCache, listBrowserCacheKeys, removeBrowserCache, removeBrowserCacheKeys, setBrowserCache } from './browserCache.js'
+import { getBrowserCache, listBrowserCacheKeys, readBrowserCacheRecord, removeBrowserCache, removeBrowserCacheKeys, setBrowserCache } from './browserCache.js'
 import { currentUserScope } from './authScope.js'
 
 const activeChapterReads = new Map()
@@ -33,11 +33,15 @@ export function isValidChapterContentResponse(data) {
 
 export async function loadBrowserChapterContent(book, bookId, index, options = {}) {
   const scope = options.scope || currentUserScope()
-  const getCache = options.getCache || getBrowserCache
   const setCache = options.setCache || setBrowserCache
   const fetchChapter = options.getChapterContent || getChapterContent
   const cacheKey = chapterCacheKey(book, bookId, index, scope)
   const refreshRemote = options.refreshRemote === true
+  // Different tabs have different origins on the same browser clock.
+  const chapterRequest = {
+    startedAt: performance.timeOrigin + performance.now(),
+    refreshRemote,
+  }
   let active = activeChapterReads.get(cacheKey)
   if (!active) {
     active = new Set()
@@ -53,16 +57,19 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
   const canWrite = () => read.canWrite && !options.signal?.aborted && options.canWrite?.() !== false
 
   try {
-    if (!options.refresh && !refreshRemote) {
-      const cached = await getValidCachedChapter(cacheKey, getCache)
-      if (cached) return cached
+    if (!refreshRemote) {
+      const record = options.getCache
+        ? { value: !options.refresh && await options.getCache(cacheKey) }
+        : await readBrowserCacheRecord(cacheKey)
+      if (!options.refresh && isValidChapterContentResponse(record.value)) return record.value
+      chapterRequest.chapterReload = record.chapterReload
     }
     const { data } = await fetchChapter(bookId, index, {
       signal: options.signal,
       ...(refreshRemote ? { refreshRemote: true } : {}),
     })
     if (canWrite() && isValidChapterContentResponse(data)) {
-      await setCache(cacheKey, data, canWrite)
+      await setCache(cacheKey, data, canWrite, chapterRequest)
     }
     return data
   } finally {
@@ -161,11 +168,6 @@ export async function cacheBookChaptersToBrowser(book, bookId, chapters, options
   })
   await Promise.all(workers)
   return { cached, requested: total, cancelled: Boolean(options.cancelled?.()) }
-}
-
-async function getValidCachedChapter(cacheKey, getCache = getBrowserCache) {
-  const cached = await getCache(cacheKey)
-  return isValidChapterContentResponse(cached) ? cached : null
 }
 
 async function currentUserBrowserChapterCacheKeys() {
