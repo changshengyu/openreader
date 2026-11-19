@@ -4,7 +4,8 @@ import { openContext, openShelf, waitForBookText } from './reader-shelf-switch-c
 
 const base = process.env.TARGET_URL || 'http://127.0.0.1:5173'
 
-async function checkResume(browser, viewport, switchBooks) {
+async function checkResume(browser, viewport, scenario) {
+  const switchBooks = scenario === 'switch'
   const { page, context } = await openContext(browser, viewport, 'page')
   const progress = Promise.withResolvers()
   try {
@@ -26,7 +27,7 @@ async function checkResume(browser, viewport, switchBooks) {
       window.releaseResume = gate.resolve
       const matches = to => to.params.id === '3' && to.query.resume === '1' && String(to.query.chapter) === '7'
       router.beforeEach(to => {
-        if (!matches(to)) return
+        if (!matches(to) || window.resumeStarted) return
         window.resumeStarted = true
         return gate.promise
       })
@@ -42,18 +43,22 @@ async function checkResume(browser, viewport, switchBooks) {
       await waitForBookText(page, 1, 'switch to book 1 before restoration completes')
       await body.getByText('换书契约一第1章', { exact: false }).first().waitFor()
     }
+    if (scenario === 'same-url') {
+      await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$router.push({
+        name: 'reader', params: { id: 3 }, query: { resume: '1', chapter: 7 },
+      }))
+    }
     await page.evaluate(() => window.releaseResume())
-    await page.waitForFunction(() => Boolean(window.resumeResult))
+    await page.waitForFunction(expected => window.resumeResult === expected, scenario === 'normal' ? 'applied' : 'cancelled')
     // Wait through chapter rendering, including the asynchronous chapter fetch on a broken build.
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     await page.waitForLoadState('networkidle')
     const text = await body.innerText()
-    assert.equal(await page.evaluate(() => window.resumeResult), switchBooks ? 'cancelled' : 'applied')
     const url = new URL(page.url())
     assert.equal(url.pathname, switchBooks ? '/books/1/read' : '/books/3/read')
     assert.equal(url.searchParams.get('chapter'), switchBooks ? null : '7')
     assert.match(text, switchBooks ? /换书契约一第1章/ : /换书契约三第8章/)
-    console.log(viewport.width, switchBooks ? 'cancelled restore kept book 1 chapter 1' : 'current restore reached book 3 chapter 8')
+    console.log(viewport.width, scenario, switchBooks ? 'book 1 chapter 1' : 'book 3 chapter 8')
   } finally {
     progress.resolve()
     await context.close()
@@ -63,7 +68,7 @@ async function checkResume(browser, viewport, switchBooks) {
 const browser = await openSmokeBrowser()
 try {
   for (const [width, height] of [[1440, 900], [390, 844], [360, 800]]) {
-    for (const switchBooks of [false, true]) await checkResume(browser, { width, height }, switchBooks)
+    for (const scenario of ['normal', 'switch', 'same-url']) await checkResume(browser, { width, height }, scenario)
   }
 } finally {
   await browser.close()
