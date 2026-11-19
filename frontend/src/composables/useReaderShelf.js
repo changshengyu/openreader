@@ -69,6 +69,10 @@ export function useReaderShelf(options) {
     } catch {
       // The local pending snapshot stays for the next sync.
     }
+    // Another selection may have opened this book while the progress save was pending.
+    const currentRoute = options.router.currentRoute?.value
+    if (currentRoute?.name === 'reader' && Number(currentRoute.params.id) === Number(item.id)) return
+
     const progress = newestBookProgress(item, options.reader.progressByBook)
     // Only the selected book's own chapterCount may size the route percent; without it the route carries none.
     const failure = await options.router.push({

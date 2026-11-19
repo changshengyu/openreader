@@ -178,7 +178,7 @@ test('a delayed duplicate shelf selection preserves the current reading position
   assert.deepEqual(messages, ['换书成功'])
 })
 
-test('a duplicate navigation result stays silent even if currentBookId is stale', async () => {
+test('the current reader route keeps a same-book selection silent even if currentBookId is stale', async () => {
   const { shelf, router, messages } = await feedbackShelf()
   await router.push({ name: 'reader', params: { id: 2 }, query: { resume: '1' } })
   // Simulate a reader identity snapshot that has not caught up with the route yet.
