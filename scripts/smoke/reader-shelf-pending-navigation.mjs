@@ -25,6 +25,19 @@ async function checkPendingSelection(browser, viewport, saveFails) {
         ? { status: 400, json: { error: 'fixture save rejected' } }
         : { json: { ...route.request().postDataJSON(), updatedAt: new Date().toISOString() } })
     }, { times: 1 })
+    // Wait for the held XHR inside the page and allow its router and Vue updates to render.
+    await page.evaluate(() => {
+      const open = XMLHttpRequest.prototype.open
+      window.shelfSaveRendered = new Promise(resolve => {
+        XMLHttpRequest.prototype.open = function (method, url, ...args) {
+          if (method.toUpperCase() === 'PUT' && new URL(url, location.href).pathname === '/api/progress') {
+            XMLHttpRequest.prototype.open = open
+            this.addEventListener('loadend', () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { once: true })
+          }
+          return open.call(this, method, url, ...args)
+        }
+      })
+    })
     const started = page.waitForRequest(request => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/progress')
     await selectBook(4)
     const pending = await started
@@ -39,7 +52,7 @@ async function checkPendingSelection(browser, viewport, saveFails) {
     const delivered = page.waitForResponse(response => response.request() === pending)
     release.resolve()
     await (await delivered).finished()
-    await page.waitForLoadState('networkidle')
+    await page.evaluate(() => window.shelfSaveRendered)
     const actual = await page.evaluate(() => ({
       url: location.href,
       booksInBody: window.__shelfSwitchSnapshot().markers,
