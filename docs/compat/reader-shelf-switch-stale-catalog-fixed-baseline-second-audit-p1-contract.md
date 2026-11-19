@@ -311,3 +311,46 @@ R6. 不变：第 6 节所列各项。不新增 API、数据库字段、浏览器
 在本机上游仓库 `/Users/yuchangsheng/Documents/reader-dev` 核对固定提交 `fa22f271` 的 `web/src/views/Reader.vue`。OpenReader 起点为 `49392de5`。
 
 上游换书后调用新书目录加载。主线保留最新失败章进度规则，换书由目标目录负责定位，旧目录不会触发预载或影响百分比。目录请求晚到的错误按加载代际丢弃，包括首次加载后切走再返回同书的情况。浏览器拦截目标目录 1.5 秒，桌面与两个移动视口在 page、scroll2 下通过 6/6；补充复审的迟到目录错误由乱序单测覆盖。
+
+## 10.1 换书成功反馈独立切片（2026-11-16）
+
+固定上游对象在 `/Users/yuchangsheng/Documents/reader-dev` 用 `git show fa22f271849d45f93349ae1636223e27b16a4691:web/src/views/Reader.vue` 核对；该 checkout 的 HEAD 不作为合同。OpenReader 起点为 `84f61de2`，主线同提交由集成代理核实。
+
+| 层 | 上游 fa22f271 | OpenReader 84f61de2 | 裁决与覆盖 |
+| --- | --- | --- | --- |
+| 可见反馈 | Reader.vue L913–919 的 changeBook 首先 `$message.info("换书成功")`，关闭书架，再换书并加载目录 | useReaderShelf.select 关闭书架、尽力保存旧书进度、router.push；无反馈 | **must-fix**：成功切到不同书时恰好一次 info 提示“换书成功” |
+| 成功边界 | 同步替换 readingBook，不等待目录/正文 | Vue Router 异步导航，可能中止、取消、重复或重定向 | **acceptable-change**：等待导航成功且最终 reader 路由是所选书再提示；不等目录或正文，不把后续加载失败当作导航失败 |
+| 不变项 | 选择当前书无需换书；不等待保存 | 已签收 P5：保存失败仍切书 | 当前书、重复导航、中止/取消、拒绝或重定向到其它页面不报成功；保存失败而导航成功仍提示一次 |
+| API / 数据 | 无此通知相关契约 | 无此通知相关契约 | 不改请求/响应、路由参数、持久化 key、数据库、目录或缓存策略 |
+
+阶段：合同 `f2bf37b0` → 红测 `5ffbb9c7` → 独立实现提交，严格按序。实现只加导航成功回调和 Reader 的 info 消息接线。
+
+验收：用真实 memory router 覆盖成功、保存失败、当前书、重复、守卫中止、守卫抛错、导航取消、重定向到其它书/页面；重复并发选择同一本目标书仅提示一次。浏览器在现有目录 gate 下记录新加入的消息节点，确认导航完成且目录仍挂起时已提示一次、正文/失败章完成后不重复；当前书选择无新提示。覆盖 1440×900、390×844、360×800 的 page 与 scroll2。
+
+
+### 10.1 验证记录
+
+- `node --test frontend/tests/readerShelf.test.mjs`：红测 14 条、10 绿 / 4 红（正常成功、保存失败后成功、并发重复中的唯一成功、取消旧导航后的新成功均缺少消息）；实现后 14/14 通过。新增 9 条真实 memory router 合同。
+- `TARGET_URL=http://127.0.0.1:5182 SMOKE_VIEWPORTS=1440x900,390x844,360x800 CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node scripts/smoke/reader-shelf-switch-contract.mjs`：红测六组各 8 个失败（4 次换书在目录挂起和正文完成两个检查点均无 toast），其它旧断言无失败；实现后六组全绿，目录挂起 1500ms，每组含 4 次换书与 4 次当前书选择。书 5 正文失败后仍只有一次导航成功提示。
+- `cd frontend && npm test`：1052/1052 通过。首次沙箱内跑时 3 条已有 dependency advisory worker 因 `listen EPERM 127.0.0.1` 失败；允许本机监听后重跑全部通过。
+- `cd frontend && npm run build`：通过；保留既有 chunk 大小提示。`git diff --check` 通过。
+- 浏览器在沙箱内 Chrome 启动被限制，授权沙箱外重跑通过。后端无修改，集成代理已完成基线 `cd backend && go test ./...`；本切片不重复执行。
+- 无发布、推送或生产操作。允许差异仅为上表的 Vue Router 成功边界；目录/正文成功不作为 toast 条件，所有其它合同维持不变。
+
+## 2026-11-16 §10.2 缓存目录标记补充契约
+
+固定上游 `fa22f271` 的 `web/src/components/PopCatalog.vue`：`catalog`、`index`、弹层可见监听调用
+`computeCachedCata()`，按当前书的 `书名_作者@bookUrl@chapterContent-<index>` 重新生成标记。
+当前 `84f61de2` 的 `useReaderChapterCache` 在上下文变化时只取消任务，保留旧 `cachedChapters`；
+新书正文加载通过 `markCached` 合并，故 A 书独有下标会残留到 B。重新打开目录会异步刷新，不能保证刷新前的行正确。
+
+| 层面 | 裁决 | 验证 |
+| --- | --- | --- |
+| 当前书/来源/remote 会话变化 | must-fix：同步清空标记并取消旧任务；新书正文和显式目录刷新恢复真实标记 | 真实 composable 回归；真实浏览器换书后重开目录，延迟缓存列表返回 |
+| 迟到列表读取 | must-fix：上下文切走再返回 A 时，旧 A 读取也不能覆盖新 A 标记 | A→B→A 延迟成功/失败回归 |
+| 用户范围 | 保留 snapshot scope 校验；响应式 scope 提供方改变时清空；产品切号由现有 sessionGeneration 卸载 Reader，localStorage token 不是响应式状态 | scope ref 是 composable 防御测试，不代表原地 token 替换有响应性 |
+| API/数据 | 无改动，IndexedDB/localStorage 缓存 key、目录和正文 API 不变 | 既有缓存回归 |
+
+本切片只处理目录缓存标记，不改变目录读取策略、换书提示或正文缓存内容。
+
+2026-11-19 验证：`readerInlineChapterCache.test.mjs` 的 9 条用例通过。真实浏览器先打开 A 的目录确认第 3 章有缓存标记，切到 B 后延迟 IndexedDB 游标返回。B 的第 10 章显示已缓存，第 3 章没有标记。桌面和两个手机视口均通过。

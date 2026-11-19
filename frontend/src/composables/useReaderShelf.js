@@ -71,11 +71,17 @@ export function useReaderShelf(options) {
     }
     const progress = newestBookProgress(item, options.reader.progressByBook)
     // Only the selected book's own chapterCount may size the route percent; without it the route carries none.
-    await options.router.push({
+    const failure = await options.router.push({
       name: 'reader',
       params: { id: item.id },
       query: readerRouteQueryFromBook(item, progress),
     })
+    // Router resolves aborted/cancelled/duplicate navigations with a failure. Redirects can resolve successfully
+    // elsewhere, so report the switch only after the selected reader route actually becomes current.
+    const route = options.router.currentRoute?.value
+    if (!failure && route?.name === 'reader' && Number(route.params.id) === Number(item.id)) {
+      options.onSuccess?.('换书成功')
+    }
   }
 
   async function refresh() {

@@ -655,6 +655,7 @@ const {
   currentBookId: bookId,
   router,
   saveProgress: () => saveCurrentProgress({ force: true }),
+  onSuccess: message => ElMessage.info(message),
   onWarning: message => ElMessage.warning(message),
   onError: (error, fallback) => ElMessage.error(readError(error, fallback)),
 })
