@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { useReaderChapterContent } from '../src/composables/useReaderChapterContent.js'
 import { chapterCacheKey } from '../src/utils/bookChapterCache.js'
 import { getBrowserCache, setBrowserCache } from '../src/utils/browserCache.js'
 
@@ -176,4 +177,51 @@ test('checks cancellation again before the IndexedDB transaction writes the chap
   })
   assert.equal(controller.signal.aborted, true)
   assert.deepEqual(await getBrowserCache(key), body('existing'))
+})
+
+test('an older explicit reload retry cannot replace a later reload from another tab', async t => {
+  installSharedStorage(t)
+  const { loadBrowserChapterContent: tabA } = await import('../src/utils/bookChapterCache.js?tab-a')
+  const { loadBrowserChapterContent: tabB } = await import('../src/utils/bookChapterCache.js?tab-b')
+  const scope = 'user:66'
+  const key = chapterCacheKey(book, book.id, 0, scope)
+  const first = deferred()
+  const started = deferred()
+  const conflict = Object.assign(new Error('chapter state changed'), {
+    response: { status: 409, data: { error: 'chapter content changed; retry' } },
+  })
+  let attempts = 0
+  const controller = useReaderChapterContent({
+    book,
+    bookId: book.id,
+    shouldCache: () => false,
+    loadBrowserContent: (targetBook, bookId, index, options) => tabA(targetBook, bookId, index, {
+      ...options,
+      scope,
+      getChapterContent: async () => {
+        attempts += 1
+        if (attempts === 1) {
+          started.resolve()
+          await first.promise
+          throw conflict
+        }
+        return { data: body('older reload') }
+      },
+    }),
+  })
+
+  const olderReload = controller.load(0, { refreshRemote: true })
+  await started.promise
+  try {
+    await tabB(book, book.id, 0, {
+      scope,
+      refreshRemote: true,
+      getChapterContent: async () => ({ data: body('newer reload') }),
+    })
+  } finally {
+    first.resolve()
+    await olderReload
+  }
+  assert.equal(attempts, 2)
+  assert.deepEqual(await getBrowserCache(key), body('newer reload'))
 })

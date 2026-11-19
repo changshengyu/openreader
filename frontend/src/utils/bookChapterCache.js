@@ -37,11 +37,10 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
   const fetchChapter = options.getChapterContent || getChapterContent
   const cacheKey = chapterCacheKey(book, bookId, index, scope)
   const refreshRemote = options.refreshRemote === true
-  // Different tabs have different origins on the same browser clock.
-  const chapterRequest = {
-    startedAt: performance.timeOrigin + performance.now(),
-    refreshRemote,
-  }
+  // Keep the first attempt's cache ordering when the Reader retries after a conflict.
+  const chapterRequest = options.cacheRequest ?? {}
+  chapterRequest.startedAt ??= performance.timeOrigin + performance.now()
+  chapterRequest.refreshRemote = refreshRemote
   let active = activeChapterReads.get(cacheKey)
   if (!active) {
     active = new Set()
@@ -62,7 +61,9 @@ export async function loadBrowserChapterContent(book, bookId, index, options = {
         ? { value: !options.refresh && await options.getCache(cacheKey) }
         : await readBrowserCacheRecord(cacheKey)
       if (!options.refresh && isValidChapterContentResponse(record.value)) return record.value
-      chapterRequest.chapterReload = record.chapterReload
+      if (!Object.hasOwn(chapterRequest, 'chapterReload')) {
+        chapterRequest.chapterReload = record.chapterReload
+      }
     }
     const { data } = await fetchChapter(bookId, index, {
       signal: options.signal,

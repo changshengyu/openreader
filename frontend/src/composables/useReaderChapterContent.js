@@ -72,6 +72,7 @@ export function useReaderChapterContent(options) {
       settled: false,
     }
     const canWrite = () => entry.canCache
+    const cacheRequest = {}
     const request = (async () => {
       let data
       try {
@@ -84,6 +85,7 @@ export function useReaderChapterContent(options) {
             ...(refreshRemote ? { refreshRemote: true } : {}),
             signal: entry.controller.signal,
             canWrite,
+            cacheRequest,
           },
         )
       } catch (error) {
@@ -104,6 +106,7 @@ export function useReaderChapterContent(options) {
                 ...(refreshRemote ? { refreshRemote: true } : {}),
                 signal: entry.controller.signal,
                 canWrite,
+                cacheRequest,
               },
             ),
           )
