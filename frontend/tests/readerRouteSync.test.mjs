@@ -129,6 +129,47 @@ test('an older cancelled replacement does not clear a newer replacement’s supp
   assert.deepEqual(controller.calls, [['jump']])
 })
 
+for (const laterAction of ['stay', 'change chapter', 'reopen', 'dispose']) {
+  test(`an explicit navigation to a pending replacement URL owns the chapter load (${laterAction})`, async t => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/books/:id/read', name: 'reader', component: {} }],
+    })
+    await router.push('/books/1/read')
+    const target = { name: 'reader', params: { id: 1 }, query: { chapter: 2 } }
+    const started = Promise.withResolvers()
+    const release = Promise.withResolvers()
+    const removeGuard = router.beforeEach(() => {
+      removeGuard()
+      started.resolve()
+      return release.promise
+    })
+    const controller = createController({
+      router,
+      bookId: computed(() => Number(router.currentRoute.value.params.id)),
+      positionQuery: () => [router.currentRoute.value.query.chapter],
+    })
+    t.after(() => controller.scope.stop())
+
+    const replacement = controller.routeSync.replacePosition(target)
+    await started.promise
+    await router.push(target)
+    if (laterAction === 'change chapter') await router.push('/books/1/read?chapter=3')
+    if (laterAction === 'reopen') {
+      await router.push('/books/2/read')
+      await router.push(target)
+    }
+    if (laterAction === 'dispose') controller.scope.stop()
+    release.resolve()
+    assert.equal(await replacement, false)
+    await flushRouteSync()
+
+    const chapters = controller.calls.filter(([name]) => name === 'chapter')
+    const chapter = laterAction === 'stay' ? 2 : laterAction === 'change chapter' ? 3 : null
+    assert.deepEqual(chapters, chapter ? [['chapter', chapter, 0, { restorePercent: null, saveAfterLoad: true }]] : [])
+  })
+}
+
 test('search-only route changes jump without reloading the chapter', async () => {
   const controller = createController()
   controller.query.q = '关键字'
