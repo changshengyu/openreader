@@ -2651,7 +2651,12 @@ func (s *Server) chapterContent(c *gin.Context) {
 		return
 	}
 
-	content, contentErr := s.loadChapterTextContextResult(c.Request.Context(), book, &chapter)
+	reloadFromSource := c.Query("refresh") == "1" && book.SourceID != 0 && book.Type == 0 && strings.TrimSpace(chapter.URL) != ""
+	loadBook := book
+	content, contentErr := s.loadChapterTextContextResultWithPolicy(c.Request.Context(), &loadBook, &chapter, chapterTextLoadPolicy{
+		ReloadFromSource:        reloadFromSource,
+		ApplyReaderReplaceRules: true,
+	})
 	if contentErr != nil {
 		if errors.Is(contentErr, errReaderChapterContentStale) {
 			writeReaderChapterContentStale(c, contentErr, "chapter-identity")
@@ -3102,6 +3107,7 @@ func (s *Server) loadChapterSearchTextContextResult(ctx context.Context, book mo
 
 type chapterTextLoadPolicy struct {
 	Refresh                 bool
+	ReloadFromSource        bool // Read fresh content without changing the shared server cache.
 	ApplyReaderReplaceRules bool
 }
 
@@ -3167,8 +3173,9 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	useCache := !policy.Refresh && !policy.ReloadFromSource
 	content := ""
-	if !policy.Refresh && chapter.CachePath != "" {
+	if useCache && chapter.CachePath != "" {
 		if bytes, path, err := s.readChapterCache(*book, chapter.CachePath); err == nil {
 			content = string(bytes)
 			if book.SourceID == 0 {
@@ -3222,7 +3229,7 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		}
 		*book = currentBook
 		*chapter = currentChapter
-		if !policy.Refresh && chapter.CachePath != "" {
+		if useCache && chapter.CachePath != "" {
 			if cached, path, cacheErr := s.readChapterCache(*book, chapter.CachePath); cacheErr == nil {
 				if path != "" && path != chapter.CachePath {
 					normalizedPath := s.remoteChapterCachePath(path)
@@ -3271,15 +3278,22 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		if readerChapterContentLifecycleTestHook != nil {
 			readerChapterContentLifecycleTestHook("after_remote_fetch", ctx, *book, *chapter)
 		}
-		currentBook, currentChapter, persistErr := s.persistRemoteChapterFetch(ctx, snapshot, fetched, variableState)
-		if persistErr != nil {
-			return "", persistErr
+		if policy.ReloadFromSource {
+			if _, _, err := s.validateReaderChapterContentSnapshot(s.db.WithContext(ctx), snapshot); err != nil {
+				return "", err
+			}
+			if strings.TrimSpace(fetched) == "" {
+				return "", errors.New("empty chapter content")
+			}
+		} else {
+			currentBook, currentChapter, persistErr := s.persistRemoteChapterFetch(ctx, snapshot, fetched, variableState)
+			if persistErr != nil {
+				return "", persistErr
+			}
+			*book = currentBook
+			*chapter = currentChapter
 		}
-		*book = currentBook
-		*chapter = currentChapter
-		if fetched != "" {
-			content = fetched
-		}
+		content = fetched
 	}
 	if err := ctx.Err(); err != nil {
 		return "", err
