@@ -40,7 +40,7 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 		return requestExplicitChapterReload(fixture, context.Background(), fixture.auth, query)
 	}
 	assertReaderReloadContent(t, get(""), "original content")
-	_, previous := loadReaderChapterContentLifecycleState(t, fixture)
+	previousBook, previous := loadReaderChapterContentLifecycleState(t, fixture)
 	sourceContent = "updated content"
 	assertReaderReloadContent(t, get(""), "original content")
 	assertReaderReloadContent(t, get("?refresh=0"), "original content")
@@ -70,6 +70,11 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 	}
 
 	assertReaderReloadContent(t, get("?refresh=1"), "updated content")
+	updatedBook, updatedChapter := loadReaderChapterContentLifecycleState(t, fixture)
+	assertReaderReloadVariable(t, updatedChapter, "updated content token")
+	if updatedBook.Variable != previousBook.Variable || updatedChapter.CachePath != previous.CachePath {
+		t.Fatalf("reload changed book variables or cache path: book variable=%q cache=%q", updatedBook.Variable, updatedChapter.CachePath)
+	}
 	assertReaderReloadContent(t, performReaderChapterContentLifecycleRequest(otherFixture, context.Background()), "original content")
 	if fetches != 2 {
 		t.Fatalf("successful explicit reload made %d total source requests, want 2", fetches)
@@ -86,9 +91,9 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 		t.Fatalf("empty source reload response = %d %s, want 502", response.Code, response.Body.String())
 	}
 	assertReaderReloadContent(t, get(""), "original content")
-	_, chapter := loadReaderChapterContentLifecycleState(t, fixture)
-	if chapter.CachePath != previous.CachePath || chapter.Variable != previous.Variable {
-		t.Fatalf("explicit reloads changed chapter state: cache=%q variable=%q", chapter.CachePath, chapter.Variable)
+	book, chapter := loadReaderChapterContentLifecycleState(t, fixture)
+	if book.Variable != updatedBook.Variable || chapter.CachePath != updatedChapter.CachePath || chapter.Variable != updatedChapter.Variable {
+		t.Fatalf("failed reloads changed rule state or cache path: book variable=%q chapter variable=%q cache=%q", book.Variable, chapter.Variable, chapter.CachePath)
 	}
 	if cached, err := engine.ReadChapterCache(fixture.server.cfg.CacheDir, chapter.CachePath); err != nil || cached != "original content" {
 		t.Fatalf("server cache after explicit reloads = %q, %v, want original content", cached, err)
@@ -98,9 +103,31 @@ func TestReaderExplicitChapterReloadReturnsFreshContentAndPreservesServerCache(t
 	}
 }
 
+func TestReaderExplicitChapterReloadWithoutCachePersistsChapterVariables(t *testing.T) {
+	fixture := newReaderChapterContentLifecycleFixture(t, "chapterreloadnocache")
+	response := requestExplicitChapterReload(fixture, context.Background(), fixture.auth, "?refresh=1")
+	assertReaderReloadContent(t, response, "old remote content")
+
+	_, chapter := loadReaderChapterContentLifecycleState(t, fixture)
+	assertReaderReloadVariable(t, chapter, "old token")
+	if chapter.CachePath != "" {
+		t.Fatalf("explicit reload created a server cache path: %q", chapter.CachePath)
+	}
+	var payload struct {
+		Chapter models.Chapter `json:"chapter"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode chapter response: %v", err)
+	}
+	if payload.Chapter.Variable != chapter.Variable {
+		t.Fatalf("response chapter variable = %q, want %q", payload.Chapter.Variable, chapter.Variable)
+	}
+}
+
 func TestReaderExplicitChapterReloadCancellationKeepsPublishedCache(t *testing.T) {
 	fixture := newReaderChapterContentLifecycleFixture(t, "chapterreloadcancel")
 	assertReaderReloadContent(t, performReaderChapterContentLifecycleRequest(fixture, context.Background()), "old remote content")
+	setReaderReloadChapterVariable(t, fixture)
 	_, previous := loadReaderChapterContentLifecycleState(t, fixture)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -127,6 +154,7 @@ func TestReaderExplicitChapterReloadRejectsChangedSource(t *testing.T) {
 	fixture := newReaderChapterContentLifecycleFixture(t, "chapterreloadsourcechange")
 	ctx := context.Background()
 	assertReaderReloadContent(t, performReaderChapterContentLifecycleRequest(fixture, ctx), "old remote content")
+	setReaderReloadChapterVariable(t, fixture)
 	_, previous := loadReaderChapterContentLifecycleState(t, fixture)
 	installReaderChapterContentLifecycleHook(t, func(stage string, _ context.Context, _ models.Book, _ models.Chapter) {
 		if stage != "after_remote_fetch" {
@@ -232,5 +260,24 @@ func assertReaderReloadContent(t *testing.T, response *httptest.ResponseRecorder
 	}
 	if payload.Content != want || payload.Format != "text" {
 		t.Fatalf("chapter response contains %q in %q format, want %q in text format", payload.Content, payload.Format, want)
+	}
+}
+
+func assertReaderReloadVariable(t *testing.T, chapter models.Chapter, want string) {
+	t.Helper()
+	var variables map[string]string
+	if err := json.Unmarshal([]byte(chapter.Variable), &variables); err != nil {
+		t.Fatalf("decode persisted chapter variables: %v", err)
+	}
+	if variables["contentToken"] != want || variables["chapter"] != "initial" {
+		t.Fatalf("chapter variables = %v, want content token %q and initial chapter variable", variables, want)
+	}
+}
+
+func setReaderReloadChapterVariable(t *testing.T, fixture readerChapterContentLifecycleFixture) {
+	t.Helper()
+	// The fixture fetch produces a different token, so an accidental commit is visible.
+	if err := fixture.server.db.Model(&fixture.chapter).UpdateColumn("variable", `{"chapter":"initial","contentToken":"pre-reload token"}`).Error; err != nil {
+		t.Fatal(err)
 	}
 }
