@@ -93,7 +93,7 @@ test('reloads the current chapter and clears remote caches with unchanged messag
   await fixture.controller.reloadChapter()
   await fixture.controller.clearCurrentBookCache()
   assert.deepEqual(fixture.calls, [
-    ['load-chapter', 4, 88, { refresh: true }],
+    ['load-chapter', 4, 88, { refresh: true, refreshRemote: true }],
     ['notify', '章节已重新载入'],
     ['clear-server', [7]],
     ['clear-current-browser'],
@@ -112,7 +112,7 @@ test('does not report a reload invalidated by another reader action', async () =
   })
   await fixture.controller.reloadChapter()
   assert.deepEqual(fixture.calls, [
-    ['load-chapter', 4, 88, { refresh: true }],
+    ['load-chapter', 4, 88, { refresh: true, refreshRemote: true }],
   ])
 })
 
@@ -165,7 +165,21 @@ test('keeps reloading the current chapter while the book load is healthy', async
   })
   await fixture.controller.reloadChapter()
   assert.deepEqual(fixture.calls, [
-    ['load-chapter', 4, 88, { refresh: true }],
+    ['load-chapter', 4, 88, { refresh: true, refreshRemote: true }],
     ['notify', '章节已重新载入'],
   ])
 })
+
+for (const [title, book, temporary] of [
+  ['local', { id: 7, sourceId: 0, type: 0 }, false],
+  ['audio', { id: 7, sourceId: 2, type: 1 }, false],
+  ['image', { id: 7, sourceId: 2, type: 2 }, false],
+  ['temporary', { id: 7, sourceId: 2, type: 0 }, true],
+]) {
+  test('reloads a ' + title + ' book without requesting a server cache bypass', async () => {
+    const fixture = createController({ isTemporaryReader: ref(temporary) })
+    fixture.book.value = book
+    await fixture.controller.reloadChapter()
+    assert.deepEqual(fixture.calls[0], ['load-chapter', 4, 88, { refresh: true }])
+  })
+}

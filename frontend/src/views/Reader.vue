@@ -1937,7 +1937,7 @@ const {
   },
   formatError: error => readerChapterErrorReason(error, READER_CHAPTER_ERROR_CONTENT),
   notifyError: error => notifyReaderLoadFailure(READER_CHAPTER_ERROR_CONTENT, error),
-  showFailedChapterWindow: (index, error) => showFailedContinuousChapter(index, error),
+  showFailedChapterWindow: showFailedContinuousChapter,
   nextFrame,
   onEpubPrepared: pending => {
     epubPendingRestore.value = pending

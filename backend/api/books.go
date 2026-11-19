@@ -2651,7 +2651,15 @@ func (s *Server) chapterContent(c *gin.Context) {
 		return
 	}
 
-	content, contentErr := s.loadChapterTextContextResult(c.Request.Context(), book, &chapter)
+	reloadFromSource := c.Query("refresh") == "1" && book.SourceID != 0 && book.Type == 0 && strings.TrimSpace(chapter.URL) != ""
+	if reloadFromSource {
+		c.Header("Cache-Control", "no-store")
+	}
+	loadBook := book
+	content, contentErr := s.loadChapterTextContextResultWithPolicy(c.Request.Context(), &loadBook, &chapter, chapterTextLoadPolicy{
+		ReloadFromSource:        reloadFromSource,
+		ApplyReaderReplaceRules: true,
+	})
 	if contentErr != nil {
 		if errors.Is(contentErr, errReaderChapterContentStale) {
 			writeReaderChapterContentStale(c, contentErr, "chapter-identity")
@@ -3102,6 +3110,7 @@ func (s *Server) loadChapterSearchTextContextResult(ctx context.Context, book mo
 
 type chapterTextLoadPolicy struct {
 	Refresh                 bool
+	ReloadFromSource        bool // Read fresh content without changing the shared server cache.
 	ApplyReaderReplaceRules bool
 }
 
@@ -3167,8 +3176,9 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	useCache := !policy.Refresh && !policy.ReloadFromSource
 	content := ""
-	if !policy.Refresh && chapter.CachePath != "" {
+	if useCache && chapter.CachePath != "" {
 		if bytes, path, err := s.readChapterCache(*book, chapter.CachePath); err == nil {
 			content = string(bytes)
 			if book.SourceID == 0 {
@@ -3222,7 +3232,7 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		}
 		*book = currentBook
 		*chapter = currentChapter
-		if !policy.Refresh && chapter.CachePath != "" {
+		if useCache && chapter.CachePath != "" {
 			if cached, path, cacheErr := s.readChapterCache(*book, chapter.CachePath); cacheErr == nil {
 				if path != "" && path != chapter.CachePath {
 					normalizedPath := s.remoteChapterCachePath(path)
@@ -3271,15 +3281,23 @@ func (s *Server) loadChapterTextContextResultWithPolicy(ctx context.Context, boo
 		if readerChapterContentLifecycleTestHook != nil {
 			readerChapterContentLifecycleTestHook("after_remote_fetch", ctx, *book, *chapter)
 		}
-		currentBook, currentChapter, persistErr := s.persistRemoteChapterFetch(ctx, snapshot, fetched, variableState)
+		if policy.ReloadFromSource && strings.TrimSpace(fetched) == "" {
+			if _, _, err := s.validateReaderChapterContentSnapshot(s.db.WithContext(ctx), snapshot); err != nil {
+				return "", err
+			}
+			return "", errors.New("empty chapter content")
+		}
+		cacheContent := fetched
+		if policy.ReloadFromSource {
+			cacheContent = ""
+		}
+		currentBook, currentChapter, persistErr := s.persistRemoteChapterFetch(ctx, snapshot, cacheContent, variableState)
 		if persistErr != nil {
 			return "", persistErr
 		}
 		*book = currentBook
 		*chapter = currentChapter
-		if fetched != "" {
-			content = fetched
-		}
+		content = fetched
 	}
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -3375,7 +3393,7 @@ func (s *Server) normalizeChapterCachePath(ctx context.Context, chapter *models.
 func (s *Server) persistRemoteChapterFetch(
 	ctx context.Context,
 	snapshot readerChapterContentSnapshot,
-	fetched string,
+	cacheContent string,
 	variableState engine.SourceRuleVariableState,
 ) (models.Book, models.Chapter, error) {
 	if err := ctx.Err(); err != nil {
@@ -3390,8 +3408,8 @@ func (s *Server) persistRemoteChapterFetch(
 
 	var staged *stagedChapterCache
 	var err error
-	if fetched != "" {
-		staged, err = s.stageRemoteChapterCache(ctx, snapshot.book.URL, snapshot.chapter.URL, fetched)
+	if cacheContent != "" {
+		staged, err = s.stageRemoteChapterCache(ctx, snapshot.book.URL, snapshot.chapter.URL, cacheContent)
 		if err != nil {
 			return models.Book{}, models.Chapter{}, err
 		}
@@ -3427,9 +3445,9 @@ func (s *Server) persistRemoteChapterFetch(
 			return validateErr
 		}
 
-		cachePath := currentChapter.CachePath
+		chapterUpdates := map[string]any{"variable": variableState.ChapterVariable}
 		if staged != nil {
-			cachePath = staged.relative
+			chapterUpdates["cache_path"] = staged.relative
 		}
 		chapterResult := tx.Model(&models.Chapter{}).
 			Where(
@@ -3442,10 +3460,7 @@ func (s *Server) persistRemoteChapterFetch(
 				snapshot.chapter.Variable,
 				snapshot.chapter.CachePath,
 			).
-			UpdateColumns(map[string]any{
-				"variable":   variableState.ChapterVariable,
-				"cache_path": cachePath,
-			})
+			UpdateColumns(chapterUpdates)
 		if chapterResult.Error != nil {
 			return chapterResult.Error
 		}
@@ -3456,10 +3471,10 @@ func (s *Server) persistRemoteChapterFetch(
 			if err := staged.publish(ctx); err != nil {
 				return err
 			}
+			currentChapter.CachePath = staged.relative
 		}
 		currentBook.Variable = variableState.BookVariable
 		currentChapter.Variable = variableState.ChapterVariable
-		currentChapter.CachePath = cachePath
 		return nil
 	})
 	if err != nil {

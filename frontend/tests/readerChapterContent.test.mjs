@@ -5,6 +5,7 @@ import api from '../src/api/client.js'
 import { getChapterContent } from '../src/api/books.js'
 import { getRemoteReaderChapterContent } from '../src/api/remoteReader.js'
 import { useReaderChapterContent } from '../src/composables/useReaderChapterContent.js'
+import { loadBrowserChapterContent } from '../src/utils/bookChapterCache.js'
 
 function validContent(index) {
   return {
@@ -118,7 +119,7 @@ test('deduplicates concurrent loads for the same book and chapter', async () => 
   assert.deepEqual(await second, validContent(2))
 })
 
-test('uses the upstream 30 second budget for shelf and temporary chapter content', async () => {
+test('sends the refresh query only for explicit shelf reload, with the upstream 30 second budget', async () => {
   const originalAdapter = api.defaults.adapter
   const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
   const requests = []
@@ -139,6 +140,7 @@ test('uses the upstream 30 second budget for shelf and temporary chapter content
   }
   try {
     await getChapterContent(7, 0)
+    await getChapterContent(7, 0, { refreshRemote: true })
     await getRemoteReaderChapterContent('session-7', 0)
   } finally {
     api.defaults.adapter = originalAdapter
@@ -149,9 +151,173 @@ test('uses the upstream 30 second budget for shelf and temporary chapter content
     }
   }
 
-  assert.equal(requests.length, 2)
-  assert.equal(requests[0].timeout, 30_000)
-  assert.equal(requests[1].timeout, 30_000)
+  assert.equal(requests.length, 3)
+  assert.deepEqual(requests.map(request => request.timeout), [30_000, 30_000, 30_000])
+  assert.deepEqual(requests.map(request => request.params?.refresh), [undefined, 1, undefined])
+})
+
+test('distinguishes an explicit refresh from a concurrent browser-only refresh', async () => {
+  const loads = []
+  const fixture = createController({
+    loadBrowserContent: (_book, _id, _index, options) => new Promise(resolve => {
+      loads.push({ options, resolve })
+    }),
+  })
+  const ordinary = fixture.controller.load(2, { refresh: true })
+  const remote = fixture.controller.load(2, { refresh: true, refreshRemote: true })
+  const repeated = fixture.controller.load(2, { refresh: true, refreshRemote: true })
+
+  const fresh = { ...validContent(2), content: 'updated chapter' }
+  loads.slice(1).forEach(load => load.resolve(fresh))
+  if (loads.length > 1) await remote
+  loads[0].resolve(validContent(2))
+  const results = await Promise.all([ordinary, remote, repeated])
+
+  assert.equal(loads.length, 2)
+  assert.equal(loads[0].options.refreshRemote, undefined)
+  assert.equal(loads[1].options.refreshRemote, true)
+  assert.deepEqual(results.slice(1), [fresh, fresh])
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('retries a transient explicit reload conflict with the same remote refresh intent', async () => {
+  const calls = []
+  const fresh = { ...validContent(2), content: 'fresh from the source' }
+  const fixture = createController({
+    loadBrowserContent: async (_book, _id, _index, options) => {
+      calls.push(options)
+      if (calls.length === 1) throw staleChapterError()
+      return options.refreshRemote ? fresh : validContent(2)
+    },
+  })
+  fixture.controller.set(2, validContent(2))
+
+  assert.deepEqual(await fixture.controller.load(2, { refreshRemote: true }), fresh)
+  assert.deepEqual(calls.map(({ refresh, refreshRemote }) => [refresh, refreshRemote]), [
+    [true, true],
+    [true, true],
+  ])
+  assert.equal(calls[1].signal, calls[0].signal)
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('prevents an older queued retry from publishing over an explicit reload', async () => {
+  const heldRetry = Promise.withResolvers()
+  const firstRetryStarted = Promise.withResolvers()
+  const olderConflict = Promise.withResolvers()
+  const attempts = new Map()
+  const chapterWrites = []
+  const fresh = { ...validContent(2), content: 'fresh from the source' }
+  const fixture = createController({
+    loadBrowserContent: (book, bookId, index, options) => loadBrowserChapterContent(book, bookId, index, {
+      ...options,
+      scope: 'user:7',
+      // Simulate a browser cache miss when the queued retry finally runs.
+      getCache: async () => null,
+      setCache: async (_key, data) => {
+        if (index === 2) chapterWrites.push(data)
+      },
+      getChapterContent: async (_id, chapterIndex, requestOptions) => {
+        if (requestOptions.refreshRemote) return { data: fresh }
+        const count = (attempts.get(chapterIndex) || 0) + 1
+        attempts.set(chapterIndex, count)
+        if (count === 1) {
+          if (chapterIndex === 2) olderConflict.resolve()
+          throw staleChapterError()
+        }
+        if (chapterIndex === 1) {
+          firstRetryStarted.resolve()
+          await heldRetry.promise
+        }
+        return { data: validContent(chapterIndex) }
+      },
+    }),
+  })
+
+  const blocking = fixture.controller.load(1)
+  await firstRetryStarted.promise
+  const older = fixture.controller.load(2)
+  try {
+    await olderConflict.promise
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(attempts.get(2), 1)
+    assert.deepEqual(await fixture.controller.load(2, { refreshRemote: true }), fresh)
+  } finally {
+    heldRetry.resolve()
+    await Promise.all([blocking, older])
+  }
+
+  assert.equal(attempts.get(2), 2)
+  assert.deepEqual(chapterWrites, [fresh])
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('reports an explicit reload failure after the second stale conflict', async () => {
+  const calls = []
+  const secondConflict = staleChapterError()
+  const fixture = createController({
+    loadBrowserContent: async (_book, _id, _index, options) => {
+      calls.push(options.refreshRemote)
+      throw calls.length === 1 ? staleChapterError() : secondConflict
+    },
+  })
+  fixture.controller.set(2, validContent(2))
+
+  await assert.rejects(
+    fixture.controller.load(2, { refreshRemote: true }),
+    { name: 'ChapterStaleConflictError', message: '章节状态已更新，请重试', cause: secondConflict },
+  )
+  assert.deepEqual(calls, [true, true])
+  assert.deepEqual(fixture.controller.get(2), validContent(2))
+})
+
+test('drops an explicit reload retry cancelled while queued and publishes its replacement', async () => {
+  const heldRetry = Promise.withResolvers()
+  const ordinaryRetryStarted = Promise.withResolvers()
+  const attempts = []
+  const fresh = { ...validContent(2), content: 'replacement reload' }
+  const fixture = createController({
+    loadBrowserContent: async (_book, _id, index, options) => {
+      const attempt = attempts.filter(row => row.index === index).length + 1
+      attempts.push({ index, signal: options.signal })
+      if (attempt === 1) throw staleChapterError()
+      if (index === 2) return fresh
+      ordinaryRetryStarted.resolve()
+      await heldRetry.promise
+      return validContent(index)
+    },
+  })
+
+  const ordinary = fixture.controller.load(1)
+  await ordinaryRetryStarted.promise
+  const controller = new AbortController()
+  const cancelled = fixture.controller.load(2, { refreshRemote: true, signal: controller.signal })
+    .catch(error => error)
+  await new Promise(resolve => setImmediate(resolve))
+  controller.abort()
+  try {
+    assert.equal((await cancelled).name, 'AbortError')
+    assert.equal(attempts[2].signal.aborted, true)
+    assert.deepEqual(await fixture.controller.load(2, { refreshRemote: true }), fresh)
+  } finally {
+    heldRetry.resolve()
+    await ordinary
+  }
+
+  assert.equal(attempts.filter(row => row.index === 2).length, 2)
+  assert.deepEqual(fixture.controller.get(2), fresh)
+})
+
+test('does not start an explicit remote refresh for an already cancelled reader load', async () => {
+  const fixture = createController()
+  const controller = new AbortController()
+  controller.abort()
+
+  await assert.rejects(
+    fixture.controller.load(2, { refreshRemote: true, signal: controller.signal }),
+    { name: 'AbortError' },
+  )
+  assert.deepEqual(fixture.calls, [])
 })
 
 test('keeps a shared same-chapter request alive when a new caller replaces an aborted caller', async () => {

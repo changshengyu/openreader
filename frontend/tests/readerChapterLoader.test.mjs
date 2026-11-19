@@ -82,6 +82,14 @@ test('hides mobile chrome only when the caller explicitly requests it', async ()
   assert.equal(fixture.state.mobileChromeVisible.value, false)
 })
 
+test('passes explicit remote reload through with its current reading offset', async () => {
+  const fixture = createController()
+  const options = { refresh: true, refreshRemote: true }
+  assert.equal(await fixture.controller.load(1, 88, options), true)
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'load'), ['load', 1, options])
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'restore'), ['restore', 88, options])
+})
+
 test('saves forced progress and expands continuous chapter windows', async () => {
   const fixture = createController()
   fixture.state.isContinuousScrollRead.value = true
@@ -181,6 +189,20 @@ test('keeps a failed continuous target chapter in the chapter window', async () 
   })
   await single.controller.load(2)
   assert.deepEqual(single.calls.filter(call => call[0] === 'failed-window'), [], 'single-chapter modes show the error page')
+})
+
+test('passes the explicit reload intent to the failed continuous chapter', async () => {
+  const error = new Error('source unavailable')
+  const fixture = createController({
+    loadContent: async () => { throw error },
+    showFailedChapterWindow: (...args) => fixture.calls.push(['failed-window', ...args]),
+  })
+  fixture.state.isContinuousScrollRead.value = true
+
+  assert.equal(await fixture.controller.load(2, 80, { refresh: true, refreshRemote: true }), false)
+  assert.deepEqual(fixture.calls.find(call => call[0] === 'failed-window'), [
+    'failed-window', 2, error, { refreshRemote: true },
+  ])
 })
 
 test('discards an older main load that finishes after the active chapter', async () => {

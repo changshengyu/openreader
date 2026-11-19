@@ -37,7 +37,8 @@ export function useReaderChapterLoader(options) {
     options.cancelProgressSave()
     clearLoadingTimer()
 
-    const cachedBeforeLoad = !loadOptions.refresh
+    const refresh = Boolean(loadOptions.refresh || loadOptions.refreshRemote)
+    const cachedBeforeLoad = !refresh
       && options.getMemoryContent(options.currentIndex.value)
     options.chapterLoading.value = !cachedBeforeLoad
     if (!cachedBeforeLoad) {
@@ -50,7 +51,8 @@ export function useReaderChapterLoader(options) {
       const data = await options.loadContent(
         targetIndex,
         {
-          refresh: Boolean(loadOptions.refresh),
+          refresh,
+          ...(loadOptions.refreshRemote ? { refreshRemote: true } : {}),
           signal: controller.signal,
         },
       )
@@ -143,7 +145,9 @@ export function useReaderChapterLoader(options) {
       // still loads (R6).
       let failedWindow = null
       if (unref(options.isContinuousScrollRead) && options.showFailedChapterWindow) {
-        failedWindow = Promise.resolve(options.showFailedChapterWindow(targetIndex, error)).catch(() => {})
+        failedWindow = Promise.resolve(options.showFailedChapterWindow(targetIndex, error, {
+          refreshRemote: loadOptions.refreshRemote === true,
+        })).catch(() => {})
       }
       options.notifyError?.(error)
       await nextTick()

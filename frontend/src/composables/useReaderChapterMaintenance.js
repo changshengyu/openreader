@@ -43,10 +43,13 @@ export function useReaderChapterMaintenance(options) {
       if (await options.reloadBook()) options.notify?.('章节已重新载入')
       return
     }
+    const refreshRemote = !unref(options.isTemporaryReader)
+      && unref(options.isRemoteBook)
+      && Number(unref(options.book)?.type ?? 0) === 0
     const loaded = await options.loadChapter(
       unref(options.currentIndex),
       options.getCurrentOffset(),
-      { refresh: true },
+      refreshRemote ? { refresh: true, refreshRemote: true } : { refresh: true },
     )
     if (loaded === false) return
     options.notify?.('章节已重新载入')

@@ -39,29 +39,40 @@ export function useReaderChapterContent(options) {
   }
 
   async function load(index, loadOptions = {}) {
+    if (loadOptions.signal?.aborted) throw chapterAbortError(loadOptions.signal)
     const targetBook = { ...(unref(options.book) || {}) }
     const targetBookId = unref(options.bookId)
     const targetCacheKey = cacheKey(targetBook, targetBookId)
-    if (!loadOptions.refresh) {
+    const refreshRemote = loadOptions.refreshRemote === true
+    const refresh = Boolean(refreshRemote || loadOptions.refresh)
+    if (!refresh) {
       const cached = get(index, targetCacheKey)
       if (cached) return cached
     }
-    const requestKey = [
-      targetCacheKey,
-      Number(index),
-      loadOptions.refresh ? 'refresh' : 'normal',
-    ].join(':')
+    const chapterKey = `${targetCacheKey}:${Number(index)}`
+    const remoteKey = `${chapterKey}:remote`
+    const requestKey = refreshRemote ? remoteKey : `${chapterKey}:${refresh ? 'refresh' : 'normal'}`
     let entry = inFlight.get(requestKey)
-    if (entry) return subscribeToChapterRequest(entry, loadOptions.signal)
+    if (entry && !entry.controller.signal.aborted) return subscribeToChapterRequest(entry, loadOptions.signal)
+
+    if (refreshRemote) {
+      for (const key of [`${chapterKey}:normal`, `${chapterKey}:refresh`]) {
+        const pending = inFlight.get(key)
+        if (pending) pending.canCache = false
+      }
+    }
 
     entry = {
       abortQueued: false,
       cacheKey: targetCacheKey,
+      canCache: refreshRemote || !inFlight.has(remoteKey),
       consumers: 0,
       controller: new AbortController(),
       promise: null,
       settled: false,
     }
+    const canWrite = () => entry.canCache
+    const cacheRequest = {}
     const request = (async () => {
       let data
       try {
@@ -70,8 +81,11 @@ export function useReaderChapterContent(options) {
           targetBookId,
           index,
           {
-            refresh: Boolean(loadOptions.refresh),
+            refresh,
+            ...(refreshRemote ? { refreshRemote: true } : {}),
             signal: entry.controller.signal,
+            canWrite,
+            cacheRequest,
           },
         )
       } catch (error) {
@@ -87,8 +101,12 @@ export function useReaderChapterContent(options) {
               targetBookId,
               index,
               {
-                refresh: false,
+                // Explicit reloads still need a fresh body after a conflict.
+                refresh: refreshRemote,
+                ...(refreshRemote ? { refreshRemote: true } : {}),
                 signal: entry.controller.signal,
+                canWrite,
+                cacheRequest,
               },
             ),
           )
@@ -105,8 +123,8 @@ export function useReaderChapterContent(options) {
         && cacheKey() === targetCacheKey
       if (
         options.shouldCache?.() !== false
-        &&
-        isValidChapterContentResponse(data)
+        && entry.canCache
+        && isValidChapterContentResponse(data)
         && isCurrentBook
       ) {
         set(index, data, targetCacheKey)

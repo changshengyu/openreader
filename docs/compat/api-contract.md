@@ -1678,3 +1678,17 @@ WebDAV progress ingress 的合同与测试门见
 上传期间 root/parent/target/stage identity 改变属于 unsafe lifecycle，返回 403 空 body，不能覆盖
 替换实体。caller cancellation 不新增错误正文。详见
 [`webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
+### Reader 显式重新载入已入架在线文本章节
+
+固定上游 `fa22f271` 的 `web/src/views/Reader.vue`（987–1045）在刷新当前章时传递刷新意图。
+`BookController.kt`（448–455、583–608）据此跳过已有正文并请求书源。基线 OpenReader
+`5028d44a` 的按钮只绕过内存和浏览器缓存，Go 仍可返回旧正文，此项为 must-fix。
+
+- 已认证的 `GET /api/books/:id/chapters/:index/content?refresh=1` 无请求体。对当前用户书架上有书源的普通文本书，明确重抓该章。省略参数或传入 0 仍按缓存优先处理。媒体、本地书和临时阅读沿用原有加载流程。
+- 原有归属和章节检查先于远端请求。成功返回 200 和现有 chapter、content、format 字段。显式刷新响应使用 Cache-Control: no-store。抓取器或解析器报错，或返回空白正文时，沿用客户端可读的 502 错误。书源 HTTP 状态本身沿用既有解析器语义。身份变化和取消沿用现有冲突及取消处理。失败和过期结果均须保留最后一次有效正文。
+- 按固定上游，显式刷新直接返回抓取结果，成功后更新当前浏览器的正文缓存。服务端正文文件可能由多个书架记录共享（remote_cache_filesystem.go 的 stageRemoteChapterCache 仅按书和章 URL 定位）。显式刷新保留该文件和 CachePath；同一浏览器重开使用新正文，无浏览器缓存的普通 GET 仍可使用原服务端缓存。SQLite 结构和缓存格式沿用现状。
+- 仅用户主动重新载入当前正文触发服务端重抓取。预加载、其他仅刷新浏览器缓存的操作及正常打开继续使用原语义。重新载入保留当前章节和阅读位置，沿用现有错误提示。
+- 验收使用可控在线书源。先加载 v1，再切换到 v2，普通请求仍命中 v1，手动重载显示 v2，同一浏览器重开读取 v2，直连普通 GET 仍读 v1。书源失败时手动重载须报告失败，再从同一浏览器普通打开仍可读取最后成功版本。覆盖桌面、两个移动视口及跨用户请求。
+- OpenReader 的书源规则可在解析时更新变量。显式刷新成功时按现有事务提交当前书及当前章的变量，供后续解析使用。取消、内容为空或快照失效时保留此前的变量与正文。精确章节状态冲突沿用一次自动重试，重试仍显式请求书源。
+- 基线 5028d44a 的三个 Chrome 视口均复现按钮读回 v1、书源访问次数不变。回归脚本 `scripts/smoke/reader-explicit-chapter-reload-contract.mjs` 核对源请求次数、正文、失败和冷重开。初版测试在实际分页模式中观察到两版等长正文在桌面和移动端分别有两段和一段的定位差，与基线一致。测试须从 DOM 确认所选阅读模式生效。连续模式里，显式刷新失败后的正文重试仍需访问书源；另一个标签页较早发出的普通请求不得在新正文提交后覆盖持久缓存。
