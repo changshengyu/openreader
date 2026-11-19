@@ -145,7 +145,9 @@ export function useReaderChapterLoader(options) {
       // still loads (R6).
       let failedWindow = null
       if (unref(options.isContinuousScrollRead) && options.showFailedChapterWindow) {
-        failedWindow = Promise.resolve(options.showFailedChapterWindow(targetIndex, error)).catch(() => {})
+        failedWindow = Promise.resolve(options.showFailedChapterWindow(targetIndex, error, {
+          refreshRemote: loadOptions.refreshRemote === true,
+        })).catch(() => {})
       }
       options.notifyError?.(error)
       await nextTick()

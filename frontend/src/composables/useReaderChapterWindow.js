@@ -65,7 +65,7 @@ export function useReaderChapterWindow(options) {
     )
   }
 
-  function errorBlockFor(index, error) {
+  function errorBlockFor(index, error, { refreshRemote = false } = {}) {
     const message = options.formatError?.(error)
       || error?.message
       || String(error || '章节加载失败')
@@ -75,6 +75,7 @@ export function useReaderChapterWindow(options) {
         content: `获取章节内容失败！\n${message}`,
       }),
       error: message,
+      ...(refreshRemote ? { refreshRemote: true } : {}),
     }
   }
 
@@ -222,9 +223,9 @@ export function useReaderChapterWindow(options) {
 
   // Error surface R6: a failed main load keeps its target chapter as an inline error block at the head of the window
   // and the window still loads the following chapter (reader-dev computeShowChapterList(true) after getContent fails).
-  function showFailedChapter(index, error) {
+  function showFailedChapter(index, error, retryOptions) {
     const targetIndex = Number(index)
-    options.chapterBlocks.value = [errorBlockFor(targetIndex, error)]
+    options.chapterBlocks.value = [errorBlockFor(targetIndex, error, retryOptions)]
     return compute({ anchorIndex: targetIndex })
   }
 
@@ -236,9 +237,11 @@ export function useReaderChapterWindow(options) {
       block => Number(block.index) === targetIndex,
     )
     if (blockIndex < 0) return null
+    const { refreshRemote } = options.chapterBlocks.value[blockIndex]
+    const retryOptions = refreshRemote ? { refresh: true, refreshRemote: true } : { refresh: true }
     const transaction = beginTransaction()
     try {
-      const data = await options.loadContent(targetIndex, { refresh: true })
+      const data = await options.loadContent(targetIndex, retryOptions)
       if (!isCurrentTransaction(transaction)) return null
       const blocks = [...options.chapterBlocks.value]
       const block = blockFor(targetIndex, data)
@@ -253,7 +256,7 @@ export function useReaderChapterWindow(options) {
     } catch (error) {
       if (!isCurrentTransaction(transaction)) return null
       const blocks = [...options.chapterBlocks.value]
-      blocks[blockIndex] = errorBlockFor(targetIndex, error)
+      blocks[blockIndex] = errorBlockFor(targetIndex, error, retryOptions)
       return await replaceBlocks(blocks, true, transaction) ? false : null
     } finally {
       finishTransaction(transaction)
