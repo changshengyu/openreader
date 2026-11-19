@@ -25,6 +25,10 @@ export function useReaderWheel(options) {
     })
     if (unref(options.isVerticalRead)) {
       if (!viewport || Math.abs(delta) < 0.01) return
+      if (event.isTrusted && !event.defaultPrevented && !event.ctrlKey && !event.shiftKey
+        && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+        options.onNativeScrollInput?.(event.deltaY)
+      }
       options.cancelPageAnimation?.()
       return
     }

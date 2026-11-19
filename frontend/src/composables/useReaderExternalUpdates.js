@@ -35,19 +35,20 @@ export function useReaderExternalUpdates(options) {
 
     options.cancelProgressSave()
     try {
-      await trackRestore(progress, async () => {
+      await trackRestore(progress, async finishNavigation => {
         const reachedPosition = await options.navigate({
           chapter: targetIndex,
           ...(targetOffset ? { offset: targetOffset } : {}),
           ...(restorePercent !== null ? { percent: Number(restorePercent.toFixed(6)) } : {}),
         })
         if (reachedPosition === false || Number(progress.bookId) !== Number(unref(options.bookId))) return
+        finishNavigation?.()
         await options.loadChapter(targetIndex, targetOffset, {
           restorePercent,
           saveAfterLoad: false,
           restoredProgress: progress,
         })
-      })
+      }, { waitForNavigation: true })
     } catch {
       // The stored progress remains available for the next reader open.
     }

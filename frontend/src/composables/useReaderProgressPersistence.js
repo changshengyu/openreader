@@ -53,12 +53,37 @@ export function useReaderProgressPersistence(options) {
       || (restoredTime > 0 && progressUpdatedAt(stored) >= restoredTime)
   }
 
-  async function trackRestore(progress, restore) {
+  function recordRestoreScroll(bookId, delta) {
+    const task = restoringProgress
+    if (!task?.waitingForNavigation || Number(task.bookId) !== Number(bookId)) return
+    const viewport = options.getRestoreScrollViewport?.()
+    const direction = Math.sign(delta)
+    if (!direction || !Number.isFinite(viewport?.scrollTop)) return
+    const moved = hasRestoreScrollMovement(task, viewport)
+    task.scrollInput = { viewport, scrollTop: viewport.scrollTop, direction, moved }
+  }
+
+  function hasRestoreScrollMovement(task, viewport = options.getRestoreScrollViewport?.()) {
+    const input = task.scrollInput
+    return Boolean(task.waitingForNavigation && input && input.viewport === viewport
+      && (input.moved || (viewport.scrollTop - input.scrollTop) * input.direction > 0))
+  }
+
+  async function trackRestore(progress, restore, { waitForNavigation = false } = {}) {
     if (!progress?.bookId || !progress.updatedAt || progress.pendingSync) return restore()
-    const task = { bookId: progress.bookId, updatedAt: progress.updatedAt }
+    const task = { bookId: progress.bookId, updatedAt: progress.updatedAt, waitingForNavigation: waitForNavigation }
+    const previousRestore = restoringProgress
+    const scrollInput = previousRestore?.scrollInput
+    if (waitForNavigation && previousRestore?.waitingForNavigation && scrollInput
+      && Number(previousRestore.bookId) === Number(task.bookId)
+      && scrollInput.viewport === options.getRestoreScrollViewport?.()) {
+      task.scrollInput = scrollInput
+    }
     restoringProgress = task
     try {
-      return await restore()
+      return await restore(() => {
+        task.waitingForNavigation = false
+      })
     } finally {
       if (restoringProgress === task) restoringProgress = null
     }
@@ -89,7 +114,10 @@ export function useReaderProgressPersistence(options) {
 
     const force = Boolean(saveOptions.force)
     const background = Boolean(saveOptions.background)
-    if ((!force || background) && isRestoredPosition(payload)) return
+    const movedBeforeNavigation = background && restoringProgress
+      && Number(restoringProgress.bookId) === Number(payload.bookId)
+      && hasRestoreScrollMovement(restoringProgress)
+    if ((!force || background) && !movedBeforeNavigation && isRestoredPosition(payload)) return
     restoredPosition = null
     const nextPayload = {
       ...payload,
@@ -238,6 +266,7 @@ export function useReaderProgressPersistence(options) {
     isRestoredPosition,
     key,
     markSaved,
+    recordRestoreScroll,
     save,
     schedule,
     suspend,
