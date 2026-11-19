@@ -439,7 +439,7 @@ async function browserProgressWrite(page, token, payload, delay = 120) {
   }, { tokenValue: token, progress: payload, wait: delay })
 }
 
-async function assertWebDAVMirror(progressDir, book, progress) {
+async function readWebDAVMirror(progressDir, book) {
   const files = (await readdir(progressDir)).filter(name => name.endsWith('.json'))
   const mirrors = []
   for (const name of files) {
@@ -447,7 +447,18 @@ async function assertWebDAVMirror(progressDir, book, progress) {
     if (parsed.bookUrl === book.url) mirrors.push({ name, parsed })
   }
   assert(mirrors.length === 1, `expected one WebDAV progress mirror for ${book.title}, got ${mirrors.length}`)
-  const mirror = mirrors[0].parsed
+  return mirrors[0].parsed
+}
+
+async function assertWebDAVMirror(progressDir, book, progress, { afterClose = false } = {}) {
+  let mirror = await readWebDAVMirror(progressDir, book)
+  // The keepalive write can commit to SQLite while its WebDAV file is still being replaced.
+  const deadline = Date.now() + 2_000
+  while (afterClose && Number.isInteger(mirror.durChapterPos)
+    && mirror.durChapterPos !== progress.offset && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+    mirror = await readWebDAVMirror(progressDir, book)
+  }
   assert(mirror.durChapterIndex === progress.chapterIndex, `${book.title}: mirrored chapter index diverged`)
   assert(mirror.durChapterPos === progress.offset, `${book.title}: mirrored offset ${mirror.durChapterPos} != ${progress.offset}`)
   assert(mirror.durChapterTitle === progress.chapterTitle, `${book.title}: mirrored title is not canonical`)
@@ -640,7 +651,7 @@ async function runViewport(browser, app, token, progressDir, viewport) {
       scrollWrites.some(write => write.offset === afterScroll.offset && write.baseUpdatedAt === winner.updatedAt),
       `${suffix}: no close-time write matched the saved position and the restored server version`,
     )
-    await assertWebDAVMirror(progressDir, book, afterScroll)
+    await assertWebDAVMirror(progressDir, book, afterScroll, { afterClose: true })
     const afterScrollReopen = await newReaderContext(browser, app.root, token, viewport, book.id, `${suffix}/scroll-reopen`)
     try {
       await waitForLocalProgress(afterScrollReopen.page, book.id, afterScroll.offset)
@@ -686,12 +697,14 @@ async function observeCloseParagraph(page) {
   })
 }
 
-async function runPendingRestoreViewport(browser, app, token, progressDir, viewport, shouldScroll) {
-  const label = `pending-restore-${viewport.width}x${viewport.height}/${shouldScroll ? 'scroll' : 'untouched'}`
+async function runPendingRestoreViewport(browser, app, token, progressDir, viewport, scenario) {
+  const label = `pending-restore-${viewport.width}x${viewport.height}/${scenario}`
+  const shouldScroll = scenario !== 'untouched'
   const book = await importTXT(app.root, token, `等待恢复 ${label}`)
   const [chapter] = await api(app.root, `/books/${book.id}/chapters`, { token })
   assert(chapter, `${label}: imported book has no chapter`)
   const remoteOffset = 4400
+  const newerOffset = 8000
   async function writeProgress(offset, chapterPercent, baseUpdatedAt) {
     return api(app.root, '/progress', {
       token,
@@ -712,37 +725,61 @@ async function runPendingRestoreViewport(browser, app, token, progressDir, viewp
   }))
   try {
     await waitForLocalProgress(reader.page, book.id, initial.offset)
-    await reader.page.evaluate(offset => {
+    await reader.page.evaluate(offsets => {
       const router = document.querySelector('#app').__vue_app__.config.globalProperties.$router
       const gate = new Promise(() => {})
       router.beforeEach(to => {
-        if (Number(to.query.offset) !== offset) return
-        window.__openReaderRestoreWaiting = true
+        const offset = Number(to.query.offset)
+        if (!offsets.includes(offset)) return
+        window.__openReaderRestoreWaiting = offset
         return gate
       })
-    }, remoteOffset)
+    }, [remoteOffset, newerOffset])
+    const waitForRestoreNavigation = offset => reader.page.waitForFunction(
+      expected => window.__openReaderRestoreWaiting === expected, offset, { timeout: 10_000 },
+    )
     if (shouldScroll) await observeCloseParagraph(reader.page)
     const remote = await writeProgress(remoteOffset, 0.5, initial.updatedAt)
     assert(remote.offset === remoteOffset, `${label}: remote progress did not reach the server`)
-    await reader.page.waitForFunction(() => window.__openReaderRestoreWaiting === true, null, { timeout: 10_000 })
-    assert(Number(new URL(reader.page.url()).searchParams.get('offset')) !== remoteOffset,
-      `${label}: restoration navigation committed before close`)
+    await waitForRestoreNavigation(remoteOffset)
     if (shouldScroll) await scrollReaderBack(reader, viewport)
+    let latest = remote
+    if (scenario === 'superseded') {
+      latest = await writeProgress(newerOffset, 0.75, remote.updatedAt)
+      assert(latest.offset === newerOffset && latest.updatedAt !== remote.updatedAt,
+        `${label}: second remote progress did not reach the server`)
+      await waitForRestoreNavigation(newerOffset)
+    }
+    const routeOffset = Number(new URL(reader.page.url()).searchParams.get('offset'))
+    assert(routeOffset !== remoteOffset && routeOffset !== newerOffset,
+      `${label}: restoration navigation committed before close`)
     assert(writes.length === 0, `${label}: progress write occurred before close`)
     await reader.context.close()
     const durable = await api(app.root, `/progress/${book.id}`, { token })
     if (shouldScroll) {
-      const write = writes.find(({ payload }) => payload.offset === durable.offset && payload.baseUpdatedAt === remote.updatedAt)
-      assert(write?.visibleParagraph && durable.updatedAt !== remote.updatedAt,
+      const write = writes.find(({ payload }) => payload.offset === durable.offset && payload.baseUpdatedAt === latest.updatedAt)
+      assert(write?.visibleParagraph && durable.updatedAt !== latest.updatedAt,
         `${label}: scrolling before restore did not save against the confirmed version on close (offset ${durable.offset})`)
       const [start, end] = write.visibleParagraph.split(',').map(Number)
       assert(durable.chapterIndex === chapter.index && durable.offset >= start && durable.offset <= end,
         `${label}: saved offset ${durable.offset} is outside the visible paragraph ${start}–${end}`)
     } else {
-      assert(writes.length === 0 && durable.offset === remote.offset && durable.updatedAt === remote.updatedAt,
+      assert(writes.length === 0 && durable.offset === latest.offset && durable.updatedAt === latest.updatedAt,
         `${label}: untouched close changed the pending restored position`)
     }
-    await assertWebDAVMirror(progressDir, book, durable)
+    await assertWebDAVMirror(progressDir, book, durable, { afterClose: shouldScroll })
+    if (scenario === 'superseded') {
+      const reopened = await newReaderContext(browser, app.root, token, viewport, book.id, `${label}/reopen`)
+      try {
+        await waitForLocalProgress(reopened.page, book.id, durable.offset)
+        const restored = await localProgress(reopened.page, book.id)
+        assert(restored.updatedAt === durable.updatedAt && await reopened.page.evaluate(readerScrollTop) > 0,
+          `${label}: reopened reader did not restore the saved position`)
+        assert(reopened.errors.length === 0, reopened.errors.join('\n'))
+      } finally {
+        await reopened.context.close()
+      }
+    }
     assert(reader.errors.length === 0, reader.errors.join('\n'))
     console.log(`${label}: close while remote route waits + durable offset ${durable.offset} + WebDAV mirror ok`)
   } finally {
@@ -860,8 +897,9 @@ try {
   await runRequestBoundary(app.root, token)
   if (!process.env.PROGRESS_SMOKE_INGRESS_ONLY) {
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 800 }]) {
-      await runPendingRestoreViewport(browser, app, token, progressDir, viewport, false)
-      await runPendingRestoreViewport(browser, app, token, progressDir, viewport, true)
+      for (const scenario of ['untouched', 'scroll', 'superseded']) {
+        await runPendingRestoreViewport(browser, app, token, progressDir, viewport, scenario)
+      }
       await runViewport(browser, app, token, progressDir, viewport)
     }
   }
