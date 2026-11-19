@@ -36,8 +36,9 @@ async function idbGet(key) {
   })
 }
 
-async function idbSet(key, value) {
+async function idbSet(key, value, canWrite) {
   const db = await openDB()
+  if (canWrite?.() === false) return
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
@@ -91,12 +92,14 @@ export async function getBrowserCache(key) {
   return readLegacyCache(cacheKey)
 }
 
-export async function setBrowserCache(key, value) {
+export async function setBrowserCache(key, value, canWrite) {
+  if (canWrite?.() === false) return
   const cacheKey = prefixedKey(key)
   try {
-    await idbSet(cacheKey, value)
+    await idbSet(cacheKey, value, canWrite)
     return
   } catch {
+    if (canWrite?.() === false) return
     writeLegacyCache(cacheKey, value)
   }
 }
@@ -179,7 +182,7 @@ export async function cacheFirstRequest(requestFunc, cacheKey, options = {}) {
   }
   const response = await requestFunc()
   if (response?.data && (!options.validate || options.validate(response.data))) {
-    await setBrowserCache(cacheKey, response.data)
+    await setBrowserCache(cacheKey, response.data, options.canWrite)
   }
   return response
 }
@@ -188,7 +191,7 @@ export async function networkFirstRequest(requestFunc, cacheKey, options = {}) {
   try {
     const response = await requestFunc()
     if (response?.data && (!options.validate || options.validate(response.data))) {
-      await setBrowserCache(cacheKey, response.data)
+      await setBrowserCache(cacheKey, response.data, options.canWrite)
     }
     return response
   } catch (err) {

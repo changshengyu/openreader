@@ -1688,3 +1688,7 @@ Actions `37192132525` 已通过 fresh/historical/portable/backup 门并完成双
 不改变 `data/webdav`、用户私有目录、SQLite 或 ordinary/portable 备份布局；无需迁移或重新上传。
 完整生命周期合同见
 [`webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
+### Reader 换书期间的目录刷新
+
+书籍详情和目录继续复用按用户、类型和书籍 ID 区分的现有缓存键。IndexedDB 仍保存原有记录，localStorage 仍可读取旧值。此次调整限定哪些加载结果可以写入，无需迁移或清除已有数据。见[目录刷新合同](reader-background-catalog-generation.md)。

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ref } from 'vue'
+import { effectScope, ref } from 'vue'
 import { useReaderBookLoad } from '../src/composables/useReaderBookLoad.js'
 
 function createController(overrides = {}) {
@@ -220,4 +220,92 @@ test('a late catalog error from an earlier visit cannot fail the reopened book',
   await fixture.controller.load()
   rejectCatalog(new Error('first catalog failed'))
   await initial
+})
+
+function deferred() {
+  let resolve
+  const promise = new Promise(done => { resolve = done })
+  return { promise, resolve }
+}
+
+function finishBackgroundRefreshes() {
+  return new Promise(resolve => setImmediate(resolve))
+}
+
+for (const resource of ['book', 'chapters']) {
+  test(`an older ${resource} response cannot replace the result of reopening the same book`, async () => {
+    const firstVisit = deferred()
+    let visitsToA = 0
+    const bookData = (id, title) => ({ id, title })
+    const rows = (id, title) => [{ id: id * 10, title }]
+    const payload = resource === 'book' ? bookData : rows
+    async function refresh(id) {
+      if (id === 7 && ++visitsToA === 1) return firstVisit.promise
+      return { data: payload(id, 'latest') }
+    }
+    const fixture = createController({
+      loadCachedBook: async id => ({ data: bookData(id, 'cached'), fromCache: resource === 'book' }),
+      loadCachedChapters: async id => ({ data: rows(id, 'cached'), fromCache: resource === 'chapters' }),
+      refreshBook: refresh,
+      refreshChapters: refresh,
+    })
+    const currentTitle = () => resource === 'book' ? fixture.book.value.title : fixture.chapters.value[0].title
+
+    await fixture.controller.load()
+    fixture.bookId.value = 8
+    await fixture.controller.load()
+    fixture.bookId.value = 7
+    await fixture.controller.load()
+    await finishBackgroundRefreshes()
+    assert.equal(currentTitle(), 'latest')
+
+    firstVisit.resolve({ data: payload(7, 'obsolete') })
+    await finishBackgroundRefreshes()
+    assert.equal(currentTitle(), 'latest')
+  })
+}
+
+test('an older chapter load cannot start a refresh after the reader switches books', async () => {
+  const firstChapter = deferred()
+  const chapterStarted = deferred()
+  const refreshes = []
+  let loads = 0
+  const fixture = createController({
+    loadCachedChapters: async id => ({ data: [{ id }], fromCache: id === 7 }),
+    loadChapter: async () => {
+      if (++loads !== 1) return
+      chapterStarted.resolve()
+      await firstChapter.promise
+    },
+    refreshChapters: async id => {
+      refreshes.push(id)
+      return { data: [{ id }] }
+    },
+  })
+  const first = fixture.controller.load()
+  await chapterStarted.promise
+  fixture.bookId.value = 8
+  await fixture.controller.load()
+  firstChapter.resolve()
+  await first
+  assert.deepEqual(refreshes, [])
+})
+
+test('a refresh from a disposed reader cannot update its book or catalog', async () => {
+  const scope = effectScope()
+  const bookResponse = deferred()
+  const catalogResponse = deferred()
+  const fixture = scope.run(() => createController({
+    loadCachedBook: async id => ({ data: { id, title: 'cached' }, fromCache: true }),
+    loadCachedChapters: async () => ({ data: [{ id: 1 }], fromCache: true }),
+    refreshBook: () => bookResponse.promise,
+    refreshChapters: () => catalogResponse.promise,
+  }))
+  await fixture.controller.load()
+  scope.stop()
+  bookResponse.resolve({ data: { id: 7, title: 'obsolete' } })
+  catalogResponse.resolve({ data: [{ id: 2 }] })
+  await finishBackgroundRefreshes()
+  assert.equal(fixture.book.value.title, 'cached')
+  assert.deepEqual(fixture.chapters.value, [{ id: 1 }])
 })
