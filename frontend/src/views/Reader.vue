@@ -1750,6 +1750,7 @@ const {
   contentEl: scrollViewport,
   isOverlayOpen,
   isVerticalRead,
+  onNativeScrollInput: recordReaderScrollInput,
   cancelPageAnimation,
   nextPage,
   previousPage,
@@ -1795,6 +1796,7 @@ const {
   scheduleSelectedTextOperation,
   suppressContentClick,
   consumeSuppressedContentClick,
+  onNativeScrollInput: recordReaderScrollInput,
   cancelPageAnimation,
   preparePageInput,
   nextPage,
@@ -1808,6 +1810,7 @@ const {
   isRestoredPosition: isRestoredProgressPosition,
   key: progressSaveKey,
   markSaved: markProgressSaved,
+  recordRestoreScroll,
   save: saveCurrentProgress,
   schedule: scheduleProgressSave,
   suspend: suspendProgressSaving,
@@ -1819,6 +1822,11 @@ const {
   // The payload names a catalog row even before any chapter loaded, so a failed first load is saved on leave
   // (failure progress contract P2); without a row of this book there is nothing to save.
   getPayload: () => currentProgressPayload(),
+  getRestoreScrollViewport: () => (
+    chapterLoaded.value && !restoringPosition.value && !chapterLoading.value
+      ? scrollViewport.value
+      : null
+  ),
   getBaseUpdatedAt: progressServerBaseUpdatedAt,
   applyLocal: writeLocalProgressSnapshot,
   saveRemote: payload => reader.saveProgress({ ...payload, mode: interfaceReaderMode.value }),
@@ -1827,6 +1835,9 @@ const {
   getStoredProgress: targetBookId => reader.cachedProgress(targetBookId),
   ensureClientId: () => reader.ensureClientId(),
 })
+function recordReaderScrollInput(delta) {
+  recordRestoreScroll(bookId.value, delta)
+}
 // Failure progress contract P7: progress saves are best effort, as reader-dev's saveBookProgress swallows every error.
 // Callers that do not wait for the result use this; the local pending snapshot stays for the next sync.
 function saveProgressQuietly(saveOptions) {

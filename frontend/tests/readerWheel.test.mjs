@@ -103,3 +103,30 @@ test('ignores duplicate, outside, and interactive wheel events', () => {
   }))
   assert.deepEqual(fixture.calls, [])
 })
+
+test('reports only trusted vertical wheel movement that can scroll the reader', () => {
+  const reported = []
+  const overlay = ref(false)
+  const fixture = createController({
+    isVerticalRead: ref(true),
+    isOverlayOpen: overlay,
+    onNativeScrollInput: delta => reported.push(delta),
+  })
+  for (const attributes of [
+    {},
+    { isTrusted: true, ctrlKey: true },
+    { isTrusted: true, shiftKey: true },
+    { isTrusted: true, deltaX: 120 },
+    { isTrusted: true, defaultPrevented: true },
+    { isTrusted: true, target: { inside: false } },
+  ]) {
+    fixture.controller.handle(fixture.event(80, attributes))
+  }
+  overlay.value = true
+  fixture.controller.handle(fixture.event(80, { isTrusted: true }))
+  assert.deepEqual(reported, [])
+
+  overlay.value = false
+  fixture.controller.handle(fixture.event(-80, { isTrusted: true }))
+  assert.deepEqual(reported, [-80])
+})

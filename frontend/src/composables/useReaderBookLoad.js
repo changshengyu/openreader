@@ -36,7 +36,7 @@ export function useReaderBookLoad(options) {
     )
     const targetOffset = Math.max(0, Math.floor(Number(serverSaved.offset || 0)))
     const restorePercent = savedBookChapterPercent(serverSaved, options.chapters.value.length)
-    await trackRestore(serverSaved, async () => {
+    await trackRestore(serverSaved, async finishNavigation => {
       const reachedPosition = await options.navigate({
         resume: '1',
         chapter: targetIndex,
@@ -47,12 +47,13 @@ export function useReaderBookLoad(options) {
       })
       if (!reachedPosition || !isCurrent()) return
 
+      finishNavigation?.()
       await options.loadChapter(targetIndex, targetOffset, {
         restorePercent,
         saveAfterLoad: false,
         restoredProgress: serverSaved,
       })
-    })
+    }, { waitForNavigation: true })
   }
 
   async function refreshCachedBook(targetBookId, isCurrent) {

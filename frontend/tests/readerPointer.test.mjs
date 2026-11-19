@@ -300,3 +300,40 @@ test('short touch taps on reader buttons such as 重新加载 never page or togg
     assert.deepEqual(fixture.calls.filter(([name]) => pageActions.includes(name)), [[textAction]], `${mode} text tap mapping changed`)
   }
 })
+
+test('reports only a trusted single-finger vertical drag in the reading area', () => {
+  const reported = []
+  const overlay = ref(false)
+  const fixture = createController({
+    reader: reactive({ clickMethod: 'slide', mode: 'page' }),
+    isOverlayOpen: overlay,
+    onNativeScrollInput: delta => reported.push(delta),
+  })
+  const point = (x, y, identifier = 1) => ({ clientX: x, clientY: y, identifier })
+  const start = () => fixture.controller.handleTouchStart({ touches: [point(150, 300)] })
+  const move = (touches, attributes = {}) => fixture.controller.handleTouchMove({
+    touches,
+    isTrusted: true,
+    ...attributes,
+  })
+  start()
+  move([point(150, 295)])
+  start()
+  move([point(180, 290)])
+  start()
+  move([point(150, 270), point(90, 270, 2)])
+  start()
+  move([point(150, 270, 2)])
+  start()
+  move([point(150, 270)], { isTrusted: false })
+  start()
+  overlay.value = true
+  move([point(150, 270)])
+  assert.deepEqual(reported, [])
+
+  start()
+  overlay.value = false
+  move([point(150, 275)])
+  move([point(152, 245)])
+  assert.deepEqual(reported, [25, 30])
+})

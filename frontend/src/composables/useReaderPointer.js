@@ -124,7 +124,7 @@ export function useReaderPointer(options) {
     if (!unref(options.isMobileReader) || event.touches?.length !== 1) return
     options.preparePageInput?.()
     const touch = event.touches[0]
-    touchStart = { x: touch.clientX, y: touch.clientY, at: now() }
+    touchStart = { x: touch.clientX, y: touch.clientY, at: now(), identifier: touch.identifier }
     touchMoved = false
     touchMove = { x: 0, y: 0 }
   }
@@ -138,7 +138,14 @@ export function useReaderPointer(options) {
     const touch = event.touches[0]
     const moveX = touch.clientX - touchStart.x
     const moveY = touch.clientY - touchStart.y
+    const scrollDelta = touchMove.y - moveY
     touchMove = { x: moveX, y: moveY }
+    if (event.isTrusted && !event.defaultPrevented && touch.identifier === touchStart.identifier
+      && !unref(options.isOverlayOpen) && !unref(options.isAudio) && options.reader.mode !== 'flip'
+      && !isReaderControlTarget(event.target) && Math.abs(moveY) > Math.abs(moveX)
+      && Math.abs(moveY) > MOBILE_READER_TAP_MOVE_TOLERANCE) {
+      options.onNativeScrollInput?.(scrollDelta)
+    }
     if (
       !touchMoved
       && didReaderTouchMove(touchMove, MOBILE_READER_TAP_MOVE_TOLERANCE)

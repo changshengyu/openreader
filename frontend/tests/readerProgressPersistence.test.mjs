@@ -386,3 +386,84 @@ test('a newer server version survives an untouched viewport during and after res
     ['remote', 2495, restored.updatedAt],
   ])
 })
+
+test('background save during a pending restoration uses the viewport moved by native input', async () => {
+  const confirmed = { bookId: 7, chapterId: 13, chapterIndex: 3, offset: 4400, updatedAt: 'server-v1' }
+  const scrollViewport = { scrollTop: 900 }
+  let scrollContainer = scrollViewport
+  let payload = { ...confirmed, offset: 1296 }
+  const saved = []
+  const controller = useReaderProgressPersistence({
+    getPayload: () => payload,
+    getRestoreScrollViewport: () => scrollContainer,
+    getStoredProgress: () => confirmed,
+    getBaseUpdatedAt: () => confirmed.updatedAt,
+    applyLocal: progress => saved.push(['local', progress.bookId, progress.offset, progress.baseUpdatedAt]),
+    saveRemote: async progress => saved.push(['remote', progress.bookId, progress.offset, progress.baseUpdatedAt]),
+  })
+
+  await controller.trackRestore(confirmed, async beginLoading => {
+    const background = { force: true, background: true }
+    scrollViewport.scrollTop = 920
+    await controller.save(background)
+    controller.recordRestoreScroll?.(7, -1)
+    await controller.save(background)
+    scrollViewport.scrollTop = 720
+    payload = { ...payload, offset: 950 }
+    await controller.save()
+    scrollContainer = { scrollTop: 700 }
+    await controller.save(background)
+    assert.deepEqual(saved, [], 'layout, touch at an edge, idle saves and other viewports keep the confirmed progress')
+
+    scrollContainer = scrollViewport
+    controller.recordRestoreScroll?.(7, 1)
+    scrollViewport.scrollTop = 960
+    payload = { ...payload, offset: 1350 }
+    await controller.save(background)
+    assert.deepEqual(saved, [
+      ['local', 7, 1350, 'server-v1'],
+      ['remote', 7, 1350, 'server-v1'],
+    ])
+
+    beginLoading?.()
+    scrollViewport.scrollTop = 1200
+    payload = { ...payload, offset: 2500 }
+    await controller.save(background)
+    assert.equal(saved.length, 2, 'programmatic chapter positioning retains the recovery protection')
+  }, { waitForNavigation: true })
+})
+
+test('a newer pending navigation preserves native movement in the same reader viewport', async () => {
+  const initial = { bookId: 7, chapterId: 13, chapterIndex: 3, offset: 4400, updatedAt: 'server-v1' }
+  const latest = { ...initial, offset: 8000, updatedAt: 'server-v2' }
+  const viewport = { scrollTop: 1000 }
+  let stored = initial
+  let payload = { ...initial, offset: 1296 }
+  const writes = []
+  const controller = useReaderProgressPersistence({
+    getPayload: () => payload,
+    getRestoreScrollViewport: () => viewport,
+    getStoredProgress: () => stored,
+    getBaseUpdatedAt: () => stored.updatedAt,
+    applyLocal: progress => writes.push(['local', progress.offset, progress.baseUpdatedAt]),
+    saveRemote: async progress => writes.push(['remote', progress.offset, progress.baseUpdatedAt]),
+  })
+
+  const firstNavigation = Promise.withResolvers()
+  const restoringFirst = controller.trackRestore(initial, () => firstNavigation.promise, { waitForNavigation: true })
+  controller.recordRestoreScroll(7, -1)
+  viewport.scrollTop = 850
+  payload = { ...payload, offset: 950 }
+
+  stored = latest
+  await controller.trackRestore(latest, async () => {
+    firstNavigation.resolve()
+    await restoringFirst
+    await controller.save({ force: true, background: true })
+  }, { waitForNavigation: true })
+
+  assert.deepEqual(writes, [
+    ['local', 950, latest.updatedAt],
+    ['remote', 950, latest.updatedAt],
+  ])
+})
