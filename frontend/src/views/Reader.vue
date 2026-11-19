@@ -1973,25 +1973,25 @@ const {
   getShelfBook: targetBookId => bookshelf.books.find(
     item => Number(item.id) === Number(targetBookId),
   ),
-  loadCachedBook: targetBookId => cacheFirstRequest(
+  loadCachedBook: (targetBookId, canWrite) => cacheFirstRequest(
     () => api.get(`/books/${targetBookId}`),
     readerDataCacheKey(`book:${targetBookId}`),
-    { validate: data => Boolean(data?.id) },
+    { validate: data => Boolean(data?.id), canWrite },
   ),
-  loadCachedChapters: targetBookId => cacheFirstRequest(
+  loadCachedChapters: (targetBookId, canWrite) => cacheFirstRequest(
     () => api.get(`/books/${targetBookId}/chapters`),
     readerDataCacheKey(`chapters:${targetBookId}`),
-    { validate: data => Array.isArray(data) },
+    { validate: data => Array.isArray(data), canWrite },
   ),
-  refreshBook: targetBookId => networkFirstRequest(
+  refreshBook: (targetBookId, canWrite) => networkFirstRequest(
     () => api.get(`/books/${targetBookId}`),
     readerDataCacheKey(`book:${targetBookId}`),
-    { validate: data => Boolean(data?.id) },
+    { validate: data => Boolean(data?.id), canWrite },
   ),
-  refreshChapters: targetBookId => networkFirstRequest(
+  refreshChapters: (targetBookId, canWrite) => networkFirstRequest(
     () => api.get(`/books/${targetBookId}/chapters`),
     readerDataCacheKey(`chapters:${targetBookId}`),
-    { validate: data => Array.isArray(data) },
+    { validate: data => Array.isArray(data), canWrite },
   ),
   mergeLoadedBook,
   mergeBookProgress: (loadedBook, progress) => mergeShelfBook(
