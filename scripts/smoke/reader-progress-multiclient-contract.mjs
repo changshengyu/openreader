@@ -460,11 +460,11 @@ function readerScrollTop() {
     : document.querySelector('.reader-content')?.scrollTop
 }
 
-function captureProgressWrites(context) {
+function captureProgressWrites(context, capture = request => request.postDataJSON()) {
   const writes = []
   context.on('request', request => {
     if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/progress') {
-      writes.push(request.postDataJSON())
+      writes.push(capture(request))
     }
   })
   return writes
@@ -659,6 +659,97 @@ async function runViewport(browser, app, token, progressDir, viewport) {
   }
 }
 
+async function observeCloseParagraph(page) {
+  // Measure when the keepalive starts because touch momentum can continue until close.
+  await page.evaluate(() => {
+    const originalFetch = window.fetch
+    window.fetch = (url, options) => {
+      if (!String(url).endsWith('/api/progress') || !options?.keepalive) return originalFetch(url, options)
+      const reader = document.querySelector('.reader-content')
+      const documentScroll = document.querySelector('.reader-shell.document-scroll')
+      const rect = reader.getBoundingClientRect()
+      const top = documentScroll ? 0 : rect.top
+      const height = documentScroll ? window.innerHeight : rect.height
+      const anchor = top + Math.min(height * 0.32, 180)
+      const visible = [...reader.querySelectorAll('.chapter-content h3[data-pos], .chapter-content [data-reader-block][data-pos]')]
+        .map(node => ({ node, rect: node.getBoundingClientRect() }))
+        .filter(({ rect }) => rect.bottom >= top + 8 && rect.top <= top + height - 8)
+      const paragraph = visible.find(({ rect }) => rect.top <= anchor && anchor <= rect.bottom)
+        ?? visible.sort((a, b) => Math.abs(a.rect.top - anchor) - Math.abs(b.rect.top - anchor))[0]
+      if (!paragraph) return originalFetch(url, options)
+      const start = Number(paragraph.node.dataset.pos)
+      const end = start + paragraph.node.textContent.length
+      const headers = new Headers(options.headers)
+      headers.set('X-Smoke-Visible-Paragraph', `${start},${end}`)
+      return originalFetch(url, { ...options, headers })
+    }
+  })
+}
+
+async function runPendingRestoreViewport(browser, app, token, progressDir, viewport, shouldScroll) {
+  const label = `pending-restore-${viewport.width}x${viewport.height}/${shouldScroll ? 'scroll' : 'untouched'}`
+  const book = await importTXT(app.root, token, `等待恢复 ${label}`)
+  const [chapter] = await api(app.root, `/books/${book.id}/chapters`, { token })
+  assert(chapter, `${label}: imported book has no chapter`)
+  const remoteOffset = 4400
+  async function writeProgress(offset, chapterPercent, baseUpdatedAt) {
+    return api(app.root, '/progress', {
+      token,
+      method: 'PUT',
+      body: {
+        bookId: book.id, chapterId: chapter.id, chapterIndex: chapter.index,
+        offset, percent: chapterPercent, chapterPercent, mode: 'page', baseUpdatedAt,
+        clientId: 'pending-restore-server',
+      },
+    })
+  }
+  const initial = await writeProgress(2200, 0.25)
+  assert(initial?.updatedAt, `${label}: baseline progress is missing updatedAt`)
+  const reader = await newReaderContext(browser, app.root, token, viewport, book.id, label)
+  const writes = captureProgressWrites(reader.context, request => ({
+    payload: request.postDataJSON(),
+    visibleParagraph: request.headers()['x-smoke-visible-paragraph'],
+  }))
+  try {
+    await waitForLocalProgress(reader.page, book.id, initial.offset)
+    await reader.page.evaluate(offset => {
+      const router = document.querySelector('#app').__vue_app__.config.globalProperties.$router
+      const gate = new Promise(() => {})
+      router.beforeEach(to => {
+        if (Number(to.query.offset) !== offset) return
+        window.__openReaderRestoreWaiting = true
+        return gate
+      })
+    }, remoteOffset)
+    if (shouldScroll) await observeCloseParagraph(reader.page)
+    const remote = await writeProgress(remoteOffset, 0.5, initial.updatedAt)
+    assert(remote.offset === remoteOffset, `${label}: remote progress did not reach the server`)
+    await reader.page.waitForFunction(() => window.__openReaderRestoreWaiting === true, null, { timeout: 10_000 })
+    assert(Number(new URL(reader.page.url()).searchParams.get('offset')) !== remoteOffset,
+      `${label}: restoration navigation committed before close`)
+    if (shouldScroll) await scrollReaderBack(reader, viewport)
+    assert(writes.length === 0, `${label}: progress write occurred before close`)
+    await reader.context.close()
+    const durable = await api(app.root, `/progress/${book.id}`, { token })
+    if (shouldScroll) {
+      const write = writes.find(({ payload }) => payload.offset === durable.offset && payload.baseUpdatedAt === remote.updatedAt)
+      assert(write?.visibleParagraph && durable.updatedAt !== remote.updatedAt,
+        `${label}: scrolling before restore did not save against the confirmed version on close (offset ${durable.offset})`)
+      const [start, end] = write.visibleParagraph.split(',').map(Number)
+      assert(durable.chapterIndex === chapter.index && durable.offset >= start && durable.offset <= end,
+        `${label}: saved offset ${durable.offset} is outside the visible paragraph ${start}–${end}`)
+    } else {
+      assert(writes.length === 0 && durable.offset === remote.offset && durable.updatedAt === remote.updatedAt,
+        `${label}: untouched close changed the pending restored position`)
+    }
+    await assertWebDAVMirror(progressDir, book, durable)
+    assert(reader.errors.length === 0, reader.errors.join('\n'))
+    console.log(`${label}: close while remote route waits + durable offset ${durable.offset} + WebDAV mirror ok`)
+  } finally {
+    await reader.context.close().catch(() => {})
+  }
+}
+
 async function runIngressViewport(browser, app, token, viewport) {
   const label = `ingress-${viewport.width}x${viewport.height}`
   await api(app.root, '/settings/reader', { token, method: 'PUT', body: { value: {
@@ -768,9 +859,11 @@ try {
   await mkdir(progressDir, { recursive: true })
   await runRequestBoundary(app.root, token)
   if (!process.env.PROGRESS_SMOKE_INGRESS_ONLY) {
-    await runViewport(browser, app, token, progressDir, { width: 1440, height: 900 })
-    await runViewport(browser, app, token, progressDir, { width: 390, height: 844 })
-    await runViewport(browser, app, token, progressDir, { width: 360, height: 800 })
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 800 }]) {
+      await runPendingRestoreViewport(browser, app, token, progressDir, viewport, false)
+      await runPendingRestoreViewport(browser, app, token, progressDir, viewport, true)
+      await runViewport(browser, app, token, progressDir, viewport)
+    }
   }
   await runIngressViewport(browser, app, token, { width: 1440, height: 900 })
   await runIngressViewport(browser, app, token, { width: 390, height: 844 })
