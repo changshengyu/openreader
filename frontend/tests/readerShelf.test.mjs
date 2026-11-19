@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { computed, ref } from 'vue'
+import { computed, effectScope, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { useReaderShelf } from '../src/composables/useReaderShelf.js'
 import { sortByShelfOrder } from '../src/utils/bookOrder.js'
@@ -106,15 +106,16 @@ async function feedbackShelf({ saveFails = false, guard, saveProgress } = {}) {
   if (guard) router.beforeEach(guard)
   router.onError(() => {})
   const messages = []
-  const shelf = useReaderShelf({
+  const scope = effectScope()
+  const shelf = scope.run(() => useReaderShelf({
     bookshelf: { books: [] },
     reader: { progressByBook: {} },
     currentBookId: computed(() => router.currentRoute.value.params.id),
     router,
     saveProgress: saveProgress || (async () => { if (saveFails) throw new Error('save failed') }),
     onSuccess: message => messages.push(message),
-  })
-  return { shelf, router, messages }
+  }))
+  return { shelf, router, messages, scope }
 }
 
 for (const saveFails of [false, true]) {
@@ -200,5 +201,57 @@ test('a cancelled navigation cannot report success after a newer switch', async 
   release(true)
   await first
   assert.equal(router.currentRoute.value.params.id, '3')
+  assert.deepEqual(messages, ['换书成功'])
+})
+
+for (const saveFails of [false, true]) {
+  test(`a delayed shelf selection expires after leaving and returning to the source book (saveFails=${saveFails})`, async () => {
+    const save = Promise.withResolvers()
+    const { shelf, router, messages } = await feedbackShelf({ saveProgress: () => save.promise })
+    const switching = shelf.select({ id: 2 })
+    await router.push({ name: 'reader', params: { id: 3 } })
+    await router.push({ name: 'reader', params: { id: 1 }, query: { chapter: '2', offset: '240' } })
+    const resumedPath = router.currentRoute.value.fullPath
+
+    if (saveFails) save.reject(new Error('save failed'))
+    else save.resolve()
+    await switching
+
+    assert.deepEqual({ path: router.currentRoute.value.fullPath, messages }, { path: resumedPath, messages: [] })
+
+    await shelf.select({ id: 2 })
+    assert.equal(router.currentRoute.value.params.id, '2', 'a new selection remains valid after returning')
+    assert.deepEqual(messages, ['换书成功'])
+  })
+}
+
+test('a delayed shelf selection expires on leaving the reader', async () => {
+  const save = Promise.withResolvers()
+  const { shelf, router, messages } = await feedbackShelf({ saveProgress: () => save.promise })
+  const switching = shelf.select({ id: 2 })
+  await router.push({ name: 'other' })
+  save.resolve()
+  await switching
+  assert.deepEqual({ route: router.currentRoute.value.name, messages }, { route: 'other', messages: [] })
+})
+
+test('disposing the shelf instance expires a selection even if the route is unchanged', async () => {
+  const save = Promise.withResolvers()
+  const { shelf, router, messages, scope } = await feedbackShelf({ saveProgress: () => save.promise })
+  const switching = shelf.select({ id: 2 })
+  scope.stop()
+  save.resolve()
+  await switching
+  assert.deepEqual({ id: router.currentRoute.value.params.id, messages }, { id: '1', messages: [] })
+})
+
+test('replacing the source book query keeps a delayed shelf selection valid', async () => {
+  const save = Promise.withResolvers()
+  const { shelf, router, messages } = await feedbackShelf({ saveProgress: () => save.promise })
+  const switching = shelf.select({ id: 2, progress: { chapterIndex: 3, offset: 240 } })
+  await router.replace({ name: 'reader', params: { id: 1 }, query: { chapter: '2' } })
+  save.resolve()
+  await switching
+  assert.equal(router.currentRoute.value.fullPath, '/books/2/read?resume=1&chapter=3&offset=240')
   assert.deepEqual(messages, ['换书成功'])
 })

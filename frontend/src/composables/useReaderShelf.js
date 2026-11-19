@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, ref, unref } from 'vue'
+import { computed, getCurrentScope, nextTick, onScopeDispose, ref, unref, watch } from 'vue'
 import { newestBookProgress, sortByShelfOrder } from '../utils/bookOrder.js'
 import { readerRouteQueryFromBook } from '../utils/readerRoute.js'
 
@@ -7,6 +7,15 @@ export function useReaderShelf(options) {
   const loading = ref(false)
   const panelRef = ref(null)
   let locateTimer = null
+  let readerVisit = 0
+  const scope = getCurrentScope()
+
+  // Track every visit so leaving and returning to the same book expires the pending selection.
+  watch([
+    () => options.router.currentRoute?.value?.name,
+    () => unref(options.currentBookId),
+  ], () => { readerVisit++ }, { flush: 'sync' })
+  if (scope) onScopeDispose(clearLocateTimer)
 
   const books = computed(() => {
     const rows = Array.isArray(options.bookshelf.books) ? options.bookshelf.books : []
@@ -62,6 +71,7 @@ export function useReaderShelf(options) {
   async function select(item) {
     visible.value = false
     if (Number(item?.id) === Number(unref(options.currentBookId))) return
+    const selectionVisit = readerVisit
     // reader-dev's changeBook waits for no save: saving the current position first is best effort and a rejected
     // save must not stop the switch (failure progress contract P5).
     try {
@@ -69,6 +79,8 @@ export function useReaderShelf(options) {
     } catch {
       // The local pending snapshot stays for the next sync.
     }
+    if (selectionVisit !== readerVisit || scope?.active === false) return
+
     // Another selection may have opened this book while the progress save was pending.
     const currentRoute = options.router.currentRoute?.value
     if (currentRoute?.name === 'reader' && Number(currentRoute.params.id) === Number(item.id)) return
@@ -83,7 +95,7 @@ export function useReaderShelf(options) {
     // Router resolves aborted/cancelled/duplicate navigations with a failure. Redirects can resolve successfully
     // elsewhere, so report the switch only after the selected reader route actually becomes current.
     const route = options.router.currentRoute?.value
-    if (!failure && route?.name === 'reader' && Number(route.params.id) === Number(item.id)) {
+    if (scope?.active !== false && !failure && route?.name === 'reader' && Number(route.params.id) === Number(item.id)) {
       options.onSuccess?.('换书成功')
     }
   }
@@ -104,8 +116,6 @@ export function useReaderShelf(options) {
       loading.value = false
     }
   }
-
-  onBeforeUnmount(clearLocateTimer)
 
   return {
     visible,
