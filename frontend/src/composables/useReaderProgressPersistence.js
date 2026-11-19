@@ -4,6 +4,7 @@ import {
   readerProgressThrottleDelay,
 } from '../utils/readerProgressPersistence.js'
 import { readAuthToken } from '../utils/authToken.js'
+import { progressUpdatedAt } from '../utils/bookOrder.js'
 
 export function useReaderProgressPersistence(options) {
   const minimumInterval = Math.max(0, Number(options.minimumInterval) || 1200)
@@ -11,6 +12,8 @@ export function useReaderProgressPersistence(options) {
   let saving = false
   let pendingPayload = null
   let lastSavedKey = ''
+  let restoredPosition = null
+  let restoringProgress = null
   let lastRequestAt = 0
   let suspended = false
   let generation = 0
@@ -20,8 +23,45 @@ export function useReaderProgressPersistence(options) {
     return readerProgressSaveKey(payload, options.getMode?.())
   }
 
-  function markSaved(payload) {
+  function markSaved(payload, restoredProgress) {
     lastSavedKey = key(payload)
+    restoredPosition = payload?.bookId
+      && Number(restoredProgress?.bookId) === Number(payload.bookId)
+      && restoredProgress.updatedAt
+      && !restoredProgress.pendingSync
+      ? { viewportKey: lastSavedKey, progress: restoredProgress }
+      : null
+    if (restoredPosition && Number(restoringProgress?.bookId) === Number(payload.bookId)
+      && restoringProgress.updatedAt === restoredProgress.updatedAt) {
+      restoringProgress = null
+    }
+  }
+
+  function isRestoredPosition(payload) {
+    if (!payload?.bookId) return false
+    if (Number(restoringProgress?.bookId) === Number(payload.bookId)
+      && hasConfirmedProgress(restoringProgress)) return true
+    return Boolean(restoredPosition && key(payload) === restoredPosition.viewportKey
+      && hasConfirmedProgress(restoredPosition.progress))
+  }
+
+  function hasConfirmedProgress(restoredProgress) {
+    const stored = options.getStoredProgress?.(restoredProgress.bookId)
+    if (!stored?.updatedAt || stored.pendingSync) return false
+    const restoredTime = progressUpdatedAt(restoredProgress)
+    return stored.updatedAt === restoredProgress.updatedAt
+      || (restoredTime > 0 && progressUpdatedAt(stored) >= restoredTime)
+  }
+
+  async function trackRestore(progress, restore) {
+    if (!progress?.bookId || !progress.updatedAt || progress.pendingSync) return restore()
+    const task = { bookId: progress.bookId, updatedAt: progress.updatedAt }
+    restoringProgress = task
+    try {
+      return await restore()
+    } finally {
+      if (restoringProgress === task) restoringProgress = null
+    }
   }
 
   function isBusy() {
@@ -49,6 +89,8 @@ export function useReaderProgressPersistence(options) {
 
     const force = Boolean(saveOptions.force)
     const background = Boolean(saveOptions.background)
+    if ((!force || background) && isRestoredPosition(payload)) return
+    restoredPosition = null
     const nextPayload = {
       ...payload,
       baseUpdatedAt: options.getBaseUpdatedAt?.(payload.bookId) || '',
@@ -183,6 +225,8 @@ export function useReaderProgressPersistence(options) {
     backgroundRequest = null
     pendingPayload = null
     lastSavedKey = ''
+    restoredPosition = null
+    restoringProgress = null
     lastRequestAt = 0
   }
 
@@ -191,11 +235,13 @@ export function useReaderProgressPersistence(options) {
   return {
     cancelScheduled,
     isBusy,
+    isRestoredPosition,
     key,
     markSaved,
     save,
     schedule,
     suspend,
     resume,
+    trackRestore,
   }
 }

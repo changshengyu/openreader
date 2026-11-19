@@ -36,19 +36,22 @@ export function useReaderBookLoad(options) {
     )
     const targetOffset = Math.max(0, Math.floor(Number(serverSaved.offset || 0)))
     const restorePercent = savedBookChapterPercent(serverSaved, options.chapters.value.length)
-    const reachedPosition = await options.navigate({
-      resume: '1',
-      chapter: targetIndex,
-      ...(targetOffset ? { offset: targetOffset } : {}),
-      ...(restorePercent !== null
-        ? { percent: Number(restorePercent.toFixed(6)) }
-        : {}),
-    })
-    if (!reachedPosition || !isCurrent()) return
+    await trackRestore(serverSaved, async () => {
+      const reachedPosition = await options.navigate({
+        resume: '1',
+        chapter: targetIndex,
+        ...(targetOffset ? { offset: targetOffset } : {}),
+        ...(restorePercent !== null
+          ? { percent: Number(restorePercent.toFixed(6)) }
+          : {}),
+      })
+      if (!reachedPosition || !isCurrent()) return
 
-    await options.loadChapter(targetIndex, targetOffset, {
-      restorePercent,
-      saveAfterLoad: false,
+      await options.loadChapter(targetIndex, targetOffset, {
+        restorePercent,
+        saveAfterLoad: false,
+        restoredProgress: serverSaved,
+      })
     })
   }
 
@@ -63,6 +66,7 @@ export function useReaderBookLoad(options) {
   }
 
   let loadGeneration = 0
+  const trackRestore = options.trackRestore ?? ((progress, restore) => restore())
   if (getCurrentScope()) onScopeDispose(() => { loadGeneration++ })
 
   async function load() {
@@ -163,10 +167,14 @@ export function useReaderBookLoad(options) {
     const savedPercent = shouldUseSavedPosition
       ? savedBookChapterPercent(saved, options.chapters.value.length)
       : null
-    await options.loadChapter(options.currentIndex.value, initialOffset, {
+    const restoredProgress = shouldUseSavedPosition && !hasRouteOffset && routePercent === null && saved?.bookId
+      ? saved
+      : null
+    await trackRestore(restoredProgress, () => options.loadChapter(options.currentIndex.value, initialOffset, {
       restorePercent: routePercent ?? (hasRouteOffset ? null : savedPercent),
       saveAfterLoad: false,
-    })
+      ...(restoredProgress ? { restoredProgress } : {}),
+    }))
 
     if (!isCurrent()) return
 

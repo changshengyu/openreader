@@ -31,7 +31,7 @@ function createController(overrides = {}) {
     cancelProgressSave: () => calls.push(['cancel']),
     navigate: async query => calls.push(['navigate', query]),
     loadChapter: async (...args) => calls.push(['load', ...args]),
-    markProgressSaved: progress => calls.push(['mark', progress]),
+    markProgressSaved: (...args) => calls.push(['mark', ...args]),
     getCurrentOffset: () => 80,
     getCurrentPercent: () => 0.4,
     clearChapterCache: () => calls.push(['clear']),
@@ -63,37 +63,34 @@ function createController(overrides = {}) {
 
 test('applies different remote progress to the current book', async () => {
   const fixture = createController()
-  await fixture.controller.handleProgressUpdated({
-    detail: {
-      progress: {
-        bookId: 7,
-        chapterId: 13,
-        chapterIndex: 9,
-        offset: 125.8,
-        chapterPercent: 1.4,
-      },
-    },
-  })
+  const progress = {
+    bookId: 7,
+    chapterId: 13,
+    chapterIndex: 9,
+    offset: 125.8,
+    chapterPercent: 1.4,
+  }
+  await fixture.controller.handleProgressUpdated({ detail: { progress } })
   assert.deepEqual(fixture.calls, [
     ['cancel'],
     ['navigate', { chapter: 2, offset: 125, percent: 1 }],
-    ['load', 2, 125, { restorePercent: 1, saveAfterLoad: false }],
-    ['mark', fixture.currentProgress],
+    ['load', 2, 125, { restorePercent: 1, saveAfterLoad: false, restoredProgress: progress }],
   ])
 })
 
 test('remote offset without a measured percentage preserves offset-only restoration', async () => {
   for (const chapterPercent of [undefined, null, '', 0]) {
     const fixture = createController()
-    await fixture.controller.handleProgressUpdated({
-      detail: { progress: { bookId: 7, chapterId: 13, chapterIndex: 2, offset: 240, chapterPercent } },
-    })
+    const progress = { bookId: 7, chapterId: 13, chapterIndex: 2, offset: 240, chapterPercent }
+    await fixture.controller.handleProgressUpdated({ detail: { progress } })
     assert.deepEqual(fixture.calls.find(call => call[0] === 'navigate'), ['navigate', { chapter: 2, offset: 240 }])
-    assert.deepEqual(fixture.calls.find(call => call[0] === 'load'), ['load', 2, 240, { restorePercent: null, saveAfterLoad: false }])
+    assert.deepEqual(fixture.calls.find(call => call[0] === 'load'), [
+      'load', 2, 240, { restorePercent: null, saveAfterLoad: false, restoredProgress: progress },
+    ])
   }
 })
 
-test('ignores progress for other books, matching positions, or busy restoration', async () => {
+test('marks matching progress without reloading and ignores foreign books and busy restoration', async () => {
   const fixture = createController()
   await fixture.controller.handleProgressUpdated({
     detail: { progress: { ...fixture.currentProgress, bookId: 8 } },
@@ -101,7 +98,7 @@ test('ignores progress for other books, matching positions, or busy restoration'
   await fixture.controller.handleProgressUpdated({
     detail: { progress: fixture.currentProgress },
   })
-  assert.deepEqual(fixture.calls, [])
+  assert.deepEqual(fixture.calls, [['mark', fixture.currentProgress, fixture.currentProgress]])
 
   const busy = createController({ isRestoring: () => true })
   await busy.controller.handleProgressUpdated({

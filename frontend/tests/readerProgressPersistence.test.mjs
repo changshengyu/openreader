@@ -292,3 +292,97 @@ test('background progress save falls back once when keepalive is unavailable', a
     globalThis.fetch = previousFetch
   }
 })
+
+test('keeping or leaving a restored viewport preserves the exact confirmed reading position', async () => {
+  const restored = { bookId: 7, chapterId: 13, chapterIndex: 3, offset: 4400, updatedAt: 'server-v1' }
+  let viewport = { ...restored, offset: 2495 }
+  let stored = restored
+  const local = []
+  const remote = []
+  const controller = useReaderProgressPersistence({
+    getPayload: () => viewport,
+    getBaseUpdatedAt: () => readerProgressBaseUpdatedAt(stored),
+    getStoredProgress: () => stored,
+    applyLocal: payload => local.push(payload),
+    saveRemote: async payload => {
+      remote.push(payload)
+      return payload
+    },
+  })
+
+  controller.markSaved(viewport, restored)
+  await controller.save()
+  await controller.save({ force: true, background: true })
+  assert.deepEqual(local, [])
+  assert.deepEqual(remote, [])
+
+  viewport = { ...viewport, offset: 4800 }
+  await controller.save({ force: true, background: true })
+  assert.equal(local.at(-1)?.offset, 4800)
+  assert.equal(remote.at(-1)?.offset, 4800)
+
+  viewport = { ...viewport, offset: 2495 }
+  stored = { ...restored, pendingSync: true, baseUpdatedAt: restored.updatedAt }
+  controller.markSaved(viewport, stored)
+  await controller.save({ force: true, background: true })
+  assert.equal(remote.at(-1)?.offset, 2495)
+  assert.equal(remote.at(-1)?.baseUpdatedAt, 'server-v1')
+
+  stored = restored
+  controller.markSaved(viewport)
+  await controller.save({ force: true, background: true })
+  assert.equal(remote.length, 3, 'an explicitly opened position still saves on leave')
+})
+
+test('leaving during an asynchronous restoration preserves confirmed progress', async () => {
+  const restored = { bookId: 7, chapterId: 13, chapterIndex: 3, offset: 4400, updatedAt: 'server-v1' }
+  let viewport = { ...restored, offset: 1296 }
+  const saved = []
+  const controller = useReaderProgressPersistence({
+    getPayload: () => viewport,
+    getStoredProgress: () => restored,
+    applyLocal: payload => saved.push(['local', payload.offset]),
+    saveRemote: async payload => saved.push(['remote', payload.offset]),
+  })
+  let finishRestore
+  const restoring = controller.trackRestore(restored, () => new Promise(resolve => { finishRestore = resolve }))
+
+  await controller.save({ force: true, background: true })
+  assert.deepEqual(saved, [])
+
+  controller.markSaved(viewport, restored)
+  viewport = { ...viewport, offset: 2700 }
+  await controller.save({ force: true, background: true })
+  finishRestore()
+  await restoring
+  assert.deepEqual(saved, [['local', 2700], ['remote', 2700]])
+})
+
+test('a newer server version survives an untouched viewport during and after restoring an older version', async () => {
+  const restored = { bookId: 7, chapterId: 13, chapterIndex: 3, offset: 4400, updatedAt: '2026-07-01T00:00:00.000001Z' }
+  const viewport = { ...restored, offset: 2495 }
+  const saved = []
+  let stored = restored
+  const controller = useReaderProgressPersistence({
+    getPayload: () => viewport,
+    getBaseUpdatedAt: () => readerProgressBaseUpdatedAt(stored),
+    getStoredProgress: () => stored,
+    applyLocal: payload => saved.push(['local', payload.offset, payload.baseUpdatedAt]),
+    saveRemote: async payload => saved.push(['remote', payload.offset, payload.baseUpdatedAt]),
+  })
+
+  await controller.trackRestore(restored, async () => {
+    stored = { ...restored, offset: 8000, updatedAt: '2026-07-01T00:00:00.000002Z' }
+    await controller.save({ force: true, background: true })
+    controller.markSaved(viewport, restored)
+  })
+  await controller.save({ force: true, background: true })
+  assert.deepEqual(saved, [])
+
+  stored = { ...stored, pendingSync: true, baseUpdatedAt: restored.updatedAt }
+  await controller.save({ force: true, background: true })
+  assert.deepEqual(saved, [
+    ['local', 2495, restored.updatedAt],
+    ['remote', 2495, restored.updatedAt],
+  ])
+})

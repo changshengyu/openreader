@@ -121,7 +121,7 @@ export function useReaderChapterLoader(options) {
         await Promise.resolve(options.saveProgress({ force: true })).catch(() => {})
         if (!isCurrent()) return false
       } else {
-        options.markProgressSaved(options.getCurrentProgress())
+        options.markProgressSaved(options.getCurrentProgress(), loadOptions.restoredProgress)
       }
       options.chapterLoaded.value = true
       if (unref(options.isContinuousScrollRead)) {

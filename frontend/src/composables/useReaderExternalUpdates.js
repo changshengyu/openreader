@@ -3,11 +3,14 @@ import { deletedBookIdsFromEvent } from '../utils/bookDeletion.js'
 import { savedBookChapterPercent } from '../utils/readerRoute.js'
 
 export function useReaderExternalUpdates(options) {
+  const trackRestore = options.trackRestore ?? ((progress, restore) => restore())
+
   async function handleProgressUpdated(event) {
     const progress = event?.detail?.progress
     if (!progress?.bookId || Number(progress.bookId) !== Number(unref(options.bookId))) return
     if (!unref(options.chapter) || options.isRestoring() || options.isProgressSaveBusy()) return
-    const localKey = options.progressKey(options.getCurrentProgress())
+    const currentProgress = options.getCurrentProgress()
+    const localKey = options.progressKey(currentProgress)
     const remoteKey = options.progressKey({
       bookId: progress.bookId,
       chapterId: progress.chapterId,
@@ -16,7 +19,11 @@ export function useReaderExternalUpdates(options) {
       percent: progress.percent,
       chapterPercent: progress.chapterPercent,
     })
-    if (!remoteKey || remoteKey === localKey) return
+    if (!remoteKey) return
+    if (remoteKey === localKey) {
+      options.markProgressSaved(currentProgress, progress)
+      return
+    }
 
     const chapterRows = unref(options.chapters)
     const targetIndex = Math.max(
@@ -28,16 +35,19 @@ export function useReaderExternalUpdates(options) {
 
     options.cancelProgressSave()
     try {
-      await options.navigate({
-        chapter: targetIndex,
-        ...(targetOffset ? { offset: targetOffset } : {}),
-        ...(restorePercent !== null ? { percent: Number(restorePercent.toFixed(6)) } : {}),
+      await trackRestore(progress, async () => {
+        const reachedPosition = await options.navigate({
+          chapter: targetIndex,
+          ...(targetOffset ? { offset: targetOffset } : {}),
+          ...(restorePercent !== null ? { percent: Number(restorePercent.toFixed(6)) } : {}),
+        })
+        if (reachedPosition === false || Number(progress.bookId) !== Number(unref(options.bookId))) return
+        await options.loadChapter(targetIndex, targetOffset, {
+          restorePercent,
+          saveAfterLoad: false,
+          restoredProgress: progress,
+        })
       })
-      await options.loadChapter(targetIndex, targetOffset, {
-        restorePercent,
-        saveAfterLoad: false,
-      })
-      options.markProgressSaved(options.getCurrentProgress())
     } catch {
       // The stored progress remains available for the next reader open.
     }
