@@ -1,18 +1,21 @@
 import { unref, watch } from 'vue'
+import { isNavigationFailure, NavigationFailureType } from 'vue-router'
 import { parseReaderRoutePercent } from '../utils/readerRoute.js'
 
 export function useReaderRouteSync(options) {
-  let suppressedPositionKey = ''
+  let pendingPosition = null
 
-  function positionKey(values) {
-    const position = Array.isArray(values)
-      ? values
-      : [values?.chapter, values?.offset, values?.percent]
-    return position.map(value => value === undefined || value === null ? '' : String(value)).join('|')
-  }
-
-  function suppressNextPositionReload(position) {
-    suppressedPositionKey = positionKey(position)
+  async function replacePosition(location) {
+    const router = options.router
+    const position = { fullPath: router.resolve(location).fullPath }
+    pendingPosition = position
+    try {
+      const failure = await router.replace(location)
+      return (!failure || isNavigationFailure(failure, NavigationFailureType.duplicated))
+        && router.currentRoute.value.fullPath === position.fullPath
+    } finally {
+      if (pendingPosition === position) pendingPosition = null
+    }
   }
 
   watch(options.bookId, async () => {
@@ -27,17 +30,12 @@ export function useReaderRouteSync(options) {
   // A route change that also switches the book belongs to the book load: it applies the new catalog first and then
   // locates the chapter and route line itself. The previous catalog must not pick or load a chapter for the new book.
   watch([options.bookId, options.positionQuery], async ([bookId, [chapter, offset, percent]], [previousBookId]) => {
-    if (bookId !== previousBookId) {
-      suppressedPositionKey = ''
+    const position = pendingPosition
+    pendingPosition = null
+    if (bookId !== previousBookId) return
+    if (position && position.fullPath === options.router.currentRoute.value.fullPath) {
+      await options.jumpToRouteLine()
       return
-    }
-    if (suppressedPositionKey) {
-      const shouldSuppress = positionKey([chapter, offset, percent]) === suppressedPositionKey
-      suppressedPositionKey = ''
-      if (shouldSuppress) {
-        await options.jumpToRouteLine()
-        return
-      }
     }
     const index = Number(chapter || 0)
     const nextOffset = Number(offset || 0)
@@ -62,6 +60,6 @@ export function useReaderRouteSync(options) {
   })
 
   return {
-    suppressNextPositionReload,
+    replacePosition,
   }
 }

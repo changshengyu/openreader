@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { computed, effectScope, nextTick, reactive, ref, shallowRef } from 'vue'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { useReaderRouteSync } from '../src/composables/useReaderRouteSync.js'
 import { parseReaderRoutePercent } from '../src/utils/readerRoute.js'
 
@@ -68,21 +69,25 @@ test('loads explicit route positions before applying search location', async () 
 })
 
 test('suppresses the route reload for an externally applied position exactly once', async () => {
-  const controller = createController()
-  controller.routeSync.suppressNextPositionReload({
-    chapter: 2,
-    offset: 88,
-    percent: 0.4,
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/books/:id/read', name: 'reader', component: {} }],
   })
-  Object.assign(controller.query, {
-    chapter: '2',
-    offset: '88',
-    percent: '0.4',
+  const destination = { name: 'reader', params: { id: 1 } }
+  await router.push(destination)
+  const controller = createController({
+    router,
+    positionQuery: () => {
+      const { chapter, offset, percent } = router.currentRoute.value.query
+      return [chapter, offset, percent]
+    },
   })
+  const query = { chapter: 2, offset: 88, percent: 0.4 }
+  assert.equal(await controller.routeSync.replacePosition({ ...destination, query }), true)
   await flushRouteSync()
   assert.deepEqual(controller.calls, [['jump']])
 
-  controller.query.offset = '99'
+  await router.replace({ ...destination, query: { ...query, offset: 99 } })
   await flushRouteSync()
   assert.deepEqual(controller.calls, [
     ['jump'],
@@ -90,6 +95,38 @@ test('suppresses the route reload for an externally applied position exactly onc
     ['jump'],
   ])
   controller.scope.stop()
+})
+
+test('an older cancelled replacement does not clear a newer replacement’s suppression', async t => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/books/:id/read', name: 'reader', component: {} }],
+  })
+  const destination = { name: 'reader', params: { id: 1 } }
+  await router.push(destination)
+  const first = { started: Promise.withResolvers(), release: Promise.withResolvers() }
+  const second = { started: Promise.withResolvers(), release: Promise.withResolvers() }
+  router.beforeEach(to => {
+    const gate = to.query.chapter === '1' ? first : second
+    gate.started.resolve()
+    return gate.release.promise
+  })
+  const controller = createController({
+    router,
+    positionQuery: () => [router.currentRoute.value.query.chapter],
+  })
+  t.after(() => controller.scope.stop())
+
+  const older = controller.routeSync.replacePosition({ ...destination, query: { chapter: 1 } })
+  await first.started.promise
+  const newer = controller.routeSync.replacePosition({ ...destination, query: { chapter: 2 } })
+  await second.started.promise
+  first.release.resolve()
+  assert.equal(await older, false)
+  second.release.resolve()
+  assert.equal(await newer, true)
+
+  assert.deepEqual(controller.calls, [['jump']])
 })
 
 test('search-only route changes jump without reloading the chapter', async () => {

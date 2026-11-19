@@ -5,9 +5,8 @@ import {
 } from '../utils/readerRoute.js'
 
 export function useReaderBookLoad(options) {
-  async function reconcileServerProgress(serverSaved, reconcileOptions = {}) {
-    const currentBookId = unref(options.bookId)
-    if (!serverSaved?.bookId || Number(serverSaved.bookId) !== Number(currentBookId)) return
+  async function reconcileServerProgress(serverSaved, reconcileOptions, isCurrent) {
+    if (!isCurrent() || !serverSaved?.bookId || Number(serverSaved.bookId) !== Number(unref(options.bookId))) return
     const routeQuery = options.getRouteQuery()
     const canFollowServer = (
       reconcileOptions.resumeFromProgress
@@ -37,7 +36,7 @@ export function useReaderBookLoad(options) {
     )
     const targetOffset = Math.max(0, Math.floor(Number(serverSaved.offset || 0)))
     const restorePercent = savedBookChapterPercent(serverSaved, options.chapters.value.length)
-    await options.navigate({
+    const reachedPosition = await options.navigate({
       resume: '1',
       chapter: targetIndex,
       ...(targetOffset ? { offset: targetOffset } : {}),
@@ -45,11 +44,12 @@ export function useReaderBookLoad(options) {
         ? { percent: Number(restorePercent.toFixed(6)) }
         : {}),
     })
+    if (!reachedPosition || !isCurrent()) return
+
     await options.loadChapter(targetIndex, targetOffset, {
       restorePercent,
       saveAfterLoad: false,
     })
-    options.markProgressSaved(options.getCurrentProgress())
   }
 
   async function refreshCachedBook(targetBookId, isCurrent) {
@@ -172,14 +172,13 @@ export function useReaderBookLoad(options) {
 
     const initialProgressKey = options.progressKey(options.getCurrentProgress())
     progressRequest.then(serverSaved => {
-      if (!isCurrent()) return
       reconcileServerProgress(serverSaved, {
         baseline: saved,
         baselineKey: initialProgressKey,
         resumeFromProgress,
         hasRouteOffset,
         routePercent,
-      }).catch(() => {})
+      }, isCurrent).catch(() => {})
     })
     if (chapterResponse.fromCache) refreshCachedChapters(targetBookId, isCurrent).catch(() => {})
     bookmarksRequest?.then(data => {
@@ -202,7 +201,6 @@ export function useReaderBookLoad(options) {
 
   return {
     load,
-    reconcileServerProgress,
   }
 }
 

@@ -174,29 +174,19 @@ test('does not let a delayed book-detail refresh block the initial chapter', asy
   assert.equal(fixture.book.value.title, '服务端新书名')
 })
 
-test('reconciles only a newer server position while the baseline is unchanged', async () => {
-  const fixture = createController()
-  fixture.chapters.value = [{}, {}, {}, {}]
-  fixture.currentProgress.value = { bookId: 7, chapterIndex: 2, offset: 90 }
-  const baselineKey = JSON.stringify(fixture.currentProgress.value)
-  await fixture.controller.reconcileServerProgress({
-    bookId: 7,
-    chapterIndex: 3,
-    offset: 120,
+test('restores a newer server position after the initial local chapter', async t => {
+  const fixture = await createResumeFixture({ serverProgress: {
     chapterPercent: 0.75,
-    updatedAt: '2026-07-02T00:00:00Z',
-  }, {
-    baseline: fixture.saved,
-    baselineKey,
-    resumeFromProgress: true,
-    hasRouteOffset: false,
-    routePercent: null,
-  })
-  assert.deepEqual(fixture.calls, [
-    ['navigate', { resume: '1', chapter: 3, offset: 120, percent: 0.75 }],
-    ['load-chapter', 3, 120, { restorePercent: 0.75, saveAfterLoad: false }],
-    ['mark', { bookId: 7, chapterIndex: 3, offset: 120 }],
-  ])
+  } })
+  t.after(() => fixture.scope.stop())
+  await fixture.controller.load()
+  fixture.publish()
+  await finishBackgroundRefreshes()
+
+  assert.deepEqual(fixture.router.currentRoute.value.query, { resume: '1', chapter: '3', offset: '120', percent: '0.75' })
+  assert.deepEqual(fixture.loads, [[7, 0, 0], [7, 3, 120]])
+  assert.deepEqual(fixture.routeLoads, [])
+  assert.deepEqual(fixture.marks, [])
 })
 
 test('opening from a pending shelf entry preserves its unconfirmed progress', async () => {
@@ -234,7 +224,7 @@ function finishBackgroundRefreshes() {
   return new Promise(resolve => setImmediate(resolve))
 }
 
-async function createResumeFixture({ duplicate = false, loadChapter } = {}) {
+async function createResumeFixture({ duplicate = false, loadChapter, serverProgress } = {}) {
   const scope = effectScope()
   const router = createRouter({
     history: createMemoryHistory(),
@@ -271,9 +261,8 @@ async function createResumeFixture({ duplicate = false, loadChapter } = {}) {
         return loadChapter ? loadChapter(index, offset, options) : true
       },
       markProgressSaved: () => marks.push(bookId.value),
-      navigate: async query => {
-        routeSync.suppressNextPositionReload(query)
-        navigation = router.replace({ name: 'reader', params: { id: bookId.value }, query })
+      navigate: query => {
+        navigation = routeSync.replacePosition({ name: 'reader', params: { id: bookId.value }, query })
         return navigation
       },
     })
@@ -294,7 +283,9 @@ async function createResumeFixture({ duplicate = false, loadChapter } = {}) {
     })
     return fixture
   })
-  const publish = () => requested.resolve({ bookId: 7, chapterIndex: 3, offset: 120, updatedAt: '2026-07-02T00:00:00Z' })
+  const publish = () => requested.resolve({
+    bookId: 7, chapterIndex: 3, offset: 120, updatedAt: '2026-07-02T00:00:00Z', ...serverProgress,
+  })
   return { ...fixture, scope, router, target, marks, loads, routeLoads, publish, navigation: () => navigation }
 }
 
