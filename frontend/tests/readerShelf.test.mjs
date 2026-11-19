@@ -94,7 +94,7 @@ test('a rejected progress save does not stop a reader shelf book switch (P5)', a
 
 
 // Shelf switch feedback contract §10.1: these are real Router results, including resolved navigation failures.
-async function feedbackShelf({ saveFails = false, guard } = {}) {
+async function feedbackShelf({ saveFails = false, guard, saveProgress } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -111,7 +111,7 @@ async function feedbackShelf({ saveFails = false, guard } = {}) {
     reader: { progressByBook: {} },
     currentBookId: computed(() => router.currentRoute.value.params.id),
     router,
-    saveProgress: async () => { if (saveFails) throw new Error('save failed') },
+    saveProgress: saveProgress || (async () => { if (saveFails) throw new Error('save failed') }),
     onSuccess: message => messages.push(message),
   })
   return { shelf, router, messages }
@@ -150,6 +150,31 @@ for (const [label, guard] of [
 test('concurrent duplicate shelf navigation only reports the successful navigation', async () => {
   const { shelf, messages } = await feedbackShelf()
   await Promise.all([shelf.select({ id: 2 }), shelf.select({ id: 2 })])
+  assert.deepEqual(messages, ['换书成功'])
+})
+
+test('a delayed duplicate shelf selection preserves the current reading position', async () => {
+  const releaseSaves = []
+  const { shelf, router, messages } = await feedbackShelf({
+    saveProgress: () => new Promise(resolve => { releaseSaves.push(resolve) }),
+  })
+  const target = { id: 2, progress: { chapterIndex: 0 } }
+  const first = shelf.select(target)
+  const second = shelf.select(target)
+  assert.equal(releaseSaves.length, 2)
+
+  releaseSaves[0]()
+  await first
+  assert.equal(router.currentRoute.value.params.id, '2')
+  await router.replace({ name: 'reader', params: { id: 2 }, query: { resume: '1', chapter: '3', offset: '240' } })
+  const currentPath = router.currentRoute.value.fullPath
+  const laterNavigations = []
+  router.beforeEach(to => { laterNavigations.push(to.fullPath) })
+
+  releaseSaves[1]()
+  await second
+  assert.equal(router.currentRoute.value.fullPath, currentPath)
+  assert.deepEqual(laterNavigations, [])
   assert.deepEqual(messages, ['换书成功'])
 })
 
