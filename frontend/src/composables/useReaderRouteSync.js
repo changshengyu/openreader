@@ -2,17 +2,27 @@ import { unref, watch } from 'vue'
 import { isNavigationFailure, NavigationFailureType } from 'vue-router'
 import { parseReaderRoutePercent } from '../utils/readerRoute.js'
 
+const readerPositionStateKey = 'openReaderPositionNavigation'
+const readerPositionSession = Math.random().toString(36).slice(2)
+let nextPositionId = 0
+
 export function useReaderRouteSync(options) {
   let pendingPosition = null
 
   async function replacePosition(location) {
     const router = options.router
-    const position = { fullPath: router.resolve(location).fullPath }
+    const { fullPath, path, query, hash } = router.resolve(location)
+    const position = { fullPath, id: `${readerPositionSession}:${++nextPositionId}` }
     pendingPosition = position
     try {
-      const failure = await router.replace(location)
-      return (!failure || isNavigationFailure(failure, NavigationFailureType.duplicated))
-        && router.currentRoute.value.fullPath === position.fullPath
+      const destination = typeof location === 'string' ? { path, query, hash } : location
+      const failure = await router.replace({
+        ...destination,
+        state: { ...destination.state, [readerPositionStateKey]: position.id },
+      })
+      if (router.currentRoute.value.fullPath !== fullPath) return false
+      if (isNavigationFailure(failure, NavigationFailureType.duplicated)) return true
+      return !failure && router.options.history.state?.[readerPositionStateKey] === position.id
     } finally {
       if (pendingPosition === position) pendingPosition = null
     }
@@ -33,7 +43,9 @@ export function useReaderRouteSync(options) {
     const position = pendingPosition
     pendingPosition = null
     if (bookId !== previousBookId) return
-    if (position && position.fullPath === options.router.currentRoute.value.fullPath) {
+    // A user navigation to the same URL can commit while the internal replace is still pending.
+    if (position && position.fullPath === options.router.currentRoute.value.fullPath
+      && options.router.options.history.state?.[readerPositionStateKey] === position.id) {
       await options.jumpToRouteLine()
       return
     }

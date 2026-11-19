@@ -154,6 +154,10 @@ for (const laterAction of ['stay', 'change chapter', 'reopen', 'dispose']) {
     const replacement = controller.routeSync.replacePosition(target)
     await started.promise
     await router.push(target)
+    await flushRouteSync()
+    const expected = [['chapter', 2, 0, { restorePercent: null, saveAfterLoad: true }]]
+    const chapterLoads = () => controller.calls.filter(([name]) => name === 'chapter')
+    const loadsBeforeRelease = chapterLoads()
     if (laterAction === 'change chapter') await router.push('/books/1/read?chapter=3')
     if (laterAction === 'reopen') {
       await router.push('/books/2/read')
@@ -164,9 +168,9 @@ for (const laterAction of ['stay', 'change chapter', 'reopen', 'dispose']) {
     assert.equal(await replacement, false)
     await flushRouteSync()
 
-    const chapters = controller.calls.filter(([name]) => name === 'chapter')
-    const chapter = laterAction === 'stay' ? 2 : laterAction === 'change chapter' ? 3 : null
-    assert.deepEqual(chapters, chapter ? [['chapter', chapter, 0, { restorePercent: null, saveAfterLoad: true }]] : [])
+    assert.deepEqual(loadsBeforeRelease, expected, 'the explicit navigation can load without waiting for the old guard')
+    if (laterAction === 'change chapter') expected.push(['chapter', 3, 0, { restorePercent: null, saveAfterLoad: true }])
+    assert.deepEqual(chapterLoads(), expected, 'the old navigation does not load anything after release')
   })
 }
 
