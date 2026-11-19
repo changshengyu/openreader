@@ -72,6 +72,13 @@ export function useReaderProgressPersistence(options) {
   async function trackRestore(progress, restore, { waitForNavigation = false } = {}) {
     if (!progress?.bookId || !progress.updatedAt || progress.pendingSync) return restore()
     const task = { bookId: progress.bookId, updatedAt: progress.updatedAt, waitingForNavigation: waitForNavigation }
+    const previousRestore = restoringProgress
+    const scrollInput = previousRestore?.scrollInput
+    if (waitForNavigation && previousRestore?.waitingForNavigation && scrollInput
+      && Number(previousRestore.bookId) === Number(task.bookId)
+      && scrollInput.viewport === options.getRestoreScrollViewport?.()) {
+      task.scrollInput = scrollInput
+    }
     restoringProgress = task
     try {
       return await restore(() => {

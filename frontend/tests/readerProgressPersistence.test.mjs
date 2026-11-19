@@ -467,3 +467,45 @@ test('a newer pending navigation preserves native movement in the same reader vi
     ['remote', 950, latest.updatedAt],
   ])
 })
+
+test('a pending navigation does not inherit movement outside the same book, viewport, and waiting stage', async t => {
+  const scenarios = [
+    { name: 'another book', bookId: 8 },
+    { name: 'another viewport', changeViewport: true },
+    { name: 'the previous restoration already began loading', previousLoading: true },
+    { name: 'the next restoration begins loading immediately', waitForNavigation: false },
+  ]
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const initial = { bookId: 7, chapterId: 13, chapterIndex: 3, offset: 4400, updatedAt: 'server-v1' }
+      const latest = { ...initial, bookId: scenario.bookId ?? 7, offset: 8000, updatedAt: 'server-v2' }
+      const viewport = { scrollTop: 1000 }
+      let activeViewport = viewport
+      let payload = { ...initial, offset: 1296 }
+      let stored = initial
+      const writes = []
+      const controller = useReaderProgressPersistence({
+        getPayload: () => payload,
+        getRestoreScrollViewport: () => activeViewport,
+        getStoredProgress: () => stored,
+        applyLocal: progress => writes.push(progress),
+        saveRemote: async progress => writes.push(progress),
+      })
+
+      await controller.trackRestore(initial, async beginLoading => {
+        controller.recordRestoreScroll(initial.bookId, -1)
+        viewport.scrollTop = 850
+        if (scenario.previousLoading) beginLoading()
+        if (scenario.changeViewport) activeViewport = { scrollTop: 1000 }
+        stored = latest
+        payload = { ...latest, offset: 950 }
+        await controller.trackRestore(latest, async () => {
+          activeViewport = viewport
+          await controller.save({ force: true, background: true })
+        }, { waitForNavigation: scenario.waitForNavigation ?? true })
+      }, { waitForNavigation: true })
+
+      assert.deepEqual(writes, [])
+    })
+  }
+})
