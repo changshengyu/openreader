@@ -1678,3 +1678,15 @@ WebDAV progress ingress 的合同与测试门见
 上传期间 root/parent/target/stage identity 改变属于 unsafe lifecycle，返回 403 空 body，不能覆盖
 替换实体。caller cancellation 不新增错误正文。详见
 [`webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md`](webdav-put-filesystem-lifecycle-fixed-baseline-second-audit-p2-contract.md)。
+
+### Reader 显式重新载入已入架在线文本章节
+
+固定上游 `fa22f271` 的 `web/src/views/Reader.vue`（987–1045）在刷新当前章时传递刷新意图。
+`BookController.kt`（448–455、583–608）据此跳过已有正文并请求书源。基线 OpenReader
+`5028d44a` 的按钮只绕过内存和浏览器缓存，Go 仍可返回旧正文，此项为 must-fix。
+
+- 已认证的 `GET /api/books/:id/chapters/:index/content?refresh=1` 无请求体。对当前用户书架上有书源的普通文本书，明确重抓该章。省略参数或传入 0 仍按缓存优先处理。媒体、本地书和临时阅读沿用原有加载流程。
+- 原有归属和章节检查先于远端请求。成功返回 200 和现有 chapter、content、format 字段。书源失败沿用客户端可读的 502 错误；身份变化和取消沿用现有冲突及取消处理。失败和过期结果均须保留最后一次有效正文。
+- 上游显式刷新直接返回抓取结果。OpenReader 沿用已有的受保护缓存写入流程，成功后替换服务端正文缓存，使普通冷重开也能读到更新。SQLite 结构、缓存路径和数据格式沿用现状。
+- 仅用户主动重新载入当前正文触发服务端重抓取。预加载、其他仅刷新浏览器缓存的操作及正常打开继续使用原语义。重新载入保留当前章节和阅读位置，沿用现有错误提示。
+- 验收使用可控在线书源。先加载 v1，再切换到 v2，普通请求仍命中 v1，手动重载显示 v2，之后断开书源的普通请求仍可读取 v2。书源失败时手动重载须报告失败，重新普通打开仍可读取最后成功版本。覆盖桌面、两个移动视口及跨用户请求。
