@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url'
 import { openSmokeBrowser } from './playwright-runtime.mjs'
 
 // Contract: docs/compat/reader-shelf-switch-stale-catalog-fixed-baseline-second-audit-p1-contract.md 8.2(1), R1-R5.
@@ -502,7 +503,11 @@ async function main() {
   console.log(`reader shelf switch contract smoke passed: ${checked.join('; ')} hold=${catalogHoldMs}ms`)
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message)
-  process.exit(1)
-})
+export { openContext, openShelf, waitForBookText, ensureMobileChrome }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error.stack || error.message)
+    process.exit(1)
+  })
+}

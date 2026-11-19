@@ -18,6 +18,7 @@ export function useReaderChapterCache(options) {
   const caching = ref(false)
   const statusText = ref('')
   let activeJob = null
+  let contextGeneration = 0
 
   function contextKey() {
     if (typeof options.getContextKey === 'function') return String(options.getContextKey())
@@ -39,11 +40,13 @@ export function useReaderChapterCache(options) {
       bookId: unref(options.bookId),
       contextKey: contextKey(),
       scope: cacheScope(),
+      generation: contextGeneration,
     }
   }
 
   function snapshotIsCurrent(snapshot) {
-    return snapshot.contextKey === contextKey() && snapshot.scope === cacheScope()
+    return snapshot.generation === contextGeneration
+      && snapshot.contextKey === contextKey() && snapshot.scope === cacheScope()
   }
 
   async function refresh(snapshot = currentSnapshot()) {
@@ -153,7 +156,11 @@ export function useReaderChapterCache(options) {
     return removed
   }
 
-  const stopContextWatch = watch(contextKey, cancel, { flush: 'sync' })
+  const stopContextWatch = watch([contextKey, cacheScope], () => {
+    contextGeneration += 1
+    cancel()
+    reset()
+  }, { flush: 'sync' })
 
   if (getCurrentInstance()) {
     onBeforeUnmount(() => {
